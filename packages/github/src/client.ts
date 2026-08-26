@@ -3,7 +3,7 @@ import type { GitHubCheckRun, GitHubPullRequest, GitHubPullRequestFile, GitHubRe
 export class GitHubApiClient {
   constructor(
     private readonly token: string,
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init),
     private readonly apiBase = 'https://api.github.com',
   ) {}
 
