@@ -6,6 +6,7 @@ import { landingPage, privacyPage, termsPage } from './pages';
 
 export interface Env {
   // test within file - spark
+  // spark
   DB: D1Database;
   GITHUB_APP_ID: string;
   GITHUB_PRIVATE_KEY: string;
