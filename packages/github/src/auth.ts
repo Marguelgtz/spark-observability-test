@@ -71,7 +71,7 @@ export async function createInstallationToken(
   appId: string,
   privateKey: string,
   installationId: number,
-  fetcher: typeof fetch = fetch,
+  fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init),
 ): Promise<string> {
   const jwt = await createGitHubAppJwt(appId, privateKey);
   const response = await fetcher(`https://api.github.com/app/installations/${installationId}/access_tokens`, {

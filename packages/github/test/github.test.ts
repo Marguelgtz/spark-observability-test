@@ -86,6 +86,21 @@ describe('GitHub normalization', () => {
 });
 
 describe('GitHub API pagination', () => {
+  it('invokes the Cloudflare-style default fetch with the platform receiver', async () => {
+    const platformFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(function (this: unknown) {
+      expect(this).toBe(globalThis);
+      return Promise.resolve(new Response(JSON.stringify({
+        id: 2, full_name: 'acme/widgets', default_branch: 'main', owner: { login: 'acme' }, name: 'widgets',
+      })));
+    });
+    try {
+      const client = new GitHubApiClient('not-logged');
+      expect((await client.getRepository('acme', 'widgets')).full_name).toBe('acme/widgets');
+    } finally {
+      platformFetch.mockRestore();
+    }
+  });
+
   it('fetches every pull-request file page and reports completeness', async () => {
     const fetcher = vi.fn(async (input: string | URL | Request) => {
       const url = String(input);
@@ -205,5 +220,21 @@ describe('GitHub Check output and authentication', () => {
       return new Response(JSON.stringify({ token: 'installation-token' }));
     });
     expect(await createInstallationToken('123', pem, 456, fetcher as typeof fetch)).toBe('installation-token');
+  });
+
+  it('uses the platform receiver for default installation-token fetches', async () => {
+    const keys = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+    const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', keys.privateKey));
+    const pem = createPrivateKey({ key: Buffer.from(pkcs8), format: 'der', type: 'pkcs8' })
+      .export({ format: 'pem', type: 'pkcs1' }).toString();
+    const platformFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(function (this: unknown) {
+      expect(this).toBe(globalThis);
+      return Promise.resolve(new Response(JSON.stringify({ token: 'installation-token' })));
+    });
+    try {
+      expect(await createInstallationToken('123', pem, 456)).toBe('installation-token');
+    } finally {
+      platformFetch.mockRestore();
+    }
   });
 });
