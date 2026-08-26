@@ -1,0 +1,13 @@
+{
+  "name": "@spark/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "db:migrate:local": "wrangler d1 migrations apply spark --local"
+  },
+  "dependencies": {
+    "@spark/core": "workspace:*",
+    "@spark/github": "workspace:*"
+  }
+}

@@ -1,0 +1,18 @@
+name = "spark-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-26"
+
+[secrets]
+required = [
+  "GITHUB_APP_ID",
+  "GITHUB_PRIVATE_KEY",
+  "GITHUB_WEBHOOK_SECRET",
+  "GITHUB_APP_SLUG",
+  "SPARK_CONTACT_EMAIL"
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "spark"
+database_id = "2db2d9a2-41e7-405c-81a5-7912a9c80773"
+migrations_dir = "migrations"

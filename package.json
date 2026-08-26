@@ -1,0 +1,19 @@
+{
+  "name": "spark",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "spark:fixture": "pnpm --filter @spark/cli run start",
+    "dev": "pnpm --filter @spark/api run dev",
+    "db:migrate:local": "pnpm --filter @spark/api run db:migrate:local"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.126.0"
+  }
+}

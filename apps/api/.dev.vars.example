@@ -1,0 +1,7 @@
+GITHUB_APP_ID="123456"
+GITHUB_WEBHOOK_SECRET="replace-with-a-random-local-secret"
+GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
+replace-with-the-github-app-private-key
+-----END RSA PRIVATE KEY-----"
+GITHUB_APP_SLUG="replace-with-github-app-slug"
+SPARK_CONTACT_EMAIL="replace-with-public-contact-email"

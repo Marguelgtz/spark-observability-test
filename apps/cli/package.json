@@ -1,0 +1,10 @@
+{
+  "name": "@spark/cli",
+  "version": "0.0.0",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@spark/core": "workspace:*"
+  }
+}
