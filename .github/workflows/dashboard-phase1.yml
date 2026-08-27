@@ -31,14 +31,7 @@ jobs:
           cache: pnpm
 
       - name: Install workspace
-        run: pnpm install --no-frozen-lockfile
-
-      - name: Upload generated lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: dashboard-phase1-lockfile
-          path: pnpm-lock.yaml
-          if-no-files-found: error
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck workspace
         run: pnpm typecheck
