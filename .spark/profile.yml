@@ -1,0 +1,10 @@
+version: 1
+areas:
+  - id: payments
+    paths:
+      - "payments/**"
+    criticality: high
+    owners:
+      - "@example/payments"
+    expected_evidence:
+      - payment-tests
