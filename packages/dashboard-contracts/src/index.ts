@@ -10,6 +10,16 @@ export interface ViewerV1 {
   avatarUrl: string;
 }
 
+export interface AccountV1 {
+  version: 1;
+  viewer: ViewerV1;
+  repositoryCount: number;
+  installationCount: number;
+  sessionExpiresAt: string;
+  githubInstallUrl: string;
+  githubSettingsUrl: string;
+}
+
 export interface RepositoryRefV1 {
   id: number;
   owner: string;
