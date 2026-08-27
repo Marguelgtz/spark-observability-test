@@ -50,6 +50,8 @@ export interface EvidenceSummaryV1 {
 
 export interface ObservedRepositoryV1 extends RepositoryRefV1 {
   pullRequestCount: number;
+  /** @deprecated V1 compatibility alias. Prefer pullRequestCount. */
+  evaluationCount?: number;
 }
 
 export interface EvaluationSummaryV1 {
@@ -95,6 +97,8 @@ export interface ActivityResponseV1 {
   counts: Record<AttentionLevelV1, number>;
   repositories: ObservedRepositoryV1[];
   pullRequests: PullRequestActivityV1[];
+  /** @deprecated V1 compatibility alias containing the latest evaluation for each returned PR. */
+  evaluations?: EvaluationSummaryV1[];
   pagination: { nextCursor: string | null };
 }
 
