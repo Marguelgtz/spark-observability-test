@@ -4,3 +4,5 @@ dist/
 .dev.vars
 *.log
 *.pem
+test-results/
+playwright-report/
