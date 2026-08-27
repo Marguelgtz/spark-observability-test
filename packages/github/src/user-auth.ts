@@ -30,6 +30,12 @@ export interface GitHubUserAccessSnapshot {
   repositories: GitHubUserRepository[];
 }
 
+function classifyGitHubUserToken(accessToken: string): 'github-app-user' | 'oauth-app-user' | 'unknown' {
+  if (accessToken.startsWith('ghu_')) return 'github-app-user';
+  if (accessToken.startsWith('gho_')) return 'oauth-app-user';
+  return 'unknown';
+}
+
 export function buildGitHubUserAuthorizationUrl(input: {
   clientId: string;
   redirectUri: string;
@@ -73,6 +79,11 @@ export async function exchangeGitHubUserCode(
   if (!response.ok) throw new Error(`GitHub OAuth token exchange failed (${response.status})`);
   const body = await response.json() as Partial<GitHubOAuthTokenResponse> & { error?: string };
   if (body.error || !body.access_token) throw new Error(`GitHub OAuth token exchange failed${body.error ? `: ${body.error}` : ''}`);
+
+  console.info(JSON.stringify({
+    githubOAuthTokenType: classifyGitHubUserToken(body.access_token),
+  }));
+
   return body as GitHubOAuthTokenResponse;
 }
 
@@ -92,7 +103,13 @@ export class GitHubUserClient {
         'x-github-api-version': '2026-03-10',
       },
     });
-    if (!response.ok) throw new Error(`GitHub user API GET ${path} failed (${response.status})`);
+    if (!response.ok) {
+      const body = (await response.text()).trim().replace(/\s+/g, ' ').slice(0, 1_000);
+      const acceptedPermissions = response.headers.get('x-accepted-github-permissions');
+      const detail = body ? `: ${body}` : '';
+      const permissionDetail = acceptedPermissions ? `; accepted permissions: ${acceptedPermissions}` : '';
+      throw new Error(`GitHub user API GET ${path} failed (${response.status})${detail}${permissionDetail}`);
+    }
     return response.json() as Promise<T>;
   }
 
