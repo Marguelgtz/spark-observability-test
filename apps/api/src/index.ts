@@ -6,14 +6,20 @@ import type {
 } from '@spark/dashboard-contracts';
 import { handleRequest, type Env, type WorkerExecutionContext } from './app';
 
-interface ActivityV1CompatibilityBody extends Partial<ActivityResponseV1> {
+interface CompatibleRepository {
+  id: number;
+  owner: string;
+  name: string;
+  url: string;
+  pullRequestCount?: number;
+  evaluationCount?: number;
+}
+
+type ActivityV1CompatibilityBody = Omit<Partial<ActivityResponseV1>, 'repositories' | 'evaluations' | 'pullRequests'> & {
   evaluations?: EvaluationSummaryV1[];
   pullRequests?: PullRequestActivityV1[];
-  repositories?: Array<Record<string, unknown> & {
-    pullRequestCount?: number;
-    evaluationCount?: number;
-  }>;
-}
+  repositories?: CompatibleRepository[];
+};
 
 function attentionCounts(attention: AttentionLevelV1): Record<AttentionLevelV1, number> {
   return {
