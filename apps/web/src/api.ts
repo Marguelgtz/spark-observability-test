@@ -14,6 +14,36 @@ export class UnauthorizedError extends Error {
   }
 }
 
+export class HttpDashboardApi implements DashboardApi {
+  constructor(private readonly baseUrl = '') {}
+
+  private async request<T>(path: string): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    });
+    if (response.status === 401) throw new UnauthorizedError();
+    if (!response.ok) throw new Error(`Dashboard API request failed (${response.status})`);
+    return response.json() as Promise<T>;
+  }
+
+  getViewer(): Promise<ViewerV1> {
+    return this.request('/api/me');
+  }
+
+  getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1> {
+    const params = new URLSearchParams({ window: query.window, attention: query.attention });
+    if (query.repositoryId !== null) params.set('repositoryId', String(query.repositoryId));
+    if (query.cursor) params.set('cursor', query.cursor);
+    if (query.limit !== undefined) params.set('limit', String(query.limit));
+    return this.request(`/api/activity?${params.toString()}`);
+  }
+
+  getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1> {
+    return this.request(`/api/evaluations/${repositoryId}/${encodeURIComponent(headSha)}`);
+  }
+}
+
 export type FixtureMode = 'normal' | 'signed-out' | 'loading' | 'empty' | 'error';
 
 export class FixtureDashboardApi implements DashboardApi {
@@ -50,12 +80,6 @@ export class FixtureDashboardApi implements DashboardApi {
   }
 }
 
-class UnavailableDashboardApi implements DashboardApi {
-  async getViewer(): Promise<ViewerV1> { throw new Error('Dashboard API is not implemented in Phase 1'); }
-  async getActivity(): Promise<ActivityResponseV1> { throw new Error('Dashboard API is not implemented in Phase 1'); }
-  async getEvaluation(): Promise<EvaluationDetailResponseV1> { throw new Error('Dashboard API is not implemented in Phase 1'); }
-}
-
 export function fixtureModeFromSearch(search: string): FixtureMode {
   const value = new URLSearchParams(search).get('fixture');
   return value === 'signed-out' || value === 'loading' || value === 'empty' || value === 'error' ? value : 'normal';
@@ -63,5 +87,5 @@ export function fixtureModeFromSearch(search: string): FixtureMode {
 
 export function createDashboardApi(search: string): DashboardApi {
   if (__SPARK_FIXTURE_API__) return new FixtureDashboardApi(fixtureModeFromSearch(search));
-  return new UnavailableDashboardApi();
+  return new HttpDashboardApi();
 }
