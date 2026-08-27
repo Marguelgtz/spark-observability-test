@@ -1,14 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { routeGitHubEvent, type GitHubApiClient, type GitHubEventRequest, type GitHubRepository } from '@spark/github';
 import { handleRequest, type Env, type WorkerExecutionContext } from '../src/app';
-import type { EvaluationRecord, SparkStore, StoredEvaluation } from '../src/contracts';
+import type { EvaluationDetailRecord, EvaluationRecord, SparkStore, StoredEvaluation } from '../src/contracts';
 import { SparkOrchestrator } from '../src/orchestrator';
 
 class MemoryStore implements SparkStore {
   deliveries = new Set<string>();
   evaluations = new Map<string, StoredEvaluation>();
+  details = new Map<string, EvaluationDetailRecord>();
   repositories: GitHubRepository[] = [];
   installationEvents: GitHubEventRequest[] = [];
+  failDetails = false;
 
   async claimDelivery(id: string): Promise<boolean> {
     if (this.deliveries.has(id)) return false;
@@ -20,6 +22,10 @@ class MemoryStore implements SparkStore {
   async saveRepository(_installationId: number, repository: GitHubRepository): Promise<void> { this.repositories.push(repository); }
   async findEvaluation(repositoryId: number, sha: string): Promise<StoredEvaluation | undefined> { return this.evaluations.get(`${repositoryId}:${sha}`); }
   async saveEvaluation(record: EvaluationRecord): Promise<void> { this.evaluations.set(`${record.repositoryId}:${record.headSha}`, record); }
+  async saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void> {
+    if (this.failDetails) throw new Error('synthetic detail persistence failure');
+    this.details.set(`${record.repositoryId}:${record.headSha}`, record);
+  }
 }
 
 class TestExecutionContext implements WorkerExecutionContext {
@@ -40,13 +46,28 @@ function fakeClient(headSha: string, checkStatus: 'queued' | 'completed' = 'queu
   let nextId = 100;
   const client = {
     getRepository: async () => ({ id: 2, full_name: 'acme/repo', default_branch: 'main', owner: { login: 'acme' }, name: 'repo' }),
-    getPullRequest: async () => ({ number: 3, state: 'open', changed_files: 1, head: { sha: headSha }, base: { sha: 'base' } }),
+    getPullRequest: async () => ({
+      number: 3,
+      title: 'Change repository behavior',
+      html_url: 'https://github.com/acme/repo/pull/3',
+      state: 'open',
+      changed_files: 1,
+      head: { sha: headSha },
+      base: { sha: 'base' },
+    }),
     listPullRequestFiles: async () => ({ files: [{ filename: 'src/main.rs', status: 'modified' }], complete: true }),
     listCheckRuns: async () => [{ id: 5, name: 'CI', head_sha: headSha, status: checkStatus, conclusion: checkStatus === 'completed' ? 'success' : null, app: { id: 99, slug: 'actions' } }],
     getTree: async () => ({ paths: ['src/main.rs'], complete: true }),
     getTextFile: async () => undefined,
-    createCheckRun: async (_owner: string, _repo: string, payload: object) => { created.push(payload); return { id: nextId++, name: 'Spark Observability' }; },
-    updateCheckRun: async (_owner: string, _repo: string, id: number, payload: object) => { updated.push({ id, payload }); return { id, name: 'Spark Observability' }; },
+    createCheckRun: async (_owner: string, _repo: string, payload: object) => {
+      created.push(payload);
+      const id = nextId++;
+      return { id, name: 'Spark Observability', html_url: `https://github.com/acme/repo/runs/${id}` };
+    },
+    updateCheckRun: async (_owner: string, _repo: string, id: number, payload: object) => {
+      updated.push({ id, payload });
+      return { id, name: 'Spark Observability', html_url: `https://github.com/acme/repo/runs/${id}` };
+    },
   } as unknown as GitHubApiClient;
   return { client, created, updated };
 }
@@ -65,7 +86,7 @@ async function sign(body: string, secret: string): Promise<string> {
 }
 
 describe('Spark orchestration', () => {
-  it('creates for PR opened, creates for a synchronized new SHA, and updates the same SHA when CI completes', async () => {
+  it('creates history for new SHAs and updates detail for same-SHA reevaluation', async () => {
     const store = new MemoryStore();
     const clients = new Map<string, ReturnType<typeof fakeClient>>();
     const make = (sha: string, status: 'queued' | 'completed') => {
@@ -80,11 +101,19 @@ describe('Spark orchestration', () => {
     expect(opened.evaluation?.changeId).toBe('sha-1');
     expect(opened.evaluation?.evidence[0].status).toBe('PENDING');
     expect(first.created[0]).toMatchObject({ head_sha: 'sha-1', conclusion: 'neutral' });
+    expect(store.details.get('2:sha-1')).toMatchObject({
+      schemaVersion: 1,
+      baseSha: 'base',
+      pullRequestTitle: 'Change repository behavior',
+      evaluatorVersion: 'deterministic-v1',
+      normalized: { version: 1, headSha: 'sha-1', truncation: { truncated: false } },
+    });
 
     current = make('sha-2', 'queued');
     await orchestrator.handle(evaluationRequest('sha-2', 'synchronize'));
     expect(current.created).toHaveLength(1);
     expect(store.evaluations.size).toBe(2);
+    expect(store.details.size).toBe(2);
 
     current = make('sha-2', 'completed');
     const completedPayload = {
@@ -96,6 +125,25 @@ describe('Spark orchestration', () => {
     expect(result.evaluation?.evidence[0].status).toBe('PASSED');
     expect(current.updated).toHaveLength(1);
     expect(current.updated[0]).toMatchObject({ id: 100 });
+    expect(store.details.size).toBe(2);
+    expect(store.details.get('2:sha-2')?.normalized.evaluation.evidence[0].status).toBe('PASSED');
+  });
+
+  it('keeps dashboard detail persistence supplemental to the GitHub-native evaluation', async () => {
+    const store = new MemoryStore();
+    store.failDetails = true;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fake = fakeClient('sha');
+    const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient: async () => fake.client });
+
+    const result = await orchestrator.handle(evaluationRequest('sha'));
+
+    expect(result.status).toBe('evaluated');
+    expect(result.checkRunId).toBe(100);
+    expect(store.evaluations.has('2:sha')).toBe(true);
+    expect(store.details.size).toBe(0);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('"stage":"persist_evaluation_detail"'));
+    log.mockRestore();
   });
 
   it('keeps an unsupported repository truthful and non-blocking', async () => {
