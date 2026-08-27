@@ -41,12 +41,22 @@ const env: Env = {
   GITHUB_APP_ID: '42',
   GITHUB_PRIVATE_KEY: 'unused',
   GITHUB_WEBHOOK_SECRET: 'secret',
+  GITHUB_CLIENT_ID: 'Iv1.test',
+  GITHUB_CLIENT_SECRET: 'client-secret',
+  GITHUB_APP_SLUG: 'spark-observability',
 };
 
 const context: WorkerExecutionContext = { waitUntil: () => undefined };
 
 function authorizer(repositoryIds = [2]): DashboardAuthorizer {
-  return { authorize: async () => ({ viewer, repositoryIds }) };
+  return {
+    authorize: async () => ({
+      viewer,
+      repositoryIds,
+      installationIds: [11],
+      sessionExpiresAt: '2026-08-27T22:00:00.000Z',
+    }),
+  };
 }
 
 function reader() {
@@ -57,18 +67,28 @@ function reader() {
 }
 
 describe('dashboard read API', () => {
-  it('denies dashboard API requests by default until authentication is implemented', async () => {
+  it('denies dashboard API requests without a valid session', async () => {
     const response = await handleRequest(new Request('https://spark.test/api/me'), env, context);
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: 'unauthorized' });
   });
 
-  it('returns the authorized viewer identity', async () => {
-    const response = await handleRequest(new Request('https://spark.test/api/me'), env, context, {
-      dashboardAuthorizer: authorizer(),
+  it('returns the authorized viewer identity and account summary', async () => {
+    const dependencies = { dashboardAuthorizer: authorizer([2, 4]) };
+    const viewerResponse = await handleRequest(new Request('https://spark.test/api/me'), env, context, dependencies);
+    expect(viewerResponse.status).toBe(200);
+    expect(await viewerResponse.json()).toEqual(viewer);
+
+    const accountResponse = await handleRequest(new Request('https://spark.test/api/account'), env, context, dependencies);
+    expect(accountResponse.status).toBe(200);
+    expect(await accountResponse.json()).toMatchObject({
+      version: 1,
+      viewer,
+      repositoryCount: 2,
+      installationCount: 1,
+      sessionExpiresAt: '2026-08-27T22:00:00.000Z',
+      githubInstallUrl: 'https://github.com/apps/spark-observability/installations/new',
     });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(viewer);
   });
 
   it('parses activity filters and passes only authorized repositories to the reader', async () => {
