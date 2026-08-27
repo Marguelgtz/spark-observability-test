@@ -5,50 +5,36 @@ import {
   GitHubUserClient,
 } from '../src';
 
-describe('GitHub App user authorization', () => {
+describe('GitHub OAuth authorization utilities', () => {
   it('builds an authorization URL with state and PKCE S256', () => {
     const url = new URL(buildGitHubUserAuthorizationUrl({
-      clientId: 'Iv1.test',
+      clientId: 'Ov.test',
       redirectUri: 'https://spark.test/auth/github/callback',
       state: 'state-value',
       codeChallenge: 'challenge-value',
     }));
     expect(url.origin + url.pathname).toBe('https://github.com/login/oauth/authorize');
-    expect(url.searchParams.get('client_id')).toBe('Iv1.test');
+    expect(url.searchParams.get('client_id')).toBe('Ov.test');
     expect(url.searchParams.get('state')).toBe('state-value');
     expect(url.searchParams.get('code_challenge')).toBe('challenge-value');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('scope')).toBeNull();
   });
 
-  it('exchanges an authorization code and safely inspects the owning app', async () => {
+  it('exchanges an OAuth App authorization code without logging tokens', async () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = new URL(String(input));
       if (url.origin === 'https://github.com' && url.pathname === '/login/oauth/access_token') {
         const body = new URLSearchParams(String(init?.body));
-        expect(body.get('client_id')).toBe('Iv1.test');
+        expect(body.get('client_id')).toBe('Ov.test');
         expect(body.get('client_secret')).toBe('secret');
         expect(body.get('code')).toBe('temporary-code');
         expect(body.get('code_verifier')).toBe('verifier');
         return new Response(JSON.stringify({
-          access_token: 'ghu_ephemeral',
+          access_token: 'gho_ephemeral',
           expires_in: 28800,
           refresh_token: 'ghr_refresh',
-        }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      if (url.origin === 'https://api.github.com' && url.pathname === '/applications/Iv1.test/token') {
-        expect(init?.method).toBe('POST');
-        expect(String(new Headers(init?.headers).get('authorization'))).toMatch(/^Basic /);
-        expect(JSON.parse(String(init?.body))).toEqual({ access_token: 'ghu_ephemeral' });
-        return new Response(JSON.stringify({
-          app: { name: 'Spark Observability', client_id: 'Iv1.test' },
-          scopes: [],
-          expires_at: '2026-08-28T06:00:00Z',
-          token: 'ghu_ephemeral',
         }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -58,29 +44,21 @@ describe('GitHub App user authorization', () => {
     });
 
     const token = await exchangeGitHubUserCode({
-      clientId: 'Iv1.test',
+      clientId: 'Ov.test',
       clientSecret: 'secret',
       code: 'temporary-code',
       redirectUri: 'https://spark.test/auth/github/callback',
       codeVerifier: 'verifier',
     }, fetcher as typeof fetch);
 
-    expect(token.access_token).toBe('ghu_ephemeral');
+    expect(token.access_token).toBe('gho_ephemeral');
     expect(info).toHaveBeenCalledWith(JSON.stringify({
-      githubOAuthTokenType: 'github-app-user',
-      configuredGitHubClientId: 'Iv1.test',
+      githubOAuthTokenType: 'oauth-app-user',
+      configuredGitHubClientId: 'Ov.test',
       tokenHasExpiry: true,
       tokenHasRefreshToken: true,
     }));
-    expect(info).toHaveBeenCalledWith(JSON.stringify({
-      githubOAuthTokenInspectionStatus: 200,
-      configuredGitHubClientId: 'Iv1.test',
-      tokenOwnerAppName: 'Spark Observability',
-      tokenOwnerClientId: 'Iv1.test',
-      tokenScopes: [],
-      tokenExpiresAt: '2026-08-28T06:00:00Z',
-    }));
-    expect(info.mock.calls.flat().join(' ')).not.toContain('ghu_ephemeral');
+    expect(info.mock.calls.flat().join(' ')).not.toContain('gho_ephemeral');
     expect(info.mock.calls.flat().join(' ')).not.toContain('ghr_refresh');
     info.mockRestore();
   });
@@ -106,7 +84,7 @@ describe('GitHub App user authorization', () => {
     );
   });
 
-  it('derives the repository intersection exposed by the user access token', async () => {
+  it('retains the GitHub App user-token intersection helper for compatibility', async () => {
     const fetcher = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(String(input));
       if (url.pathname === '/user') {
