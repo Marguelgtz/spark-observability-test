@@ -159,4 +159,37 @@ describe('GitHub dashboard authentication', () => {
     }));
     expect(response.status).toBe(400);
   });
+
+  it('returns 502 and clears OAuth cookies when callback internals fail', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.origin === 'https://github.com' && url.pathname === '/login/oauth/access_token') {
+        return new Response('upstream failure', { status: 500 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    const auth = new GitHubDashboardAuth({
+      DB: new MemoryDatabase(),
+      GITHUB_CLIENT_ID: 'Iv1.test',
+      GITHUB_CLIENT_SECRET: 'secret',
+    }, fetcher as typeof fetch);
+
+    const started = await auth.start(new Request('https://spark.test/auth/github?return_to=%2Fapp'));
+    const state = decodeURIComponent(responseCookie(started, 'spark_oauth_state'));
+    const verifier = decodeURIComponent(responseCookie(started, 'spark_oauth_verifier'));
+    const returnTo = responseCookie(started, 'spark_oauth_return');
+    const response = await auth.callback(new Request(`https://spark.test/auth/github/callback?code=code&state=${encodeURIComponent(state)}`, {
+      headers: { cookie: `spark_oauth_state=${state}; spark_oauth_verifier=${verifier}; spark_oauth_return=${returnTo}` },
+    }));
+
+    expect(response.status).toBe(502);
+    expect(await response.text()).toBe('GitHub authentication failed');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('set-cookie')).toContain('spark_oauth_state=');
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('"event":"github_dashboard_auth"'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('GitHub OAuth token exchange failed (500)'));
+    error.mockRestore();
+  });
 });
