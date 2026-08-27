@@ -7,6 +7,8 @@
     "spark:fixture": "pnpm --filter @spark/cli run start",
     "dev": "pnpm --filter @spark/api run dev",
     "db:migrate:local": "pnpm --filter @spark/api run db:migrate:local",
+    "db:migrate:remote": "pnpm --filter @spark/api run db:migrate:remote",
+    "deploy": "pnpm web:build && pnpm --filter @spark/api run deploy",
     "web:dev": "pnpm --filter @spark/web run dev",
     "web:build": "pnpm --filter @spark/web run build",
     "web:test": "pnpm --filter @spark/web run test",
