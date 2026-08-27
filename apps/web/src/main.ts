@@ -74,6 +74,9 @@ async function render(): Promise<void> {
         showAllAttention() {
           const next = withActivityState(state, { attention: 'ALL' });
           navigate(`/app?${serializeActivityState(next)}`);
+        },
+        loadHistory(repositoryId, pullRequestNumber) {
+          return api.getPullRequestHistory(repositoryId, pullRequestNumber);
         }
       }));
       return;
