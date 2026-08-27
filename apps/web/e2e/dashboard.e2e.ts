@@ -17,11 +17,24 @@ test('loading state has stable shell', async ({ page }) => {
   await expect(page.getByTestId('loading')).toBeVisible();
 });
 
-test('activity renders and captures screenshot', async ({ page }, testInfo) => {
+test('activity renders one row per pull request and captures screenshot', async ({ page }, testInfo) => {
   await page.goto('/app?window=7d&attention=ALL');
   await expect(page.getByTestId('activity-view')).toBeVisible();
   await expect(page.locator('.evaluation-row')).toHaveCount(5);
   await page.screenshot({ path: `${screenshotDir}/activity-${suffix(testInfo.project.name)}.png`, fullPage: true });
+});
+
+test('pull request history expands into a horizontal evaluation rail', async ({ page }, testInfo) => {
+  await page.goto('/app?window=7d&attention=ALL');
+  const toggle = page.getByTestId('history-toggle-101-42');
+  await expect(toggle).toHaveText('↻ 3');
+  await toggle.click();
+  const history = page.getByTestId('history-101-42');
+  await expect(history).toBeVisible();
+  await expect(history.locator('.history-card')).toHaveCount(3);
+  await expect(history.getByText('3 runs')).toBeVisible();
+  await expect(history.getByText('Latest')).toBeVisible();
+  await page.screenshot({ path: `${screenshotDir}/history-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
 test('attention, time, and repository filters are URL-owned', async ({ page }) => {
@@ -64,6 +77,16 @@ test('evaluation detail renders and links to GitHub', async ({ page }, testInfo)
   await page.screenshot({ path: `${screenshotDir}/detail-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
+test('history cards navigate to a specific evaluation SHA', async ({ page }) => {
+  await page.goto('/app?window=7d&attention=ALL');
+  await page.getByTestId('history-toggle-101-42').click();
+  const history = page.getByTestId('history-101-42');
+  const older = history.locator('.history-card').nth(1);
+  await older.click();
+  await expect(page.getByTestId('evaluation-detail')).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/evaluations\/101\//);
+});
+
 test('legacy evaluation has a truthful unavailable state', async ({ page }) => {
   await page.goto('/app?window=30d&attention=ALL');
   await page.getByRole('link', { name: /Initial repository mapping/ }).click();
@@ -74,7 +97,7 @@ test('legacy evaluation has a truthful unavailable state', async ({ page }) => {
 
 test('back navigation preserves activity filters', async ({ page }) => {
   await page.goto('/app?window=24h&attention=HIGH');
-  await page.locator('.evaluation-row').first().click();
+  await page.locator('.evaluation-main-link').first().click();
   await expect(page.getByTestId('evaluation-detail')).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/window=24h/);
