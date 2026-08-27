@@ -98,6 +98,19 @@ function redirect(location: string, headers: string[] = []): Response {
   return new Response(null, { status: 302, headers: responseHeaders });
 }
 
+function callbackFailure(error: unknown, clearOAuth: string[]): Response {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(JSON.stringify({
+    event: 'github_dashboard_auth',
+    stage: 'callback',
+    outcome: 'failed',
+    error: message,
+  }));
+  const headers = new Headers({ 'cache-control': 'no-store' });
+  for (const value of clearOAuth) headers.append('set-cookie', value);
+  return new Response('GitHub authentication failed', { status: 502, headers });
+}
+
 export class GitHubDashboardAuth implements DashboardAuthorizer {
   constructor(
     private readonly env: GitHubAuthEnv,
@@ -209,30 +222,36 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
       return new Response('Invalid or expired GitHub authorization state', { status: 400, headers: { 'cache-control': 'no-store' } });
     }
 
-    const redirectUri = `${publicOrigin(request, this.env)}/auth/github/callback`;
-    const token = await exchangeGitHubUserCode({
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-      codeVerifier: verifier,
-    }, this.fetcher);
-    const snapshot = await new GitHubUserClient(token.access_token, this.fetcher).accessSnapshot();
-    if (snapshot.repositories.length > MAX_AUTHORIZED_REPOSITORIES) {
-      return new Response('GitHub account has too many repositories to authorize safely', { status: 413 });
-    }
+    try {
+      const redirectUri = `${publicOrigin(request, this.env)}/auth/github/callback`;
+      const token = await exchangeGitHubUserCode({
+        clientId,
+        clientSecret,
+        code,
+        redirectUri,
+        codeVerifier: verifier,
+      }, this.fetcher);
+      const snapshot = await new GitHubUserClient(token.access_token, this.fetcher).accessSnapshot();
+      if (snapshot.repositories.length > MAX_AUTHORIZED_REPOSITORIES) {
+        const headers = new Headers({ 'cache-control': 'no-store' });
+        for (const value of clearOAuth) headers.append('set-cookie', value);
+        return new Response('GitHub account has too many repositories to authorize safely', { status: 413, headers });
+      }
 
-    await this.upsertUser(snapshot.user);
-    const repositoryIds = snapshot.repositories.map(repository => repository.id);
-    const session = await this.createSession({
-      userId: snapshot.user.id,
-      repositoryIds,
-      installationIds: snapshot.installationIds,
-    });
-    return redirect(returnTo, [
-      ...clearOAuth,
-      cookie(SESSION_COOKIE, session.token, request, SESSION_SECONDS),
-    ]);
+      await this.upsertUser(snapshot.user);
+      const repositoryIds = snapshot.repositories.map(repository => repository.id);
+      const session = await this.createSession({
+        userId: snapshot.user.id,
+        repositoryIds,
+        installationIds: snapshot.installationIds,
+      });
+      return redirect(returnTo, [
+        ...clearOAuth,
+        cookie(SESSION_COOKIE, session.token, request, SESSION_SECONDS),
+      ]);
+    } catch (error) {
+      return callbackFailure(error, clearOAuth);
+    }
   }
 
   async logout(request: Request): Promise<Response> {
