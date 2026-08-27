@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { detailFromRow, summaryFromRow } from '../src/dashboard-reader';
+import { D1DashboardReader, detailFromRow, summaryFromRow } from '../src/dashboard-reader';
+import type { D1Database } from '../src/d1';
 import type { StoredEvaluationDetailV1 } from '../src/evaluation-detail';
 
 const detail: StoredEvaluationDetailV1 = {
@@ -103,5 +104,38 @@ describe('dashboard row normalization', () => {
         changeSummary: { files: 0 },
       },
     });
+  });
+
+  it('binds large repository scopes as one JSON value instead of one D1 variable per repository', async () => {
+    const statements: Array<{ query: string; bindings: unknown[] }> = [];
+    const db = {
+      prepare(query: string) {
+        const record = { query, bindings: [] as unknown[] };
+        statements.push(record);
+        const statement = {
+          bind(...values: unknown[]) { record.bindings = values; return statement; },
+          async all() { return { results: [] }; },
+          async first() { return null; },
+          async run() { return { meta: { changes: 0 } }; },
+        };
+        return statement;
+      },
+      async batch() { return []; },
+    } as unknown as D1Database;
+
+    const repositoryIds = Array.from({ length: 176 }, (_, index) => index + 1);
+    const reader = new D1DashboardReader(db);
+    await reader.activity({
+      window: '7d',
+      attention: 'ALL',
+      repositoryId: null,
+      cursor: null,
+      limit: 25,
+    }, repositoryIds, new Date('2026-08-28T00:00:00.000Z'));
+
+    expect(statements).toHaveLength(3);
+    expect(statements.every(statement => statement.query.includes('json_each(?)'))).toBe(true);
+    expect(Math.max(...statements.map(statement => statement.bindings.length))).toBeLessThan(100);
+    expect(statements.every(statement => statement.bindings.includes(JSON.stringify(repositoryIds)))).toBe(true);
   });
 });
