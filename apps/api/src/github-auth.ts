@@ -17,8 +17,8 @@ const MAX_AUTHORIZED_REPOSITORIES = 5_000;
 
 export interface GitHubAuthEnv {
   DB: D1Database;
-  GITHUB_CLIENT_ID: string;
-  GITHUB_CLIENT_SECRET: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
   GITHUB_APP_SLUG?: string;
   SPARK_PUBLIC_ORIGIN?: string;
 }
@@ -162,7 +162,9 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
   }
 
   async start(request: Request): Promise<Response> {
-    if (!this.env.GITHUB_CLIENT_ID || !this.env.GITHUB_CLIENT_SECRET) {
+    const clientId = this.env.GITHUB_CLIENT_ID;
+    const clientSecret = this.env.GITHUB_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
       return new Response('GitHub authentication is not configured', { status: 503 });
     }
     const url = new URL(request.url);
@@ -172,7 +174,7 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
     const challenge = await sha256(verifier);
     const redirectUri = `${publicOrigin(request, this.env)}/auth/github/callback`;
     const authorizationUrl = buildGitHubUserAuthorizationUrl({
-      clientId: this.env.GITHUB_CLIENT_ID,
+      clientId,
       redirectUri,
       state,
       codeChallenge: challenge,
@@ -185,6 +187,11 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
   }
 
   async callback(request: Request): Promise<Response> {
+    const clientId = this.env.GITHUB_CLIENT_ID;
+    const clientSecret = this.env.GITHUB_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return new Response('GitHub authentication is not configured', { status: 503 });
+    }
     const url = new URL(request.url);
     const returnTo = safeReturnTo(cookieValue(request, OAUTH_RETURN_COOKIE));
     const clearOAuth = [
@@ -204,8 +211,8 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
 
     const redirectUri = `${publicOrigin(request, this.env)}/auth/github/callback`;
     const token = await exchangeGitHubUserCode({
-      clientId: this.env.GITHUB_CLIENT_ID,
-      clientSecret: this.env.GITHUB_CLIENT_SECRET,
+      clientId,
+      clientSecret,
       code,
       redirectUri,
       codeVerifier: verifier,
