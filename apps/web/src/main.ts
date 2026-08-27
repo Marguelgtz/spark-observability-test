@@ -1,4 +1,6 @@
 import './styles.css';
+import './account.css';
+import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
 import { navigate, parseRoute } from './router';
 import { parseActivityState, serializeActivityState, withActivityState } from './state';
@@ -7,12 +9,41 @@ import { renderActivity, renderError, renderEvaluation, renderLoading, renderNot
 const mount = document.querySelector<HTMLElement>('#app')!;
 if (!mount) throw new Error('Missing #app mount');
 
+function wireViewerAccount(): void {
+  const identity = mount.querySelector<HTMLElement>('.viewer');
+  if (!identity || identity instanceof HTMLAnchorElement) return;
+  identity.classList.add('viewer-link');
+  identity.tabIndex = 0;
+  identity.setAttribute('role', 'link');
+  identity.setAttribute('aria-label', 'Open account settings');
+  const open = () => navigate('/app/account');
+  identity.addEventListener('click', open);
+  identity.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      open();
+    }
+  });
+}
+
 function replace(view: HTMLElement): void {
   mount.replaceChildren(view);
+  wireViewerAccount();
 }
 
 function currentActivitySearch(): string {
   return serializeActivityState(parseActivityState(window.location.search));
+}
+
+function showSignedOut(): void {
+  replace(renderSignedOut());
+  const note = mount.querySelector<HTMLElement>('.phase-note');
+  if (note) note.textContent = 'Sign in with GitHub to view Spark activity for repositories your account can access.';
+  const button = mount.querySelector<HTMLButtonElement>('[data-testid="sign-in"]');
+  button?.addEventListener('click', () => {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/auth/github?return_to=${encodeURIComponent(returnTo)}`);
+  });
 }
 
 async function render(): Promise<void> {
@@ -48,6 +79,16 @@ async function render(): Promise<void> {
       return;
     }
 
+    if (route.kind === 'account') {
+      const account = await api.getAccount();
+      replace(renderAccountPage(account, () => {
+        void api.logout().then(() => {
+          window.location.assign('/app');
+        });
+      }));
+      return;
+    }
+
     if (route.kind === 'evaluation') {
       const detail = await api.getEvaluation(route.repositoryId, route.headSha);
       replace(renderEvaluation(viewer, detail, currentActivitySearch()));
@@ -57,7 +98,7 @@ async function render(): Promise<void> {
     replace(renderNotFound(viewer));
   } catch (error) {
     if (error instanceof UnauthorizedError) {
-      replace(renderSignedOut());
+      showSignedOut();
       return;
     }
     replace(renderError(undefined, () => void render()));
