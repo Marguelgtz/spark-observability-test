@@ -1,7 +1,10 @@
 GITHUB_APP_ID="123456"
+GITHUB_APP_CLIENT_ID="replace-with-github-app-client-id"
+GITHUB_APP_CLIENT_SECRET="replace-with-github-app-client-secret"
 GITHUB_WEBHOOK_SECRET="replace-with-a-random-local-secret"
 GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
 replace-with-the-github-app-private-key
 -----END RSA PRIVATE KEY-----"
 GITHUB_APP_SLUG="replace-with-github-app-slug"
 SPARK_CONTACT_EMAIL="replace-with-public-contact-email"
+SPARK_PUBLIC_ORIGIN="https://spark-api.example.workers.dev"
