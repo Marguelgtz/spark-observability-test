@@ -29,15 +29,19 @@ For the current workers.dev deployment this is expected to be:
 https://spark-api.marguel-gtz.workers.dev/auth/github/callback
 ```
 
-Set the Worker secrets from the GitHub App settings:
+Set the Worker secrets from the **same GitHub App registration** used by `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY`:
 
 ```bash
 cd apps/api
-pnpm wrangler secret put GITHUB_CLIENT_ID
-pnpm wrangler secret put GITHUB_CLIENT_SECRET
+pnpm exec wrangler secret put GITHUB_APP_CLIENT_ID
+pnpm exec wrangler secret put GITHUB_APP_CLIENT_SECRET
 ```
 
-`GITHUB_CLIENT_ID` is the GitHub App client ID. `GITHUB_CLIENT_SECRET` is a GitHub App client secret. Do not commit either value.
+`GITHUB_APP_CLIENT_ID` is the GitHub App client ID. `GITHUB_APP_CLIENT_SECRET` is a client secret generated on that same GitHub App's settings page. Do not use credentials from a separate OAuth App.
+
+The old `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` names are accepted temporarily as a migration fallback, but new local and production configuration should use the explicit `GITHUB_APP_*` names.
+
+If Spark later introduces a separate account/login OAuth application, keep those credentials separate, for example `GITHUB_AUTH_CLIENT_ID` and `GITHUB_AUTH_CLIENT_SECRET`. A normal OAuth App token cannot replace the GitHub App user token used by the current `/user/installations` authorization flow.
 
 If the Worker is reached through more than one hostname, set `SPARK_PUBLIC_ORIGIN` to the canonical origin so OAuth always uses the callback URL registered with GitHub.
 
@@ -48,10 +52,10 @@ From the repository root:
 ```bash
 pnpm install --frozen-lockfile
 pnpm db:migrate:remote
-pnpm deploy
+pnpm run deploy
 ```
 
-`pnpm deploy` first builds `apps/web`, then deploys `apps/api` with the Vite output as Cloudflare Worker static assets. This keeps `/app`, `/api/*`, and `/auth/*` on the same origin.
+`pnpm run deploy` first builds `apps/web`, then deploys `apps/api` with the Vite output as Cloudflare Worker static assets. This keeps `/app`, `/api/*`, and `/auth/*` on the same origin.
 
 ## Security boundaries
 
