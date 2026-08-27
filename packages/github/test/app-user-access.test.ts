@@ -23,7 +23,8 @@ describe('GitHub App user repository authorization', () => {
         return new Response(JSON.stringify({ token: 'installation-11' }));
       }
       if (url.pathname === '/app/installations/12/access_tokens') {
-        throw new Error('owner installation should not need a token');
+        expect(init?.method).toBe('POST');
+        return new Response(JSON.stringify({ token: 'installation-12' }));
       }
       if (url.pathname === '/repos/acme/one/collaborators/marguel/permission') {
         expect(new Headers(init?.headers).get('authorization')).toBe('Bearer installation-11');
