@@ -14,6 +14,7 @@ import type { D1Database } from './d1';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
 
 const EVAL_TIME_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', COALESCE(d.evaluated_at, e.updated_at))";
+const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
 
 interface ActivityRow {
   repository_id: number;
@@ -210,24 +211,24 @@ export class D1DashboardReader implements DashboardReader {
       };
     }
     const start = windowStart(query.window, now);
-    const scope = repositoryIds.map(() => '?').join(',');
+    const repositoryScope = JSON.stringify(repositoryIds);
     const repositoryResult = await this.db.prepare(
       `SELECT r.id, r.full_name,
               SUM(CASE WHEN datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?) THEN 1 ELSE 0 END) AS evaluation_count
        FROM repositories r
        JOIN evaluations e ON e.repository_id = r.id
        LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
-       WHERE r.id IN (${scope})
+       WHERE r.id IN (${REPOSITORY_SCOPE_SQL})
        GROUP BY r.id, r.full_name
        ORDER BY r.full_name ASC`,
-    ).bind(start, ...repositoryIds).all<RepositoryRow>();
+    ).bind(start, repositoryScope).all<RepositoryRow>();
     const repositories: ObservedRepositoryV1[] = (repositoryResult.results ?? []).map(row => ({
       ...splitRepository(row.id, row.full_name),
       evaluationCount: Number(row.evaluation_count ?? 0),
     }));
 
-    const countWhere = [`e.repository_id IN (${scope})`, 'datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?)'];
-    const countBindings: unknown[] = [...repositoryIds, start];
+    const countWhere = [`e.repository_id IN (${REPOSITORY_SCOPE_SQL})`, 'datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?)'];
+    const countBindings: unknown[] = [repositoryScope, start];
     if (query.repositoryId !== null) {
       countWhere.push('e.repository_id = ?');
       countBindings.push(query.repositoryId);
@@ -242,8 +243,8 @@ export class D1DashboardReader implements DashboardReader {
     const counts: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 0, HIGH: 0 };
     for (const row of countResult.results ?? []) counts[row.attention] = Number(row.count ?? 0);
 
-    const where = [`e.repository_id IN (${scope})`, 'datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?)'];
-    const bindings: unknown[] = [...repositoryIds, start];
+    const where = [`e.repository_id IN (${REPOSITORY_SCOPE_SQL})`, 'datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?)'];
+    const bindings: unknown[] = [repositoryScope, start];
     if (query.repositoryId !== null) {
       where.push('e.repository_id = ?');
       bindings.push(query.repositoryId);
