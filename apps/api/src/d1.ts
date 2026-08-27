@@ -5,10 +5,15 @@ export interface D1Result {
   meta?: { changes?: number };
 }
 
+export interface D1AllResult<T> {
+  results?: T[];
+}
+
 export interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   run(): Promise<D1Result>;
   first<T>(): Promise<T | null>;
+  all<T>(): Promise<D1AllResult<T>>;
 }
 
 export interface D1Database {
