@@ -1,10 +1,18 @@
-import type { AccountV1, ActivityQueryV1, ActivityResponseV1, EvaluationDetailResponseV1, ViewerV1 } from '@spark/dashboard-contracts';
-import { buildFixtureActivity, fixtureViewer, getFixtureEvaluation } from './fixtures';
+import type {
+  AccountV1,
+  ActivityQueryV1,
+  ActivityResponseV1,
+  EvaluationDetailResponseV1,
+  PullRequestHistoryResponseV1,
+  ViewerV1
+} from '@spark/dashboard-contracts';
+import { buildFixtureActivity, fixtureViewer, getFixtureEvaluation, getFixturePullRequestHistory } from './fixtures';
 
 export interface DashboardApi {
   getViewer(): Promise<ViewerV1>;
   getAccount(): Promise<AccountV1>;
   getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1>;
+  getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
   logout(): Promise<void>;
 }
@@ -45,6 +53,10 @@ export class HttpDashboardApi implements DashboardApi {
     if (query.cursor) params.set('cursor', query.cursor);
     if (query.limit !== undefined) params.set('limit', String(query.limit));
     return this.request(`/api/activity?${params.toString()}`);
+  }
+
+  getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
+    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/evaluations`);
   }
 
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1> {
@@ -91,11 +103,17 @@ export class FixtureDashboardApi implements DashboardApi {
         selectedRepositoryId: query.repositoryId,
         counts: { LOW: 0, MEDIUM: 0, HIGH: 0 },
         repositories: [],
-        evaluations: [],
+        pullRequests: [],
         pagination: { nextCursor: null }
       };
     }
     return buildFixtureActivity(query);
+  }
+
+  async getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
+    if (this.mode === 'loading') return new Promise<PullRequestHistoryResponseV1>(() => undefined);
+    if (this.mode === 'error') throw new Error('Synthetic fixture failure');
+    return getFixturePullRequestHistory(repositoryId, pullRequestNumber);
   }
 
   async getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1> {
