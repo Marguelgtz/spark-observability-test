@@ -1,0 +1,38 @@
+name: Sync Phase 2B lockfile
+
+on:
+  push:
+    branches: [dashboard/phase-2-cohort-b]
+    paths:
+      - 'apps/api/package.json'
+      - '.github/workflows/sync-phase2b-lockfile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dashboard/phase-2-cohort-b
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Regenerate lockfile
+        run: pnpm install --lockfile-only --no-frozen-lockfile
+      - name: Commit lockfile if changed
+        shell: bash
+        run: |
+          if git diff --quiet -- pnpm-lock.yaml; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pnpm-lock.yaml
+          git commit -m 'sync phase 2B lockfile'
+          git push origin HEAD:dashboard/phase-2-cohort-b
