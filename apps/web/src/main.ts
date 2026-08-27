@@ -4,7 +4,7 @@ import { navigate, parseRoute } from './router';
 import { parseActivityState, serializeActivityState, withActivityState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderLoading, renderNotFound, renderSignedOut } from './ui';
 
-const mount = document.querySelector<HTMLElement>('#app');
+const mount = document.querySelector<HTMLElement>('#app')!;
 if (!mount) throw new Error('Missing #app mount');
 
 function replace(view: HTMLElement): void {
