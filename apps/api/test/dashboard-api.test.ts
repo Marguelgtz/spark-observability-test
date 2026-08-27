@@ -41,8 +41,8 @@ const env: Env = {
   GITHUB_APP_ID: '42',
   GITHUB_PRIVATE_KEY: 'unused',
   GITHUB_WEBHOOK_SECRET: 'secret',
-  GITHUB_CLIENT_ID: 'Iv1.test',
-  GITHUB_CLIENT_SECRET: 'client-secret',
+  GITHUB_AUTH_CLIENT_ID: 'Ov.test',
+  GITHUB_AUTH_CLIENT_SECRET: 'client-secret',
   GITHUB_APP_SLUG: 'spark-observability',
 };
 
