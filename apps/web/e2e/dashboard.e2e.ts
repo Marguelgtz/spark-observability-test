@@ -58,7 +58,7 @@ test('evaluation detail renders and links to GitHub', async ({ page }, testInfo)
   await page.getByRole('link', { name: /HIGH: API authentication changes/ }).click();
   await expect(page.getByTestId('evaluation-detail')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
-  await expect(page.getByText('integration-test')).toBeVisible();
+  await expect(page.getByText('integration-test', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open GitHub PR' })).toHaveAttribute('href', /^https:\/\/github\.com\//);
   await expect(page.getByRole('link', { name: 'Open full Spark Check' })).toHaveAttribute('href', /^https:\/\/github\.com\//);
   await page.screenshot({ path: `${screenshotDir}/detail-${suffix(testInfo.project.name)}.png`, fullPage: true });
