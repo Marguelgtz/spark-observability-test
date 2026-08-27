@@ -1,10 +1,12 @@
-import type { ActivityQueryV1, ActivityResponseV1, EvaluationDetailResponseV1, ViewerV1 } from '@spark/dashboard-contracts';
+import type { AccountV1, ActivityQueryV1, ActivityResponseV1, EvaluationDetailResponseV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { buildFixtureActivity, fixtureViewer, getFixtureEvaluation } from './fixtures';
 
 export interface DashboardApi {
   getViewer(): Promise<ViewerV1>;
+  getAccount(): Promise<AccountV1>;
   getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1>;
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
+  logout(): Promise<void>;
 }
 
 export class UnauthorizedError extends Error {
@@ -17,18 +19,24 @@ export class UnauthorizedError extends Error {
 export class HttpDashboardApi implements DashboardApi {
   constructor(private readonly baseUrl = '') {}
 
-  private async request<T>(path: string): Promise<T> {
+  private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
+      ...init,
       credentials: 'include',
-      headers: { accept: 'application/json' },
+      headers: { accept: 'application/json', ...init?.headers },
     });
     if (response.status === 401) throw new UnauthorizedError();
     if (!response.ok) throw new Error(`Dashboard API request failed (${response.status})`);
+    if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
   }
 
   getViewer(): Promise<ViewerV1> {
     return this.request('/api/me');
+  }
+
+  getAccount(): Promise<AccountV1> {
+    return this.request('/api/account');
   }
 
   getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1> {
@@ -42,6 +50,10 @@ export class HttpDashboardApi implements DashboardApi {
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1> {
     return this.request(`/api/evaluations/${repositoryId}/${encodeURIComponent(headSha)}`);
   }
+
+  logout(): Promise<void> {
+    return this.request('/auth/logout', { method: 'POST' });
+  }
 }
 
 export type FixtureMode = 'normal' | 'signed-out' | 'loading' | 'empty' | 'error';
@@ -53,6 +65,19 @@ export class FixtureDashboardApi implements DashboardApi {
     if (this.mode === 'signed-out') throw new UnauthorizedError();
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
     return fixtureViewer;
+  }
+
+  async getAccount(): Promise<AccountV1> {
+    if (this.mode === 'signed-out') throw new UnauthorizedError();
+    return {
+      version: 1,
+      viewer: fixtureViewer,
+      repositoryCount: 3,
+      installationCount: 1,
+      sessionExpiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      githubInstallUrl: 'https://github.com/apps/spark-observability/installations/new',
+      githubSettingsUrl: 'https://github.com/settings/installations',
+    };
   }
 
   async getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1> {
@@ -77,6 +102,10 @@ export class FixtureDashboardApi implements DashboardApi {
     if (this.mode === 'loading') return new Promise<EvaluationDetailResponseV1>(() => undefined);
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
     return getFixtureEvaluation(repositoryId, headSha);
+  }
+
+  async logout(): Promise<void> {
+    return undefined;
   }
 }
 

@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev --local",
-    "db:migrate:local": "wrangler d1 migrations apply spark --local"
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply spark --local",
+    "db:migrate:remote": "wrangler d1 migrations apply spark --remote"
   },
   "dependencies": {
     "@spark/core": "workspace:*",

@@ -34,6 +34,27 @@ describe('HttpDashboardApi', () => {
     await expect(api.getViewer()).rejects.toBeInstanceOf(UnauthorizedError);
   });
 
+  it('reads account state and logs out with a credentialed POST', async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/account')) {
+        return new Response(JSON.stringify({ version: 1, viewer: {}, repositoryCount: 2, installationCount: 1 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+
+    await api.getAccount();
+    await api.logout();
+
+    expect(fetcher).toHaveBeenNthCalledWith(1, 'https://spark.test/api/account', expect.objectContaining({ credentials: 'include' }));
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'https://spark.test/auth/logout', expect.objectContaining({ method: 'POST', credentials: 'include' }));
+  });
+
   it('encodes evaluation SHA route segments', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       version: 1,
