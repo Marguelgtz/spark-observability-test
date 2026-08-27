@@ -1,0 +1,37 @@
+version: 1
+
+areas:
+  - id: api
+    paths:
+      - "apps/api/**"
+    criticality: high
+    owners:
+      - "@Marguelgtz"
+
+  - id: cli
+    paths:
+      - "apps/cli/**"
+    criticality: low
+    owners:
+      - "@Marguelgtz"
+
+  - id: web
+    paths:
+      - "apps/web/**"
+    criticality: low
+    owners:
+      - "@Marguelgtz"
+
+  - id: core
+    paths:
+      - "packages/core/**"
+    criticality: high
+    owners:
+      - "@Marguelgtz"
+
+  - id: github-integration
+    paths:
+      - "packages/github/**"
+    criticality: high
+    owners:
+      - "@Marguelgtz"
