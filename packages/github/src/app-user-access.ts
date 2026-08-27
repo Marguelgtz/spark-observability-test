@@ -53,8 +53,8 @@ async function mapWithConcurrency<T, R>(
  * where the Spark GitHub App is installed.
  *
  * The OAuth token is intentionally not used for repository authorization.
- * Each candidate repository is checked using the Spark installation token,
- * so access is granted only when both Spark and the GitHub user can access it.
+ * Each installation is first authenticated as Spark, then candidate repositories
+ * are checked against the user's effective GitHub permission.
  */
 export class GitHubAppUserAccessResolver {
   constructor(
@@ -111,19 +111,19 @@ export class GitHubAppUserAccessResolver {
     const repositoryIds: number[] = [];
 
     for (const [installationId, repositories] of byInstallation) {
-      const ownerInstallation = repositories.every(repository => repository.accountId === user.id);
-      if (ownerInstallation) {
-        installationIds.push(installationId);
-        repositoryIds.push(...repositories.map(repository => repository.id));
-        continue;
-      }
-
       let token: string;
       try {
         token = await createInstallationToken(this.appId, this.privateKey, installationId, this.fetcher);
       } catch (error) {
         if (error instanceof Error && error.message.endsWith('(404)')) continue;
         throw error;
+      }
+
+      const ownerInstallation = repositories.every(repository => repository.accountId === user.id);
+      if (ownerInstallation) {
+        installationIds.push(installationId);
+        repositoryIds.push(...repositories.map(repository => repository.id));
+        continue;
       }
 
       const allowed = await mapWithConcurrency(repositories, 12, repository =>
