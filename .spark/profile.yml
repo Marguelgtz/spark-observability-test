@@ -1,37 +1,113 @@
 version: 1
 
 areas:
-  - id: api
+  - id: organization-platform
+    paths:
+      - "apps/**"
+      - "packages/**"
+    criticality: medium
+    owners:
+      - "@spark-opp/platform"
+      - "@Marguelgtz"
+    expected_evidence:
+      - profile-contract
+
+  - id: api-runtime
     paths:
       - "apps/api/**"
     criticality: high
     owners:
+      - "@spark-opp/api"
       - "@Marguelgtz"
+    expected_evidence:
+      - unit-tests
+      - api-contract-tests
 
-  - id: cli
+  - id: cli-experience
     paths:
       - "apps/cli/**"
     criticality: low
     owners:
+      - "@spark-opp/developer-experience"
       - "@Marguelgtz"
+    expected_evidence:
+      - unit-tests
 
-  - id: web
+  - id: web-experience
     paths:
       - "apps/web/**"
-    criticality: low
+    criticality: medium
     owners:
+      - "@spark-opp/web"
       - "@Marguelgtz"
+    expected_evidence:
+      - web-smoke
 
-  - id: core
+  - id: core-engine
     paths:
       - "packages/core/**"
     criticality: high
     owners:
+      - "@spark-opp/core"
       - "@Marguelgtz"
+    expected_evidence:
+      - unit-tests
 
   - id: github-integration
     paths:
       - "packages/github/**"
     criticality: high
     owners:
+      - "@spark-opp/integrations"
       - "@Marguelgtz"
+    expected_evidence:
+      - unit-tests
+      - github-integration-tests
+
+  - id: security-and-identity
+    paths:
+      - "apps/api/src/auth-policy.ts"
+      - "apps/api/src/security/**"
+    criticality: high
+    owners:
+      - "@spark-opp/security"
+      - "@spark-opp/api"
+      - "@Marguelgtz"
+    expected_evidence:
+      - security-review
+
+  - id: shared-contracts
+    paths:
+      - "packages/core/src/types.ts"
+      - "apps/api/src/contracts.ts"
+    criticality: high
+    owners:
+      - "@spark-opp/architecture"
+      - "@spark-opp/core"
+      - "@Marguelgtz"
+    expected_evidence:
+      - unit-tests
+      - api-contract-tests
+
+  - id: release-engineering
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/profile-contract.yml"
+    criticality: medium
+    owners:
+      - "@spark-opp/release-engineering"
+      - "@Marguelgtz"
+    expected_evidence:
+      - profile-contract
+
+  - id: developer-documentation
+    paths:
+      - "docs/**"
+      - "README.md"
+    criticality: low
+    owners:
+      - "@spark-opp/developer-experience"
+      - "@Marguelgtz"
+    expected_evidence:
+      - docs-lint

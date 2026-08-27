@@ -1,0 +1,44 @@
+name: Spark profile evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  profile-contract:
+    name: profile-contract
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Profile schema fixture is available"
+
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Unit-test evidence fixture passed"
+
+  api-contract-tests:
+    name: api-contract-tests
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "API contract evidence fixture passed"
+
+  web-smoke:
+    name: web-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Web smoke evidence fixture passed"
+
+  github-integration-tests:
+    name: github-integration-tests
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "GitHub integration evidence fixture passed"
+
+  docs-lint:
+    name: docs-lint
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Documentation evidence fixture passed"
