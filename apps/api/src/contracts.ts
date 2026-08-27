@@ -20,3 +20,5 @@ export interface SparkStore {
   findEvaluation(repositoryId: number, headSha: string): Promise<StoredEvaluation | undefined>;
   saveEvaluation(record: EvaluationRecord): Promise<void>;
 }
+
+// Profile stress fixture: this exact path is a shared contract.

@@ -55,3 +55,5 @@ export interface SparkEvaluation {
     evidence: Evidence[];
     analysis?: AnalysisCompleteness;
 }
+
+// Profile stress fixture: this exact path is jointly owned.
