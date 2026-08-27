@@ -1,6 +1,7 @@
 import type { AccountV1 } from '@spark/dashboard-contracts';
 import {
   buildGitHubUserAuthorizationUrl,
+  createGitHubAppJwt,
   exchangeGitHubUserCode,
   GitHubUserClient,
 } from '@spark/github';
@@ -17,6 +18,8 @@ const MAX_AUTHORIZED_REPOSITORIES = 5_000;
 
 export interface GitHubAuthEnv {
   DB: D1Database;
+  GITHUB_APP_ID?: string;
+  GITHUB_PRIVATE_KEY?: string;
   GITHUB_CLIENT_ID?: string;
   GITHUB_CLIENT_SECRET?: string;
   GITHUB_APP_SLUG?: string;
@@ -117,6 +120,59 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
     private readonly fetcher: typeof fetch = (request, init) => globalThis.fetch(request, init),
     private readonly now: () => Date = () => new Date(),
   ) {}
+
+  private async logAuthenticatedAppIdentity(configuredOAuthClientId: string): Promise<void> {
+    const appId = this.env.GITHUB_APP_ID;
+    const privateKey = this.env.GITHUB_PRIVATE_KEY;
+    if (!appId || !privateKey) return;
+
+    try {
+      const jwt = await createGitHubAppJwt(appId, privateKey);
+      const response = await this.fetcher('https://api.github.com/app', {
+        headers: {
+          accept: 'application/vnd.github+json',
+          authorization: `Bearer ${jwt}`,
+          'user-agent': 'spark-observability',
+          'x-github-api-version': '2026-03-10',
+        },
+      });
+      if (!response.ok) {
+        console.warn(JSON.stringify({
+          event: 'github_dashboard_auth',
+          stage: 'app_identity',
+          outcome: 'failed',
+          status: response.status,
+          configuredOAuthClientId,
+        }));
+        return;
+      }
+      const app = await response.json() as {
+        id?: number;
+        name?: string;
+        slug?: string;
+        client_id?: string;
+      };
+      console.info(JSON.stringify({
+        event: 'github_dashboard_auth',
+        stage: 'app_identity',
+        outcome: 'resolved',
+        authenticatedGitHubAppId: app.id,
+        authenticatedGitHubAppName: app.name,
+        authenticatedGitHubAppSlug: app.slug,
+        authenticatedGitHubAppClientId: app.client_id,
+        configuredOAuthClientId,
+        clientIdsMatch: Boolean(app.client_id) && app.client_id === configuredOAuthClientId,
+      }));
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: 'github_dashboard_auth',
+        stage: 'app_identity',
+        outcome: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+        configuredOAuthClientId,
+      }));
+    }
+  }
 
   private async upsertUser(user: { id: number; login: string; avatar_url: string }): Promise<void> {
     await this.env.DB.prepare(
@@ -231,6 +287,7 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
         redirectUri,
         codeVerifier: verifier,
       }, this.fetcher);
+      await this.logAuthenticatedAppIdentity(clientId);
       const snapshot = await new GitHubUserClient(token.access_token, this.fetcher).accessSnapshot();
       if (snapshot.repositories.length > MAX_AUTHORIZED_REPOSITORIES) {
         const headers = new Headers({ 'cache-control': 'no-store' });
