@@ -1,9 +1,10 @@
 import type { AccountV1 } from '@spark/dashboard-contracts';
 import {
   buildGitHubUserAuthorizationUrl,
-  createGitHubAppJwt,
   exchangeGitHubUserCode,
+  GitHubAppUserAccessResolver,
   GitHubUserClient,
+  type GitHubAppRepositoryCandidate,
 } from '@spark/github';
 import type { DashboardAuthorizer, DashboardPrincipal } from './dashboard-access';
 import type { D1Database } from './d1';
@@ -20,12 +21,8 @@ export interface GitHubAuthEnv {
   DB: D1Database;
   GITHUB_APP_ID?: string;
   GITHUB_PRIVATE_KEY?: string;
-  GITHUB_APP_CLIENT_ID?: string;
-  GITHUB_APP_CLIENT_SECRET?: string;
-  /** @deprecated Use GITHUB_APP_CLIENT_ID. */
-  GITHUB_CLIENT_ID?: string;
-  /** @deprecated Use GITHUB_APP_CLIENT_SECRET. */
-  GITHUB_CLIENT_SECRET?: string;
+  GITHUB_AUTH_CLIENT_ID?: string;
+  GITHUB_AUTH_CLIENT_SECRET?: string;
   GITHUB_APP_SLUG?: string;
   SPARK_PUBLIC_ORIGIN?: string;
 }
@@ -125,64 +122,26 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  private appClientCredentials(): { clientId?: string; clientSecret?: string } {
+  private identityClientCredentials(): { clientId?: string; clientSecret?: string } {
     return {
-      clientId: this.env.GITHUB_APP_CLIENT_ID ?? this.env.GITHUB_CLIENT_ID,
-      clientSecret: this.env.GITHUB_APP_CLIENT_SECRET ?? this.env.GITHUB_CLIENT_SECRET,
+      clientId: this.env.GITHUB_AUTH_CLIENT_ID,
+      clientSecret: this.env.GITHUB_AUTH_CLIENT_SECRET,
     };
   }
 
-  private async logAuthenticatedAppIdentity(configuredGitHubAppClientId: string): Promise<void> {
-    const appId = this.env.GITHUB_APP_ID;
-    const privateKey = this.env.GITHUB_PRIVATE_KEY;
-    if (!appId || !privateKey) return;
-
-    try {
-      const jwt = await createGitHubAppJwt(appId, privateKey);
-      const response = await this.fetcher('https://api.github.com/app', {
-        headers: {
-          accept: 'application/vnd.github+json',
-          authorization: `Bearer ${jwt}`,
-          'user-agent': 'spark-observability',
-          'x-github-api-version': '2026-03-10',
-        },
-      });
-      if (!response.ok) {
-        console.warn(JSON.stringify({
-          event: 'github_dashboard_auth',
-          stage: 'app_identity',
-          outcome: 'failed',
-          status: response.status,
-          configuredGitHubAppClientId,
-        }));
-        return;
-      }
-      const app = await response.json() as {
-        id?: number;
-        name?: string;
-        slug?: string;
-        client_id?: string;
-      };
-      console.info(JSON.stringify({
-        event: 'github_dashboard_auth',
-        stage: 'app_identity',
-        outcome: 'resolved',
-        authenticatedGitHubAppId: app.id,
-        authenticatedGitHubAppName: app.name,
-        authenticatedGitHubAppSlug: app.slug,
-        authenticatedGitHubAppClientId: app.client_id,
-        configuredGitHubAppClientId,
-        clientIdsMatch: Boolean(app.client_id) && app.client_id === configuredGitHubAppClientId,
-      }));
-    } catch (error) {
-      console.warn(JSON.stringify({
-        event: 'github_dashboard_auth',
-        stage: 'app_identity',
-        outcome: 'failed',
-        error: error instanceof Error ? error.message : String(error),
-        configuredGitHubAppClientId,
-      }));
-    }
+  private async installedRepositoryCandidates(): Promise<GitHubAppRepositoryCandidate[]> {
+    const result = await this.env.DB.prepare(
+      `SELECT r.id,
+              r.installation_id AS installationId,
+              r.full_name AS fullName,
+              i.account_id AS accountId,
+              i.account_login AS accountLogin
+       FROM repositories r
+       JOIN installations i ON i.id = r.installation_id
+       ORDER BY r.id
+       LIMIT ?`,
+    ).bind(MAX_AUTHORIZED_REPOSITORIES + 1).all<GitHubAppRepositoryCandidate>();
+    return result.results ?? [];
   }
 
   private async upsertUser(user: { id: number; login: string; avatar_url: string }): Promise<void> {
@@ -242,9 +201,9 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
   }
 
   async start(request: Request): Promise<Response> {
-    const { clientId, clientSecret } = this.appClientCredentials();
+    const { clientId, clientSecret } = this.identityClientCredentials();
     if (!clientId || !clientSecret) {
-      return new Response('GitHub authentication is not configured', { status: 503 });
+      return new Response('GitHub identity authentication is not configured', { status: 503 });
     }
     const url = new URL(request.url);
     const returnTo = safeReturnTo(url.searchParams.get('return_to'));
@@ -266,10 +225,14 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
   }
 
   async callback(request: Request): Promise<Response> {
-    const { clientId, clientSecret } = this.appClientCredentials();
+    const { clientId, clientSecret } = this.identityClientCredentials();
     if (!clientId || !clientSecret) {
-      return new Response('GitHub authentication is not configured', { status: 503 });
+      return new Response('GitHub identity authentication is not configured', { status: 503 });
     }
+    if (!this.env.GITHUB_APP_ID || !this.env.GITHUB_PRIVATE_KEY) {
+      return new Response('GitHub App authorization is not configured', { status: 503 });
+    }
+
     const url = new URL(request.url);
     const returnTo = safeReturnTo(cookieValue(request, OAUTH_RETURN_COOKIE));
     const clearOAuth = [
@@ -296,21 +259,41 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
         redirectUri,
         codeVerifier: verifier,
       }, this.fetcher);
-      await this.logAuthenticatedAppIdentity(clientId);
-      const snapshot = await new GitHubUserClient(token.access_token, this.fetcher).accessSnapshot();
-      if (snapshot.repositories.length > MAX_AUTHORIZED_REPOSITORIES) {
+
+      // The OAuth App proves identity only. Its token is never used to authorize
+      // Spark repositories and is discarded after this request.
+      const user = await new GitHubUserClient(token.access_token, this.fetcher).getUser();
+      const candidates = await this.installedRepositoryCandidates();
+      if (candidates.length > MAX_AUTHORIZED_REPOSITORIES) {
         const headers = new Headers({ 'cache-control': 'no-store' });
         for (const value of clearOAuth) headers.append('set-cookie', value);
-        return new Response('GitHub account has too many repositories to authorize safely', { status: 413, headers });
+        return new Response('Spark has too many repository candidates to authorize safely', { status: 413, headers });
       }
 
-      await this.upsertUser(snapshot.user);
-      const repositoryIds = snapshot.repositories.map(repository => repository.id);
+      const access = await new GitHubAppUserAccessResolver(
+        this.env.GITHUB_APP_ID,
+        this.env.GITHUB_PRIVATE_KEY,
+        this.fetcher,
+      ).resolve(user, candidates);
+
+      await this.upsertUser(user);
       const session = await this.createSession({
-        userId: snapshot.user.id,
-        repositoryIds,
-        installationIds: snapshot.installationIds,
+        userId: user.id,
+        repositoryIds: access.repositoryIds,
+        installationIds: access.installationIds,
       });
+
+      console.info(JSON.stringify({
+        event: 'github_dashboard_auth',
+        stage: 'callback',
+        outcome: 'authorized',
+        githubUserId: user.id,
+        installationCount: access.installationIds.length,
+        repositoryCount: access.repositoryIds.length,
+        identityProvider: 'github-oauth-app',
+        resourceProvider: 'github-app',
+      }));
+
       return redirect(returnTo, [
         ...clearOAuth,
         cookie(SESSION_COOKIE, session.token, request, SESSION_SECONDS),
