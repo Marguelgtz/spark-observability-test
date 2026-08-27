@@ -5,4 +5,5 @@ export * from './evaluate';
 export * from './normalize';
 export * from './repository';
 export * from './types';
+export * from './user-auth';
 export * from './webhook';
