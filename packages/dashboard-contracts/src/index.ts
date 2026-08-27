@@ -49,7 +49,7 @@ export interface EvidenceSummaryV1 {
 }
 
 export interface ObservedRepositoryV1 extends RepositoryRefV1 {
-  evaluationCount: number;
+  pullRequestCount: number;
 }
 
 export interface EvaluationSummaryV1 {
@@ -66,6 +66,27 @@ export interface EvaluationSummaryV1 {
   detailAvailable: boolean;
 }
 
+export interface PullRequestHistorySummaryV1 {
+  runCount: number;
+  attentionCounts: Record<AttentionLevelV1, number>;
+}
+
+export interface PullRequestActivityV1 {
+  repository: RepositoryRefV1;
+  pullRequest: PullRequestRefV1;
+  latest: EvaluationSummaryV1;
+  history: PullRequestHistorySummaryV1;
+}
+
+export interface PullRequestHistoryResponseV1 {
+  version: 1;
+  repository: RepositoryRefV1;
+  pullRequest: PullRequestRefV1;
+  totalRunCount: number;
+  runs: EvaluationSummaryV1[];
+  truncated: boolean;
+}
+
 export interface ActivityResponseV1 {
   version: 1;
   selectedWindow: ActivityWindowV1;
@@ -73,7 +94,7 @@ export interface ActivityResponseV1 {
   selectedRepositoryId: number | null;
   counts: Record<AttentionLevelV1, number>;
   repositories: ObservedRepositoryV1[];
-  evaluations: EvaluationSummaryV1[];
+  pullRequests: PullRequestActivityV1[];
   pagination: { nextCursor: string | null };
 }
 
