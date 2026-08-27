@@ -36,60 +36,6 @@ function classifyGitHubUserToken(accessToken: string): 'github-app-user' | 'oaut
   return 'unknown';
 }
 
-interface GitHubTokenInspection {
-  app?: {
-    name?: string;
-    client_id?: string;
-  };
-  scopes?: string[];
-  expires_at?: string | null;
-}
-
-async function inspectGitHubUserToken(
-  input: { clientId: string; clientSecret: string },
-  accessToken: string,
-  fetcher: typeof fetch,
-): Promise<void> {
-  try {
-    const credentials = btoa(`${input.clientId}:${input.clientSecret}`);
-    const response = await fetcher(`https://api.github.com/applications/${encodeURIComponent(input.clientId)}/token`, {
-      method: 'POST',
-      headers: {
-        accept: 'application/vnd.github+json',
-        authorization: `Basic ${credentials}`,
-        'content-type': 'application/json',
-        'user-agent': 'spark-observability',
-        'x-github-api-version': '2026-03-10',
-      },
-      body: JSON.stringify({ access_token: accessToken }),
-    });
-
-    if (!response.ok) {
-      console.info(JSON.stringify({
-        githubOAuthTokenInspectionStatus: response.status,
-        configuredGitHubClientId: input.clientId,
-      }));
-      return;
-    }
-
-    const inspection = await response.json() as GitHubTokenInspection;
-    console.info(JSON.stringify({
-      githubOAuthTokenInspectionStatus: response.status,
-      configuredGitHubClientId: input.clientId,
-      tokenOwnerAppName: inspection.app?.name ?? null,
-      tokenOwnerClientId: inspection.app?.client_id ?? null,
-      tokenScopes: inspection.scopes ?? [],
-      tokenExpiresAt: inspection.expires_at ?? null,
-    }));
-  } catch (error) {
-    console.info(JSON.stringify({
-      githubOAuthTokenInspectionStatus: 'error',
-      configuredGitHubClientId: input.clientId,
-      error: error instanceof Error ? error.message : 'unknown error',
-    }));
-  }
-}
-
 export function buildGitHubUserAuthorizationUrl(input: {
   clientId: string;
   redirectUri: string;
@@ -140,8 +86,6 @@ export async function exchangeGitHubUserCode(
     tokenHasExpiry: typeof body.expires_in === 'number',
     tokenHasRefreshToken: typeof body.refresh_token === 'string',
   }));
-
-  await inspectGitHubUserToken(input, body.access_token, fetcher);
 
   return body as GitHubOAuthTokenResponse;
 }
