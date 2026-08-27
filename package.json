@@ -6,7 +6,8 @@
     "typecheck": "tsc --noEmit",
     "spark:fixture": "pnpm --filter @spark/cli run start",
     "dev": "pnpm --filter @spark/api run dev",
-    "db:migrate:local": "pnpm --filter @spark/api run db:migrate:local"
+    "db:migrate:local": "pnpm --filter @spark/api run db:migrate:local",
+    "stress:profile": "echo Spark profile stress fixture"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

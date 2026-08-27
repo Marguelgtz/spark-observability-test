@@ -103,3 +103,5 @@ pnpm exec wrangler deploy
 ```
 
 Configure the deployed `https://<worker>/webhooks/github` URL in the GitHub App. Installation tokens are generated on demand and are never persisted.
+
+Profile stress fixture: repository-level documentation ownership is exercised by the example PR.
