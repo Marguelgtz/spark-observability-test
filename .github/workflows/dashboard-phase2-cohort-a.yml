@@ -1,0 +1,44 @@
+name: Dashboard Phase 2 Cohort A
+
+on:
+  pull_request:
+    branches: [dashboard/phase-1]
+    paths:
+      - 'apps/api/**'
+      - 'packages/core/**'
+      - 'packages/github/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/dashboard-phase2-cohort-a.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck workspace
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Apply D1 migrations locally
+        run: pnpm --filter @spark/api db:migrate:local
