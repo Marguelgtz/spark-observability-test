@@ -1,0 +1,9 @@
+version: 1
+areas:
+  - id: payments
+    paths:
+      - "payments/**"
+    owners:
+      - "@company/payments"
+    expected_evidence:
+      - payment-integration-tests
