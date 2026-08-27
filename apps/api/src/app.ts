@@ -113,6 +113,22 @@ async function handleDashboardRequest(
     return json(await reader.activity(query, principal.repositoryIds));
   }
 
+  const historyMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)\/evaluations$/);
+  if (historyMatch) {
+    const repositoryId = Number(historyMatch[1]);
+    const pullRequestNumber = Number(historyMatch[2]);
+    if (
+      !Number.isSafeInteger(repositoryId) ||
+      !Number.isSafeInteger(pullRequestNumber) ||
+      pullRequestNumber <= 0 ||
+      !principal.repositoryIds.includes(repositoryId)
+    ) {
+      return json({ error: 'not found' }, 404);
+    }
+    const result = await reader.pullRequestHistory(repositoryId, pullRequestNumber);
+    return result ? json(result) : json({ error: 'not found' }, 404);
+  }
+
   const detailMatch = url.pathname.match(/^\/api\/evaluations\/(\d+)\/([^/]+)$/);
   if (detailMatch) {
     const repositoryId = Number(detailMatch[1]);
