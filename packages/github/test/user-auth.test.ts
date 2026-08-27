@@ -21,7 +21,8 @@ describe('GitHub App user authorization', () => {
     expect(url.searchParams.get('scope')).toBeNull();
   });
 
-  it('exchanges an authorization code with the original PKCE verifier', async () => {
+  it('exchanges an authorization code with the original PKCE verifier and logs only the token class', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       const body = new URLSearchParams(String(init?.body));
       expect(body.get('client_id')).toBe('Iv1.test');
@@ -41,6 +42,30 @@ describe('GitHub App user authorization', () => {
       codeVerifier: 'verifier',
     }, fetcher as typeof fetch);
     expect(token.access_token).toBe('ghu_ephemeral');
+    expect(info).toHaveBeenCalledWith(JSON.stringify({ githubOAuthTokenType: 'github-app-user' }));
+    expect(info.mock.calls.flat().join(' ')).not.toContain('ghu_ephemeral');
+    info.mockRestore();
+  });
+
+  it('includes GitHub response details when a user API call fails', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      message: 'Resource not accessible by integration',
+      documentation_url: 'https://docs.github.com/rest/apps/installations',
+    }), {
+      status: 403,
+      headers: {
+        'content-type': 'application/json',
+        'x-accepted-github-permissions': 'metadata=read',
+      },
+    }));
+
+    await expect(new GitHubUserClient(
+      'ghu_ephemeral',
+      fetcher as typeof fetch,
+      'https://api.test',
+    ).listInstallations()).rejects.toThrow(
+      /Resource not accessible by integration.*accepted permissions: metadata=read/,
+    );
   });
 
   it('derives the repository intersection exposed by the user access token', async () => {
