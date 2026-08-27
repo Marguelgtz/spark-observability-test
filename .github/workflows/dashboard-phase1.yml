@@ -1,0 +1,65 @@
+name: Dashboard Phase 1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'packages/dashboard-contracts/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/dashboard-phase1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck workspace
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build dashboard
+        run: pnpm web:build
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @spark/web exec playwright install --with-deps chromium
+
+      - name: Browser acceptance
+        run: pnpm web:e2e
+
+      - name: Upload dashboard screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-phase1-screenshots
+          path: apps/web/test-results/screenshots/
+          if-no-files-found: warn
+
+      - name: Upload Playwright failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-phase1-playwright
+          path: apps/web/test-results/playwright/
+          if-no-files-found: ignore
