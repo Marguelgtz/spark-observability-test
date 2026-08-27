@@ -6,3 +6,5 @@ to the high-criticality `api` area owned by `@Marguelgtz`.
 This update also exercises Spark's persistent PR summary comment lifecycle.
 
 Permission approval acceptance step: create the canonical summary comment.
+
+Approved-installation step one: verify comment creation.
