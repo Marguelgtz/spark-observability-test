@@ -1,8 +1,9 @@
-import type { ActivityQueryV1, ActivityWindowV1, AttentionFilterV1 } from '@spark/dashboard-contracts';
+import type { AccountV1, ActivityQueryV1, ActivityWindowV1, AttentionFilterV1 } from '@spark/dashboard-contracts';
 import { createInstallationToken, GitHubApiClient, routeGitHubEvent, verifyWebhookSignature } from '@spark/github';
-import { DenyDashboardAuthorizer, type DashboardAuthorizer } from './dashboard-access';
+import type { DashboardAuthorizer, DashboardPrincipal } from './dashboard-access';
 import { D1DashboardReader, type DashboardReader } from './dashboard-reader';
 import { D1SparkStore, type D1Database } from './d1';
+import { GitHubDashboardAuth } from './github-auth';
 import { SparkOrchestrator } from './orchestrator';
 import type { SparkStore } from './contracts';
 import { landingPage, privacyPage, termsPage } from './pages';
@@ -13,8 +14,11 @@ export interface Env {
   GITHUB_APP_ID: string;
   GITHUB_PRIVATE_KEY: string;
   GITHUB_WEBHOOK_SECRET: string;
+  GITHUB_CLIENT_ID: string;
+  GITHUB_CLIENT_SECRET: string;
   GITHUB_APP_SLUG?: string;
   SPARK_CONTACT_EMAIL?: string;
+  SPARK_PUBLIC_ORIGIN?: string;
 }
 
 export interface WebhookDependencies {
@@ -22,6 +26,7 @@ export interface WebhookDependencies {
   orchestrator?: SparkOrchestrator;
   dashboardReader?: DashboardReader;
   dashboardAuthorizer?: DashboardAuthorizer;
+  dashboardAuth?: GitHubDashboardAuth;
 }
 
 export interface WorkerExecutionContext {
@@ -37,6 +42,21 @@ function json(body: unknown, status = 200): Response {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'unknown error';
+}
+
+function account(principal: DashboardPrincipal, env: Env): AccountV1 {
+  const installUrl = env.GITHUB_APP_SLUG
+    ? `https://github.com/apps/${encodeURIComponent(env.GITHUB_APP_SLUG)}/installations/new`
+    : 'https://github.com/settings/installations';
+  return {
+    version: 1,
+    viewer: principal.viewer,
+    repositoryCount: principal.repositoryIds.length,
+    installationCount: principal.installationIds.length,
+    sessionExpiresAt: principal.sessionExpiresAt,
+    githubInstallUrl: installUrl,
+    githubSettingsUrl: 'https://github.com/settings/installations',
+  };
 }
 
 function parseActivityQuery(url: URL): ActivityQueryV1 | undefined {
@@ -75,11 +95,13 @@ async function handleDashboardRequest(
   dependencies: WebhookDependencies,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const authorizer = dependencies.dashboardAuthorizer ?? new DenyDashboardAuthorizer();
+  const auth = dependencies.dashboardAuth ?? new GitHubDashboardAuth(env);
+  const authorizer = dependencies.dashboardAuthorizer ?? auth;
   const principal = await authorizer.authorize(request);
   if (!principal) return json({ error: 'unauthorized' }, 401);
 
   if (url.pathname === '/api/me') return json(principal.viewer);
+  if (url.pathname === '/api/account') return json(account(principal, env));
 
   const reader = dependencies.dashboardReader ?? new D1DashboardReader(env.DB);
   if (url.pathname === '/api/activity') {
@@ -145,8 +167,18 @@ export async function handleRequest(
   if (request.method === 'GET' && url.pathname === '/health') return json({ status: 'ok' });
   if (request.method === 'GET' && url.pathname === '/privacy') return privacyPage(publicPageOptions);
   if (request.method === 'GET' && url.pathname === '/terms') return termsPage(publicPageOptions);
+
+  const dashboardAuth = dependencies.dashboardAuth ?? new GitHubDashboardAuth(env);
+  if (request.method === 'GET' && url.pathname === '/auth/github') return dashboardAuth.start(request);
+  if (request.method === 'GET' && url.pathname === '/auth/github/callback') return dashboardAuth.callback(request);
+  if (request.method === 'POST' && url.pathname === '/auth/logout') {
+    const origin = request.headers.get('origin');
+    if (origin && origin !== url.origin) return json({ error: 'forbidden' }, 403);
+    return dashboardAuth.logout(request);
+  }
+
   if (request.method === 'GET' && url.pathname.startsWith('/api/')) {
-    return handleDashboardRequest(request, env, dependencies);
+    return handleDashboardRequest(request, env, { ...dependencies, dashboardAuth });
   }
   if (request.method !== 'POST' || url.pathname !== '/webhooks/github') return json({ error: 'not found' }, 404);
 
