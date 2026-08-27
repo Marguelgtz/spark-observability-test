@@ -20,7 +20,11 @@ export interface GitHubAuthEnv {
   DB: D1Database;
   GITHUB_APP_ID?: string;
   GITHUB_PRIVATE_KEY?: string;
+  GITHUB_APP_CLIENT_ID?: string;
+  GITHUB_APP_CLIENT_SECRET?: string;
+  /** @deprecated Use GITHUB_APP_CLIENT_ID. */
   GITHUB_CLIENT_ID?: string;
+  /** @deprecated Use GITHUB_APP_CLIENT_SECRET. */
   GITHUB_CLIENT_SECRET?: string;
   GITHUB_APP_SLUG?: string;
   SPARK_PUBLIC_ORIGIN?: string;
@@ -121,7 +125,14 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  private async logAuthenticatedAppIdentity(configuredOAuthClientId: string): Promise<void> {
+  private appClientCredentials(): { clientId?: string; clientSecret?: string } {
+    return {
+      clientId: this.env.GITHUB_APP_CLIENT_ID ?? this.env.GITHUB_CLIENT_ID,
+      clientSecret: this.env.GITHUB_APP_CLIENT_SECRET ?? this.env.GITHUB_CLIENT_SECRET,
+    };
+  }
+
+  private async logAuthenticatedAppIdentity(configuredGitHubAppClientId: string): Promise<void> {
     const appId = this.env.GITHUB_APP_ID;
     const privateKey = this.env.GITHUB_PRIVATE_KEY;
     if (!appId || !privateKey) return;
@@ -142,7 +153,7 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
           stage: 'app_identity',
           outcome: 'failed',
           status: response.status,
-          configuredOAuthClientId,
+          configuredGitHubAppClientId,
         }));
         return;
       }
@@ -160,8 +171,8 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
         authenticatedGitHubAppName: app.name,
         authenticatedGitHubAppSlug: app.slug,
         authenticatedGitHubAppClientId: app.client_id,
-        configuredOAuthClientId,
-        clientIdsMatch: Boolean(app.client_id) && app.client_id === configuredOAuthClientId,
+        configuredGitHubAppClientId,
+        clientIdsMatch: Boolean(app.client_id) && app.client_id === configuredGitHubAppClientId,
       }));
     } catch (error) {
       console.warn(JSON.stringify({
@@ -169,7 +180,7 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
         stage: 'app_identity',
         outcome: 'failed',
         error: error instanceof Error ? error.message : String(error),
-        configuredOAuthClientId,
+        configuredGitHubAppClientId,
       }));
     }
   }
@@ -231,8 +242,7 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
   }
 
   async start(request: Request): Promise<Response> {
-    const clientId = this.env.GITHUB_CLIENT_ID;
-    const clientSecret = this.env.GITHUB_CLIENT_SECRET;
+    const { clientId, clientSecret } = this.appClientCredentials();
     if (!clientId || !clientSecret) {
       return new Response('GitHub authentication is not configured', { status: 503 });
     }
@@ -256,8 +266,7 @@ export class GitHubDashboardAuth implements DashboardAuthorizer {
   }
 
   async callback(request: Request): Promise<Response> {
-    const clientId = this.env.GITHUB_CLIENT_ID;
-    const clientSecret = this.env.GITHUB_CLIENT_SECRET;
+    const { clientId, clientSecret } = this.appClientCredentials();
     if (!clientId || !clientSecret) {
       return new Response('GitHub authentication is not configured', { status: 503 });
     }
