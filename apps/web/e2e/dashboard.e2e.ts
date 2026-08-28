@@ -113,7 +113,7 @@ test('same SHA observations remain individually inspectable by run ID', async ({
   await page.getByRole('link', { name: 'Next →' }).click();
   await expect(page).toHaveURL(/\/app\/repositories\/101\/runs\/fixture%3A101%3A42%3A0/);
   await expect(page.getByText('integration-test', { exact: true })).toBeVisible();
-  await expect(page.getByText('FAILED', { exact: true })).toBeVisible();
+  await expect(page.locator('.evidence-status.evidence-failed')).toHaveCount(2);
 });
 
 test('legacy SHA route remains latest-by-SHA compatibility', async ({ page }) => {
