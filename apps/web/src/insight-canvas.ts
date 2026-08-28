@@ -1,4 +1,5 @@
 import './insight-canvas.css';
+import './insight-chart-extras.css';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
