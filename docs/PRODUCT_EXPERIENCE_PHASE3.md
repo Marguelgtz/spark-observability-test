@@ -15,9 +15,9 @@ observations
     ↓
 analytical trajectory
     ↓
-forensic detail
-    ↓
 key moments / change evolution
+    ↓
+forensic detail
     ↓
 future human / deployment / incident context
 ```
@@ -73,7 +73,7 @@ Each row should prioritize:
 - elapsed time from the previous retained moment;
 - link to the immutable evaluation when available.
 
-The timeline is a **supporting narrative spine** at the bottom of the PR page, after the analytical and forensic views. It should help the user reconstruct the sequence without displacing the primary observability information.
+The timeline is a **supporting narrative spine** after the analytical trajectory. Visible forensic detail follows it immediately, so the user can move from compressed change evolution into the complete retained evidence without opening another disclosure.
 
 ## Terminology
 
@@ -96,7 +96,7 @@ The UI continues to derive moments from the existing `PullRequestTrajectoryV1` c
 3. **Latest** — newest retained evaluation when it is not already represented by the final transition.
 4. **Terminal lifecycle** — merged or closed state, separate from evaluation observations.
 
-Unchanged evaluations remain inspectable in forensic history but are not promoted into the primary sequence.
+Evaluations that retain the same attention level are grouped into compact expandable stable-attention periods. Evidence/scope changes that occur inside those periods remain inspectable within the group without competing with attention-changing moments.
 
 ## Deterministic headline priority
 
@@ -159,14 +159,14 @@ The primary page order is:
 
 1. PR identity and current state/actions from the existing PR view.
 2. Existing **Change trajectory** insight canvas and analytical PR content.
-3. **Forensic details** progressive disclosure:
+3. **Key moments / Change evolution** compact timeline.
+4. Visible **Forensic details** below change evolution:
    - observations;
    - evidence issues;
    - complete evaluation history;
-   - unchanged evaluations.
-4. **Key moments / Change evolution** compact timeline at the bottom of the PR page.
+   - unchanged-attention evaluations when expanded from their stable group.
 
-This keeps the PR page analytical first. The compact chronology remains available as a synthesis aid after the user has seen the current state, trajectory, and evidence structure.
+This keeps the PR page analytical first, uses change evolution as the compressed synthesis layer, and then exposes the complete forensic record directly underneath for deeper inspection.
 
 ## Architecture
 
@@ -194,9 +194,9 @@ PR page composition
         ↓
 change-trajectory canvas
         ↓
-forensic disclosure
-        ↓
 key moments / change evolution
+        ↓
+visible forensic detail
 ```
 
 The derivation module remains DOM-free and unit tested.
@@ -209,13 +209,15 @@ The derivation module remains DOM-free and unit tested.
 - Feedback trigger has an explicit accessible name and visible hover/focus tooltip.
 - Drawer uses dialog semantics, has an accessible title, supports Escape, restores focus to its trigger, and exposes save status through a live region.
 - Terminal outcome has explicit text.
+- Forensic headings and underlying retained evidence are directly available in the page reading order.
 - Mobile preserves chronological order and uses a full-width drawer treatment without horizontal scrolling.
 
 ## Exit gates
 
 - initial, notable, latest, and terminal moments render chronologically;
-- unchanged evaluations do not clutter the compact sequence;
-- key moments render at the bottom of the PR page after trajectory and forensic detail;
+- stable-attention evaluations do not clutter the compact sequence and remain expandable;
+- key moments render after the analytical trajectory;
+- visible forensic details render immediately below key moments;
 - transition headline priority remains deterministic;
 - transition causes remain inspectable without dominating the row;
 - feedback controls are absent from the resting timeline and available through tooltip + drawer;
@@ -223,8 +225,8 @@ The derivation module remains DOM-free and unit tested.
 - exact merge/close outcome copy is retained;
 - partial/backfilled history is labeled truthfully;
 - immutable run navigation remains intact;
-- trajectory canvas remains visible without opening forensic details;
-- desktop and mobile browser acceptance cover sequence structure, feedback drawer, lifecycle copy, forensic disclosure, and page order;
+- trajectory canvas and forensic evidence remain directly visible in the page flow;
+- desktop and mobile browser acceptance cover sequence structure, feedback drawer, lifecycle copy, forensic visibility, and page order;
 - typecheck, unit/API tests, production build, D1 migration validation, Worker dry-run, and browser acceptance pass.
 
 ## Future story layer
