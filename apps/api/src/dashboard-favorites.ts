@@ -29,14 +29,14 @@ export class D1DashboardFavoriteStore implements DashboardFavoriteStore {
 
   async list(githubUserId: number, repositoryIds: number[]): Promise<FavoritesResponseV1> {
     if (!repositoryIds.length) return { version: 1, favorites: [] };
-    const placeholders = repositoryIds.map(() => '?').join(', ');
     const rows = await this.db.prepare(
       `SELECT kind, repository_id AS repositoryId, pull_request_number AS pullRequestNumber,
               run_id AS runId, head_sha AS headSha
        FROM dashboard_favorites
-       WHERE github_user_id = ? AND repository_id IN (${placeholders})
+       WHERE github_user_id = ?
+         AND repository_id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))
        ORDER BY created_at DESC, favorite_key ASC`,
-    ).bind(githubUserId, ...repositoryIds).all<FavoriteRow>();
+    ).bind(githubUserId, JSON.stringify(repositoryIds)).all<FavoriteRow>();
     return {
       version: 1,
       favorites: (rows.results ?? []).flatMap((row): DashboardFavoriteV1[] => {

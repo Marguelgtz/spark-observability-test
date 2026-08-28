@@ -36,7 +36,18 @@ describe('D1 dashboard favorites', () => {
         { kind: 'evaluation', repositoryId: 2, pullRequestNumber: 3, runId: 'run:1', headSha: 'abc1234' },
       ],
     });
-    expect(fake.calls[0].values).toEqual([7, 2, 4]);
+    expect(fake.calls[0].values).toEqual([7, '[2,4]']);
+  });
+
+  it('binds a large repository scope as one JSON value', async () => {
+    const fake = database();
+    const store = new D1DashboardFavoriteStore(fake.db);
+    const repositoryIds = Array.from({ length: 250 }, (_, index) => index + 1);
+
+    await store.list(7, repositoryIds);
+
+    expect(fake.calls[0].query).toContain('json_each(?)');
+    expect(fake.calls[0].values).toEqual([7, JSON.stringify(repositoryIds)]);
   });
 
   it('uses immutable run identity for same-SHA evaluation favorites', async () => {
