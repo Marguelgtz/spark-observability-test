@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('pull request page keeps analysis first, change evolution next, and visible forensics last', async ({ page }) => {
+test('pull request page keeps trajectory first, evaluation history before change evolution, and forensics last', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
   const moments = page.getByTestId('key-moments');
@@ -22,21 +22,33 @@ test('pull request page keeps analysis first, change evolution next, and visible
   await expect(page.getByTestId('transition-feedback-drawer')).toHaveCount(0);
 
   await expect(page.getByTestId('insight-canvas-pr-trajectory')).toBeVisible();
-
-  const forensics = page.getByTestId('pr-forensics');
-  await expect(forensics).toBeVisible();
-  await expect(forensics.getByRole('heading', { name: 'Forensic details', exact: true })).toBeVisible();
-  await expect(forensics.getByText('Underlying observations, evidence issues, and complete evaluation history.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Observations', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Evidence issues', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Evaluation history', exact: true })).toBeVisible();
   await expect(page.locator('.pr-run')).toHaveCount(3);
 
+  const forensics = page.getByTestId('pr-forensics');
+  await expect(forensics).toBeVisible();
+  await expect(forensics).not.toHaveAttribute('open', '');
+  await expect(forensics.getByRole('heading', { name: 'Forensic details', exact: true })).toBeVisible();
+  await expect(forensics.getByText('Underlying observations and evidence issues.', { exact: true })).toBeVisible();
+
   const prPage = page.getByTestId('pull-request-detail');
-  await expect(prPage.evaluate((element) => ({
-    last: element.lastElementChild?.getAttribute('data-testid'),
-    previous: element.lastElementChild?.previousElementSibling?.getAttribute('data-testid'),
-  }))).resolves.toEqual({ last: 'pr-forensics', previous: 'key-moments' });
+  await expect(prPage.evaluate((element) => {
+    const headings = [...element.querySelectorAll<HTMLHeadingElement>('h2')];
+    const history = headings.find((heading) => heading.textContent?.trim() === 'Evaluation history')?.closest('.pr-section');
+    const moments = element.querySelector('[data-testid="key-moments"]');
+    const forensics = element.querySelector('[data-testid="pr-forensics"]');
+    if (!history || !moments || !forensics) return false;
+    return Boolean(history.compareDocumentPosition(moments) & Node.DOCUMENT_POSITION_FOLLOWING)
+      && Boolean(moments.compareDocumentPosition(forensics) & Node.DOCUMENT_POSITION_FOLLOWING)
+      && element.lastElementChild === forensics;
+  })).resolves.toBe(true);
+
+  await expect(page.getByRole('heading', { name: 'Observations', exact: true })).not.toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evidence issues', exact: true })).not.toBeVisible();
+  await forensics.getByRole('heading', { name: 'Forensic details', exact: true }).click();
+  await expect(forensics).toHaveAttribute('open', '');
+  await expect(page.getByRole('heading', { name: 'Observations', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evidence issues', exact: true })).toBeVisible();
 });
 
 test('material transition feedback uses a tooltip trigger and contextual drawer and survives reload', async ({ page }) => {
