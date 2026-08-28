@@ -1,0 +1,45 @@
+name: Dashboard / Worker Verification
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/dashboard-contracts/**'
+      - 'packages/github/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/dashboard-worker-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck workspace
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Build production dashboard
+        run: pnpm web:build
+      - name: Apply D1 migrations locally
+        run: pnpm db:migrate:local
+      - name: Validate Worker and static assets bundle
+        run: pnpm --filter @spark/api exec wrangler deploy --dry-run --outdir /tmp/spark-worker
+      - name: Install Playwright Chromium
+        run: pnpm --filter @spark/web exec playwright install --with-deps chromium
+      - name: Browser acceptance
+        run: pnpm web:e2e
