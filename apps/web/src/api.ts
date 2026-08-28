@@ -2,8 +2,13 @@ import type {
   AccountV1,
   ActivityQueryV1,
   ActivityResponseV1,
+  AttentionLevelV1,
   EvaluationDetailResponseV1,
+  EvaluationSummaryV1,
+  EvidenceHealthV1,
+  PullRequestDetailV1,
   PullRequestHistoryResponseV1,
+  PullRequestTransitionV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
 import { buildFixtureActivity, fixtureViewer, getFixtureEvaluation, getFixturePullRequestHistory } from './fixtures';
@@ -12,6 +17,7 @@ export interface DashboardApi {
   getViewer(): Promise<ViewerV1>;
   getAccount(): Promise<AccountV1>;
   getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1>;
+  getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1>;
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
   logout(): Promise<void>;
@@ -55,6 +61,10 @@ export class HttpDashboardApi implements DashboardApi {
     return this.request(`/api/activity?${params.toString()}`);
   }
 
+  getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1> {
+    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}`);
+  }
+
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
     return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/evaluations`);
   }
@@ -69,6 +79,87 @@ export class HttpDashboardApi implements DashboardApi {
 }
 
 export type FixtureMode = 'normal' | 'signed-out' | 'loading' | 'empty' | 'error';
+
+function fixtureEvidenceHealth(summary: EvaluationSummaryV1): EvidenceHealthV1 {
+  if (summary.evidenceSummary.failed > 0) return 'FAILED';
+  if (summary.evidenceSummary.pending > 0 || summary.evidenceSummary.missing > 0) return 'PENDING_OR_MISSING';
+  if (summary.evidenceSummary.unknown > 0 && summary.evidenceSummary.passed === 0) return 'UNKNOWN';
+  return 'CLEAR';
+}
+
+const attentionRank: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+
+function fixturePullRequestDetail(history: PullRequestHistoryResponseV1): PullRequestDetailV1 {
+  const evidenceCounts: PullRequestDetailV1['history']['evidenceCounts'] = { CLEAR: 0, FAILED: 0, PENDING_OR_MISSING: 0, UNKNOWN: 0 };
+  const attentionCounts: PullRequestDetailV1['history']['attentionCounts'] = { LOW: 0, MEDIUM: 0, HIGH: 0 };
+  for (const run of history.runs) {
+    evidenceCounts[fixtureEvidenceHealth(run)] += 1;
+    attentionCounts[run.attention] += 1;
+  }
+
+  let currentClearStreak = 0;
+  let currentFailureStreak = 0;
+  for (const run of history.runs) {
+    if (fixtureEvidenceHealth(run) === 'CLEAR') currentClearStreak += 1;
+    else break;
+  }
+  for (const run of history.runs) {
+    if (fixtureEvidenceHealth(run) === 'FAILED') currentFailureStreak += 1;
+    else break;
+  }
+
+  const transitions: PullRequestTransitionV1[] = [];
+  const chronological = [...history.runs].reverse();
+  for (let index = 1; index < chronological.length; index += 1) {
+    const previous = chronological[index - 1];
+    const current = chronological[index];
+    const fromEvidenceHealth = fixtureEvidenceHealth(previous);
+    const toEvidenceHealth = fixtureEvidenceHealth(current);
+    const base = {
+      fromHeadSha: previous.headSha,
+      toHeadSha: current.headSha,
+      fromAttention: previous.attention,
+      toAttention: current.attention,
+      fromEvidenceHealth,
+      toEvidenceHealth,
+      evaluatedAt: current.evaluatedAt,
+    };
+    if ((fromEvidenceHealth === 'FAILED' || fromEvidenceHealth === 'PENDING_OR_MISSING') && toEvidenceHealth === 'CLEAR') {
+      transitions.push({ kind: 'EVIDENCE_RECOVERED', ...base });
+    } else if (fromEvidenceHealth === 'CLEAR' && toEvidenceHealth === 'FAILED') {
+      transitions.push({ kind: 'EVIDENCE_REGRESSED', ...base });
+    }
+    if (attentionRank[current.attention] > attentionRank[previous.attention]) transitions.push({ kind: 'ATTENTION_INCREASED', ...base });
+    else if (attentionRank[current.attention] < attentionRank[previous.attention]) transitions.push({ kind: 'ATTENTION_DECREASED', ...base });
+  }
+
+  const latest = history.runs[0];
+  const latestHealth = fixtureEvidenceHealth(latest);
+  return {
+    version: 1,
+    repository: history.repository,
+    pullRequest: history.pullRequest,
+    latest,
+    history: {
+      totalRuns: history.totalRunCount,
+      evidenceCounts,
+      attentionCounts,
+      firstEvaluatedAt: history.runs.at(-1)?.evaluatedAt ?? latest.evaluatedAt,
+      lastEvaluatedAt: latest.evaluatedAt,
+      currentClearStreak,
+      currentFailureStreak,
+    },
+    evidenceIssues: [],
+    transitions,
+    insights: [
+      { kind: latestHealth === 'CLEAR' ? 'CURRENTLY_CLEAR' : latestHealth === 'FAILED' ? 'CURRENTLY_FAILING' : 'CURRENTLY_WAITING', headSha: latest.headSha },
+      ...(currentClearStreak > 1 ? [{ kind: 'CLEAR_STREAK' as const, value: currentClearStreak, headSha: latest.headSha }] : []),
+      ...(currentFailureStreak > 1 ? [{ kind: 'FAILURE_STREAK' as const, value: currentFailureStreak, headSha: latest.headSha }] : []),
+    ],
+    runs: history.runs,
+    truncated: history.truncated,
+  };
+}
 
 export class FixtureDashboardApi implements DashboardApi {
   constructor(private readonly mode: FixtureMode = 'normal') {}
@@ -108,6 +199,12 @@ export class FixtureDashboardApi implements DashboardApi {
       };
     }
     return buildFixtureActivity(query);
+  }
+
+  async getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1> {
+    if (this.mode === 'loading') return new Promise<PullRequestDetailV1>(() => undefined);
+    if (this.mode === 'error') throw new Error('Synthetic fixture failure');
+    return fixturePullRequestDetail(getFixturePullRequestHistory(repositoryId, pullRequestNumber));
   }
 
   async getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
