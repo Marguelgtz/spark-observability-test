@@ -61,7 +61,7 @@ function deriveTransitions(runsNewestFirst: PullRequestRunInput[]): PullRequestT
         transitions.push(transition('EVIDENCE_REGRESSED', previous, current));
       } else if (after === 'PENDING_OR_MISSING') {
         transitions.push(transition('EVIDENCE_BECAME_PENDING', previous, current));
-      } else if (before === 'PENDING_OR_MISSING' && after !== 'PENDING_OR_MISSING') {
+      } else if (before === 'PENDING_OR_MISSING') {
         transitions.push(transition('EVIDENCE_RESOLVED', previous, current));
       }
     }
