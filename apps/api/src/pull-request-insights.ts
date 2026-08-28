@@ -4,6 +4,7 @@ import type {
   EvaluationSummaryV1,
   EvidenceHealthV1,
   EvidenceStatusV1,
+  HistoryCompletenessV1,
   PullRequestDetailV1,
   PullRequestEvidenceIssueV1,
   PullRequestInsightV1,
@@ -14,6 +15,15 @@ import type {
 export interface PullRequestRunInput {
   summary: EvaluationSummaryV1;
   detail?: EvaluationDetailV1;
+}
+
+export interface PullRequestHistoryAggregate {
+  totalRuns: number;
+  evidenceCounts: Record<EvidenceHealthV1, number>;
+  attentionCounts: Record<AttentionLevelV1, number>;
+  firstEvaluatedAt: string;
+  lastEvaluatedAt: string;
+  historyCompleteness: HistoryCompletenessV1;
 }
 
 const ATTENTION_RANK: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
@@ -174,27 +184,40 @@ function deriveInsights(
   return insights;
 }
 
-export function buildPullRequestDetail(
-  runsNewestFirst: PullRequestRunInput[],
-  totalRunCount = runsNewestFirst.length,
-): PullRequestDetailV1 | undefined {
-  if (!runsNewestFirst.length) return undefined;
+function deriveVisibleAggregate(runsNewestFirst: PullRequestRunInput[], totalRunCount: number): PullRequestHistoryAggregate {
   const runs = runsNewestFirst.map(run => run.summary);
   const latest = runs[0];
   const oldest = runs[runs.length - 1];
-  const evidenceCounts: PullRequestDetailV1['history']['evidenceCounts'] = {
+  const evidenceCounts: PullRequestHistoryAggregate['evidenceCounts'] = {
     CLEAR: 0,
     FAILED: 0,
     PENDING_OR_MISSING: 0,
     UNKNOWN: 0,
   };
-  const attentionCounts: PullRequestDetailV1['history']['attentionCounts'] = { LOW: 0, MEDIUM: 0, HIGH: 0 };
-
+  const attentionCounts: PullRequestHistoryAggregate['attentionCounts'] = { LOW: 0, MEDIUM: 0, HIGH: 0 };
   for (const run of runs) {
     evidenceCounts[evidenceHealth(run)] += 1;
     attentionCounts[run.attention] += 1;
   }
+  return {
+    totalRuns: totalRunCount,
+    evidenceCounts,
+    attentionCounts,
+    firstEvaluatedAt: oldest.evaluatedAt,
+    lastEvaluatedAt: latest.evaluatedAt,
+    historyCompleteness: runs.some(run => run.observationSource === 'BACKFILL') ? 'PARTIAL_BACKFILL' : 'COMPLETE',
+  };
+}
 
+export function buildPullRequestDetail(
+  runsNewestFirst: PullRequestRunInput[],
+  totalRunCount = runsNewestFirst.length,
+  aggregate?: PullRequestHistoryAggregate,
+): PullRequestDetailV1 | undefined {
+  if (!runsNewestFirst.length) return undefined;
+  const runs = runsNewestFirst.map(run => run.summary);
+  const latest = runs[0];
+  const history = aggregate ?? deriveVisibleAggregate(runsNewestFirst, totalRunCount);
   const transitions = deriveTransitions(runsNewestFirst);
   return {
     version: 1,
@@ -202,11 +225,11 @@ export function buildPullRequestDetail(
     pullRequest: latest.pullRequest,
     latest,
     history: {
-      totalRuns: totalRunCount,
-      evidenceCounts,
-      attentionCounts,
-      firstEvaluatedAt: oldest.evaluatedAt,
-      lastEvaluatedAt: latest.evaluatedAt,
+      totalRuns: history.totalRuns,
+      evidenceCounts: history.evidenceCounts,
+      attentionCounts: history.attentionCounts,
+      firstEvaluatedAt: history.firstEvaluatedAt,
+      lastEvaluatedAt: history.lastEvaluatedAt,
       currentClearStreak: streak(runsNewestFirst, 'CLEAR'),
       currentFailureStreak: streak(runsNewestFirst, 'FAILED'),
     },
@@ -214,6 +237,7 @@ export function buildPullRequestDetail(
     transitions,
     insights: deriveInsights(runsNewestFirst, transitions),
     runs,
-    truncated: totalRunCount > runs.length,
+    historyCompleteness: history.historyCompleteness,
+    truncated: history.totalRuns > runs.length,
   };
 }
