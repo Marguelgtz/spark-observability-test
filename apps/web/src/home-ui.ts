@@ -1,6 +1,7 @@
 import type { AccountV1, ActivityOverviewV1, ActivityResponseV1, PullRequestActivityV1 } from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime } from './format';
-import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
+import { renderHomeInsightCanvases } from './insight-canvases';
+import type { NotableTransitionInsightsV1, OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -202,7 +203,9 @@ export function enhanceActivityHome(
   account: AccountV1,
   response: ActivityResponseV1,
   state: ActivityUrlState,
-  overviewDetail?: OverviewDrilldownResponseV1,
+  mergeOverview: OverviewDrilldownResponseV1 | undefined,
+  evaluationOverview: OverviewDrilldownResponseV1,
+  transitions: NotableTransitionInsightsV1,
 ): HTMLElement {
   const main = root.querySelector<HTMLElement>('main[data-testid="activity-view"]');
   if (!main) return root;
@@ -225,11 +228,14 @@ export function enhanceActivityHome(
   const attentionFilters = main.querySelector<HTMLElement>('.attention-filters');
   if (!heading || !attentionFilters) return root;
 
-  heading.after(renderOverview(response, state), renderNeedsAttention(response, state));
+  const overview = renderOverview(response, state);
+  const needsAttention = renderNeedsAttention(response, state);
+  const canvases = renderHomeInsightCanvases(response, evaluationOverview, transitions, state);
+  heading.after(overview, needsAttention, canvases);
 
   const recent = node('div', 'recent-activity-heading');
   recent.append(node('h2', undefined, 'Recent activity'), node('span', undefined, 'Search, favorites, and attention filters apply below.'));
   attentionFilters.before(recent);
-  markMergedUnresolved(main, overviewDetail);
+  markMergedUnresolved(main, mergeOverview);
   return root;
 }
