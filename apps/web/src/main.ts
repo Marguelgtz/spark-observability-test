@@ -4,10 +4,13 @@ import './home.css';
 import './overview.css';
 import './account.css';
 import './pr.css';
+import './behavior.css';
 import type { AccountV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
 import { createPersistentAppShell } from './app-shell';
+import { getBehaviorPatterns, getChangeBehavior } from './behavior-api';
+import { enhanceOverviewWithBehaviorPatterns, enhancePullRequestWithBehavior } from './behavior-ui';
 import { enhancePullRequestWithSeverityTimeline } from './context-insight-enhancers';
 import { FavoriteStore } from './favorites';
 import { enhanceActivityHome } from './home-ui';
@@ -200,16 +203,20 @@ async function render(): Promise<void> {
       const companionTask = route.metric === 'evaluations'
         ? abortable(getOverviewDrilldown('pull-requests', state), signal)
         : Promise.resolve(undefined);
-      const [viewer, , , overview, transitions, companion] = await Promise.all([
+      const behaviorPatternsTask = route.metric === 'merged-unresolved'
+        ? abortable(getBehaviorPatterns(state), signal).catch(() => undefined)
+        : Promise.resolve(undefined);
+      const [viewer, , , overview, transitions, companion, behaviorPatterns] = await Promise.all([
         viewerTask,
         accountTask,
         favoritesTask,
         overviewTask,
         transitionsTask,
         companionTask,
+        behaviorPatternsTask,
       ]);
       if (generation !== routeGeneration || signal.aborted) return;
-      shell.show(renderOverviewDrilldown(
+      const overviewView = renderOverviewDrilldown(
         viewer,
         overview,
         state,
@@ -219,7 +226,9 @@ async function render(): Promise<void> {
         },
         transitions,
         companion,
-      ));
+      );
+      if (behaviorPatterns) enhanceOverviewWithBehaviorPatterns(overviewView, behaviorPatterns, state);
+      shell.show(overviewView);
       return;
     }
 
@@ -237,7 +246,14 @@ async function render(): Promise<void> {
 
     if (route.kind === 'pull-request') {
       const trajectoryTask = abortable(api.getTrajectory(route.repositoryId, route.pullRequestNumber), signal);
-      const [viewer, , favorites, trajectory] = await Promise.all([viewerTask, accountTask, favoritesTask, trajectoryTask]);
+      const behaviorTask = abortable(getChangeBehavior(route.repositoryId, route.pullRequestNumber), signal).catch(() => undefined);
+      const [viewer, , favorites, trajectory, behavior] = await Promise.all([
+        viewerTask,
+        accountTask,
+        favoritesTask,
+        trajectoryTask,
+        behaviorTask,
+      ]);
       if (generation !== routeGeneration || signal.aborted) return;
       const activitySearch = currentActivitySearch();
       const saveFeedback = (transitionId: string, input: Parameters<typeof api.saveTrajectoryFeedback>[3]) => api.saveTrajectoryFeedback(
@@ -254,6 +270,7 @@ async function render(): Promise<void> {
         saveFeedback,
       );
       enhancePullRequestWithSeverityTimeline(pullRequestView, trajectory, activitySearch, saveFeedback);
+      if (behavior) enhancePullRequestWithBehavior(pullRequestView, behavior);
       shell.show(pullRequestView);
       return;
     }
