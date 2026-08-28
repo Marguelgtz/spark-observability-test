@@ -52,7 +52,11 @@ class TestExecutionContext implements WorkerExecutionContext {
   }
 }
 
-function fakeClient(headSha: string, checkStatus: 'queued' | 'completed' = 'queued') {
+function fakeClient(
+  headSha: string,
+  checkStatus: 'queued' | 'completed' = 'queued',
+  checkConclusion: 'success' | 'failure' = 'success',
+) {
   const created: object[] = [];
   const updated: object[] = [];
   let nextId = 100;
@@ -68,7 +72,14 @@ function fakeClient(headSha: string, checkStatus: 'queued' | 'completed' = 'queu
       base: { sha: 'base' },
     }),
     listPullRequestFiles: async () => ({ files: [{ filename: 'src/main.rs', status: 'modified' }], complete: true }),
-    listCheckRuns: async () => [{ id: 5, name: 'CI', head_sha: headSha, status: checkStatus, conclusion: checkStatus === 'completed' ? 'success' : null, app: { id: 99, slug: 'actions' } }],
+    listCheckRuns: async () => [{
+      id: 5,
+      name: 'CI',
+      head_sha: headSha,
+      status: checkStatus,
+      conclusion: checkStatus === 'completed' ? checkConclusion : null,
+      app: { id: 99, slug: 'actions' },
+    }],
     getTree: async () => ({ paths: ['src/main.rs'], complete: true }),
     getTextFile: async () => undefined,
     createCheckRun: async (_owner: string, _repo: string, payload: object) => {
@@ -102,41 +113,41 @@ async function sign(body: string, secret: string): Promise<string> {
 }
 
 describe('Spark orchestration', () => {
-  it('retains same-SHA reevaluations as immutable runs while updating the current projection', async () => {
+  it('retains same-SHA pending, failed, and passed observations while advancing the current projection', async () => {
     const store = new MemoryStore();
-    const make = (sha: string, status: 'queued' | 'completed') => fakeClient(sha, status);
-    const first = make('sha-1', 'queued');
-    let current = first;
+    const pending = fakeClient('sha-1', 'queued');
+    let current = pending;
     const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient: async () => current.client });
 
     const opened = await orchestrator.handle(evaluationRequest('sha-1'), trigger('delivery-1', 'pull_request', 'opened'));
     expect(opened.status).toBe('evaluated');
     expect(opened.evaluation?.evidence[0].status).toBe('PENDING');
-    expect(first.created[0]).toMatchObject({ head_sha: 'sha-1', conclusion: 'neutral' });
+    expect(pending.created[0]).toMatchObject({ head_sha: 'sha-1', conclusion: 'neutral' });
 
-    current = make('sha-2', 'queued');
-    await orchestrator.handle(evaluationRequest('sha-2', 'synchronize'), trigger('delivery-2'));
-    expect(current.created).toHaveLength(1);
-
-    current = make('sha-2', 'completed');
+    current = fakeClient('sha-1', 'completed', 'failure');
     const completedPayload = {
       action: 'completed', installation: { id: 1 }, repository: { id: 2, full_name: 'acme/repo' },
-      check_run: { name: 'CI', head_sha: 'sha-2', app: { id: 99 }, pull_requests: [{ number: 3 }] },
+      check_run: { name: 'CI', head_sha: 'sha-1', app: { id: 99 }, pull_requests: [{ number: 3 }] },
     };
     const completed = routeGitHubEvent('check_run', completedPayload, 42);
-    const result = await orchestrator.handle(completed, trigger('delivery-3', 'check_run', 'completed'));
+    const failed = await orchestrator.handle(completed, trigger('delivery-2', 'check_run', 'completed'));
+    expect(failed.evaluation?.evidence[0].status).toBe('FAILED');
+    expect(current.updated).toHaveLength(1);
 
-    expect(result.evaluation?.evidence[0].status).toBe('PASSED');
+    current = fakeClient('sha-1', 'completed', 'success');
+    const passed = await orchestrator.handle(completed, trigger('delivery-3', 'check_run', 'completed'));
+
+    expect(passed.evaluation?.evidence[0].status).toBe('PASSED');
     expect(current.updated).toHaveLength(1);
     expect(current.updated[0]).toMatchObject({ id: 100 });
-    expect(store.evaluations.size).toBe(2);
-    expect(store.details.size).toBe(2);
-    expect(store.details.get('2:sha-2')?.normalized.evaluation.evidence[0].status).toBe('PASSED');
+    expect(store.evaluations.size).toBe(1);
+    expect(store.details.size).toBe(1);
+    expect(store.details.get('2:sha-1')?.normalized.evaluation.evidence[0].status).toBe('PASSED');
     expect(store.runs.size).toBe(3);
-    const sha2Runs = [...store.runs.values()].filter(run => run.headSha === 'sha-2');
-    expect(sha2Runs).toHaveLength(2);
-    expect(sha2Runs.map(run => run.normalized?.evaluation.evidence[0].status)).toEqual(['PENDING', 'PASSED']);
-    expect(sha2Runs.map(run => run.trigger.deliveryId)).toEqual(['delivery-2', 'delivery-3']);
+    const shaRuns = [...store.runs.values()].filter(run => run.headSha === 'sha-1');
+    expect(shaRuns).toHaveLength(3);
+    expect(shaRuns.map(run => run.normalized?.evaluation.evidence[0].status)).toEqual(['PENDING', 'FAILED', 'PASSED']);
+    expect(shaRuns.map(run => run.trigger.deliveryId)).toEqual(['delivery-1', 'delivery-2', 'delivery-3']);
   });
 
   it('does not append a second run for the same durable idempotency key', async () => {

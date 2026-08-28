@@ -195,7 +195,7 @@ The implementation has progressed through several independently reviewed layers:
 
 The accumulated trajectory stack has passed the permanent dashboard/Worker verification workflow. Earlier experimental PRs remain open as evaluation fixtures and are not part of the product landing sequence.
 
-The next repository-level task is to consolidate the stacked implementation onto `main` and continue hardening the public alpha around real-world repository behavior and operations.
+The validated stack is now on `main`, and the append-only Phase 1 foundation gates are complete. The next engineering focus is the deterministic Change Trajectory delta engine.
 
 ## Documentation
 
@@ -205,5 +205,6 @@ The next repository-level task is to consolidate the stacked implementation onto
 - [`docs/TEST_SCENARIOS.md`](./docs/TEST_SCENARIOS.md) — deterministic scenarios and integration coverage
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — decision history
 - [`docs/ROADMAP.md`](./docs/ROADMAP.md) — directional roadmap and deferred ideas
+- [`docs/CHANGE_TRAJECTORY_PHASE1.md`](./docs/CHANGE_TRAJECTORY_PHASE1.md) — append-only run execution record and exit gates
 
 Some planning documents preserve the original V0 framing and should be read as project history where the implementation has moved ahead of them.
