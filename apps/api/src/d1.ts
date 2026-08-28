@@ -1,5 +1,12 @@
 import type { GitHubEventRequest, GitHubRepository } from '@spark/github';
-import type { EvaluationDetailRecord, EvaluationRecord, SparkStore, StoredEvaluation } from './contracts';
+import type {
+  EvaluationDetailRecord,
+  EvaluationObservationRecord,
+  EvaluationRecord,
+  EvaluationRunRecord,
+  SparkStore,
+  StoredEvaluation,
+} from './contracts';
 
 export interface D1Result {
   meta?: { changes?: number };
@@ -89,21 +96,8 @@ export class D1SparkStore implements SparkStore {
     ).bind(repository.id, installationId, repository.full_name);
   }
 
-  async saveRepository(installationId: number, repository: GitHubRepository): Promise<void> {
-    await this.repositoryUpsert(installationId, repository).run();
-  }
-
-  async findEvaluation(repositoryId: number, headSha: string): Promise<StoredEvaluation | undefined> {
-    const row = await this.db.prepare(
-      `SELECT repository_id AS repositoryId, head_sha AS headSha, pull_request_number AS pullRequestNumber,
-              check_run_id AS checkRunId, attention
-       FROM evaluations WHERE repository_id = ? AND head_sha = ?`,
-    ).bind(repositoryId, headSha).first<StoredEvaluation>();
-    return row ?? undefined;
-  }
-
-  async saveEvaluation(record: EvaluationRecord): Promise<void> {
-    await this.db.prepare(
+  private evaluationUpsert(record: EvaluationRecord): D1PreparedStatement {
+    return this.db.prepare(
       `INSERT INTO evaluations
        (repository_id, head_sha, installation_id, pull_request_number, check_run_id, attention)
        VALUES (?, ?, ?, ?, ?, ?)
@@ -116,11 +110,11 @@ export class D1SparkStore implements SparkStore {
     ).bind(
       record.repositoryId, record.headSha, record.installationId, record.pullRequestNumber,
       record.checkRunId, record.attention,
-    ).run();
+    );
   }
 
-  async saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void> {
-    await this.db.prepare(
+  private evaluationDetailUpsert(record: EvaluationDetailRecord): D1PreparedStatement {
+    return this.db.prepare(
       `INSERT INTO evaluation_details
        (repository_id, head_sha, schema_version, base_sha, pull_request_title, pull_request_url,
         evaluator_version, evaluated_at, check_url, normalized_json, truncated)
@@ -148,6 +142,65 @@ export class D1SparkStore implements SparkStore {
       record.checkUrl ?? null,
       JSON.stringify(record.normalized),
       record.truncated ? 1 : 0,
-    ).run();
+    );
+  }
+
+  private evaluationRunInsert(record: EvaluationRunRecord): D1PreparedStatement {
+    return this.db.prepare(
+      `INSERT OR IGNORE INTO evaluation_runs
+       (id, idempotency_key, repository_id, installation_id, pull_request_number, head_sha, base_sha,
+        check_run_id, source_event, source_action, source_delivery_id, observation_source,
+        schema_version, evaluator_version, evaluated_at, attention, evidence_health, normalized_json, truncated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      record.id,
+      record.idempotencyKey,
+      record.repositoryId,
+      record.installationId,
+      record.pullRequestNumber,
+      record.headSha,
+      record.baseSha ?? null,
+      record.checkRunId,
+      record.trigger.event,
+      record.trigger.action,
+      record.trigger.deliveryId ?? null,
+      record.observationSource,
+      record.schemaVersion ?? null,
+      record.evaluatorVersion ?? null,
+      record.evaluatedAt,
+      record.attention,
+      record.evidenceHealth,
+      record.normalized ? JSON.stringify(record.normalized) : null,
+      record.truncated ? 1 : 0,
+    );
+  }
+
+  async saveRepository(installationId: number, repository: GitHubRepository): Promise<void> {
+    await this.repositoryUpsert(installationId, repository).run();
+  }
+
+  async findEvaluation(repositoryId: number, headSha: string): Promise<StoredEvaluation | undefined> {
+    const row = await this.db.prepare(
+      `SELECT repository_id AS repositoryId, head_sha AS headSha, pull_request_number AS pullRequestNumber,
+              check_run_id AS checkRunId, attention
+       FROM evaluations WHERE repository_id = ? AND head_sha = ?`,
+    ).bind(repositoryId, headSha).first<StoredEvaluation>();
+    return row ?? undefined;
+  }
+
+  async saveEvaluation(record: EvaluationRecord): Promise<void> {
+    await this.evaluationUpsert(record).run();
+  }
+
+  async saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void> {
+    await this.evaluationDetailUpsert(record).run();
+  }
+
+  async saveEvaluationObservation(record: EvaluationObservationRecord): Promise<void> {
+    await this.db.batch([
+      this.evaluationRunInsert(record.run),
+      this.evaluationUpsert(record.evaluation),
+      this.evaluationDetailUpsert(record.detail),
+    ]);
   }
 }
