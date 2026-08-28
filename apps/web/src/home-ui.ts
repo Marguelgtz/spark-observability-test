@@ -1,8 +1,6 @@
-import './insight-charts.css';
 import type { AccountV1, ActivityOverviewV1, ActivityResponseV1, PullRequestActivityV1 } from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime } from './format';
-import { donutChart, lineChart, transitionMixChart } from './insight-charts';
-import { getNotableTransitionInsights, type OverviewDrilldownResponseV1, type OverviewMetricV1 } from './overview-api';
+import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -128,49 +126,6 @@ function renderNeedsAttention(response: ActivityResponseV1, state: ActivityUrlSt
   return section;
 }
 
-function renderHomeCharts(
-  response: ActivityResponseV1,
-  overview: OverviewDrilldownResponseV1 | undefined,
-  state: ActivityUrlState,
-): HTMLElement | undefined {
-  if (!overview?.trend.length) return undefined;
-  const section = node('section', 'home-chart-grid');
-  section.dataset.testid = 'home-charts';
-
-  section.append(
-    lineChart(
-      overview.trend,
-      'Change throughput',
-      [
-        { label: 'Evaluations', read: (point) => point.evaluations },
-        { label: 'Observed PRs', read: (point) => point.observedPRs },
-      ],
-      overview.selectedWindow,
-    ),
-    donutChart('Current attention mix', 'Latest observed PR state', [
-      { label: 'HIGH', value: response.counts.HIGH, tone: 'high' },
-      { label: 'MEDIUM', value: response.counts.MEDIUM, tone: 'medium' },
-      { label: 'LOW', value: response.counts.LOW, tone: 'low' },
-    ].filter((item) => item.value > 0)),
-  );
-
-  const transitionSlot = node('div', 'home-transition-slot', 'Loading notable transition insight…');
-  transitionSlot.dataset.testid = 'home-transition-loading';
-  section.append(transitionSlot);
-  void getNotableTransitionInsights(state)
-    .then((insights) => {
-      if (!transitionSlot.isConnected) return;
-      const chart = transitionMixChart(insights, true);
-      chart.classList.add('home-chart-wide');
-      transitionSlot.replaceWith(chart);
-    })
-    .catch(() => {
-      if (transitionSlot.isConnected) transitionSlot.remove();
-    });
-
-  return section;
-}
-
 function markMergedUnresolved(main: HTMLElement, overview?: OverviewDrilldownResponseV1): void {
   if (!overview) return;
   for (const item of overview.items) {
@@ -271,8 +226,6 @@ export function enhanceActivityHome(
   if (!heading || !attentionFilters) return root;
 
   heading.after(renderOverview(response, state), renderNeedsAttention(response, state));
-  const charts = renderHomeCharts(response, overviewDetail, state);
-  if (charts) main.querySelector('.needs-attention')?.insertAdjacentElement('afterend', charts);
 
   const recent = node('div', 'recent-activity-heading');
   recent.append(node('h2', undefined, 'Recent activity'), node('span', undefined, 'Search, favorites, and attention filters apply below.'));
