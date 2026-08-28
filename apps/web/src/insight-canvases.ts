@@ -14,6 +14,7 @@ import { currentAttentionMix, evaluationAttentionMix, evaluationAttentionTrend }
 import { deriveIterationInsight, iterationInterpretation } from './insights/throughput';
 import { transitionInterpretation, transitionMix } from './insights/transitions';
 import type { NotableTransitionInsightsV1, OverviewDrilldownResponseV1 } from './overview-api';
+import { renderOutcomeInsightCanvases } from './outcome-canvases';
 import type { ActivityUrlState } from './state';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -143,6 +144,10 @@ export function renderOverviewInsightCanvases(
   state: ActivityUrlState,
   companion?: OverviewDrilldownResponseV1,
 ): HTMLElement {
+  if (response.metric === 'merged-unresolved') {
+    return renderOutcomeInsightCanvases(response, transitions, state);
+  }
+
   const stack = canvasStack('overview-charts');
 
   if (response.metric === 'pull-requests') {
