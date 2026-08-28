@@ -3,6 +3,7 @@ import type {
   ActivityQueryV1,
   ActivityResponseV1,
   EvaluationDetailResponseV1,
+  PullRequestDetailV1,
   PullRequestHistoryResponseV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
@@ -51,6 +52,27 @@ const history: PullRequestHistoryResponseV1 = {
   truncated: true,
 };
 
+const pullRequest: PullRequestDetailV1 = {
+  version: 1,
+  repository: summary.repository,
+  pullRequest: summary.pullRequest,
+  latest: summary,
+  history: {
+    totalRuns: 2,
+    evidenceCounts: { CLEAR: 1, FAILED: 0, PENDING_OR_MISSING: 0, UNKNOWN: 0 },
+    attentionCounts: { LOW: 1, MEDIUM: 0, HIGH: 0 },
+    firstEvaluatedAt: summary.evaluatedAt,
+    lastEvaluatedAt: summary.evaluatedAt,
+    currentClearStreak: 1,
+    currentFailureStreak: 0,
+  },
+  evidenceIssues: [],
+  transitions: [],
+  insights: [{ kind: 'CURRENTLY_CLEAR', headSha: summary.headSha }],
+  runs: [summary],
+  truncated: true,
+};
+
 const unavailable: EvaluationDetailResponseV1 = {
   version: 1,
   status: 'unavailable',
@@ -84,6 +106,7 @@ function authorizer(repositoryIds = [2]): DashboardAuthorizer {
 function reader() {
   return {
     activity: vi.fn(async (_query: ActivityQueryV1) => activity),
+    pullRequest: vi.fn(async () => pullRequest),
     pullRequestHistory: vi.fn(async () => history),
     evaluation: vi.fn(async () => unavailable),
   } satisfies DashboardReader;
@@ -148,6 +171,28 @@ describe('dashboard read API', () => {
       { dashboardAuthorizer: authorizer() },
     );
     expect(response.status).toBe(400);
+  });
+
+  it('returns pull request observability only inside the authorized repository scope', async () => {
+    const dashboardReader = reader();
+    const allowed = await handleRequest(
+      new Request('https://spark.test/api/repositories/2/pulls/3'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual(pullRequest);
+    expect(dashboardReader.pullRequest).toHaveBeenCalledWith(2, 3);
+
+    const denied = await handleRequest(
+      new Request('https://spark.test/api/repositories/3/pulls/3'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(denied.status).toBe(404);
+    expect(dashboardReader.pullRequest).toHaveBeenCalledTimes(1);
   });
 
   it('returns pull request history only inside the authorized repository scope', async () => {
