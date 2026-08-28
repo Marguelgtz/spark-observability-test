@@ -20,6 +20,7 @@ export interface DashboardApi {
   getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1>;
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
+  getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1>;
   logout(): Promise<void>;
 }
 
@@ -73,6 +74,10 @@ export class HttpDashboardApi implements DashboardApi {
     return this.request(`/api/evaluations/${repositoryId}/${encodeURIComponent(headSha)}`);
   }
 
+  getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1> {
+    return this.request(`/api/repositories/${repositoryId}/runs/${encodeURIComponent(runId)}`);
+  }
+
   logout(): Promise<void> {
     return this.request('/auth/logout', { method: 'POST' });
   }
@@ -88,6 +93,23 @@ function fixtureEvidenceHealth(summary: EvaluationSummaryV1): EvidenceHealthV1 {
 }
 
 const attentionRank: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+
+function identifyFixtureHistory(history: PullRequestHistoryResponseV1): PullRequestHistoryResponseV1 {
+  const sameSha = history.repository.id === 101 && history.pullRequest.number === 42
+    ? history.runs[0]?.headSha
+    : undefined;
+  const backfill = history.pullRequest.number === 37;
+  return {
+    ...history,
+    historyCompleteness: backfill ? 'PARTIAL_BACKFILL' : 'COMPLETE',
+    runs: history.runs.map((run, index) => ({
+      ...run,
+      runId: `fixture:${history.repository.id}:${history.pullRequest.number}:${index}`,
+      observationSource: backfill ? 'BACKFILL' : 'LIVE',
+      ...(sameSha ? { headSha: sameSha } : {}),
+    })),
+  };
+}
 
 function fixturePullRequestDetail(history: PullRequestHistoryResponseV1): PullRequestDetailV1 {
   const evidenceCounts: PullRequestDetailV1['history']['evidenceCounts'] = { CLEAR: 0, FAILED: 0, PENDING_OR_MISSING: 0, UNKNOWN: 0 };
@@ -157,7 +179,45 @@ function fixturePullRequestDetail(history: PullRequestHistoryResponseV1): PullRe
       ...(currentFailureStreak > 1 ? [{ kind: 'FAILURE_STREAK' as const, value: currentFailureStreak, headSha: latest.headSha }] : []),
     ],
     runs: history.runs,
+    historyCompleteness: history.historyCompleteness,
     truncated: history.truncated,
+  };
+}
+
+function fixtureRun(repositoryId: number, runId: string): EvaluationDetailResponseV1 {
+  const match = /^fixture:(\d+):(\d+):(\d+)$/.exec(runId);
+  if (!match || Number(match[1]) !== repositoryId) throw new Error('Run not found');
+  const pullRequestNumber = Number(match[2]);
+  const index = Number(match[3]);
+  const rawHistory = getFixturePullRequestHistory(repositoryId, pullRequestNumber);
+  const history = identifyFixtureHistory(rawHistory);
+  const rawRun = rawHistory.runs[index];
+  const run = history.runs[index];
+  if (!rawRun || !run) throw new Error('Run not found');
+  const response = getFixtureEvaluation(repositoryId, rawRun.headSha);
+  if (response.status === 'unavailable') {
+    return { ...response, summary: run };
+  }
+  return {
+    ...response,
+    detail: {
+      ...response.detail,
+      runId,
+      observationSource: run.observationSource,
+      headSha: run.headSha,
+      attention: run.attention,
+      reasons: run.topReasons,
+      changeSummary: run.changeSummary,
+      evaluatedAt: run.evaluatedAt,
+      githubCheckUrl: run.githubCheckUrl,
+      evidence: response.detail.evidence.map((item, evidenceIndex) => evidenceIndex === 0 ? {
+        ...item,
+        status: run.evidenceSummary.failed ? 'FAILED'
+          : run.evidenceSummary.pending ? 'PENDING'
+            : run.evidenceSummary.missing ? 'MISSING'
+              : 'PASSED',
+      } : item),
+    },
   };
 }
 
@@ -204,19 +264,25 @@ export class FixtureDashboardApi implements DashboardApi {
   async getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1> {
     if (this.mode === 'loading') return new Promise<PullRequestDetailV1>(() => undefined);
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
-    return fixturePullRequestDetail(getFixturePullRequestHistory(repositoryId, pullRequestNumber));
+    return fixturePullRequestDetail(identifyFixtureHistory(getFixturePullRequestHistory(repositoryId, pullRequestNumber)));
   }
 
   async getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
     if (this.mode === 'loading') return new Promise<PullRequestHistoryResponseV1>(() => undefined);
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
-    return getFixturePullRequestHistory(repositoryId, pullRequestNumber);
+    return identifyFixtureHistory(getFixturePullRequestHistory(repositoryId, pullRequestNumber));
   }
 
   async getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1> {
     if (this.mode === 'loading') return new Promise<EvaluationDetailResponseV1>(() => undefined);
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
     return getFixtureEvaluation(repositoryId, headSha);
+  }
+
+  async getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1> {
+    if (this.mode === 'loading') return new Promise<EvaluationDetailResponseV1>(() => undefined);
+    if (this.mode === 'error') throw new Error('Synthetic fixture failure');
+    return fixtureRun(repositoryId, runId);
   }
 
   async logout(): Promise<void> {
