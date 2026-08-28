@@ -1,8 +1,9 @@
 import type { ActivityWindowV1, EvaluationSummaryV1, PullRequestActivityV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime, shortSha } from './format';
+import { renderOverviewInsightCanvases } from './insight-canvases';
+import type { NotableTransitionInsightsV1, OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import type { ActivityUrlState } from './state';
 import { serializeActivityState } from './state';
-import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -103,6 +104,8 @@ export function renderOverviewDrilldown(
   response: OverviewDrilldownResponseV1,
   state: ActivityUrlState,
   onWindow: (window: ActivityWindowV1) => void,
+  transitions: NotableTransitionInsightsV1,
+  companion?: OverviewDrilldownResponseV1,
 ): HTMLElement {
   const main = node('main', 'overview-detail-page');
   main.dataset.testid = `overview-${response.metric}`;
@@ -119,11 +122,7 @@ export function renderOverviewDrilldown(
   const total = node('div', 'overview-detail-total');
   total.append(node('strong', undefined, String(response.total)), node('span', undefined, `in ${state.window}`));
   heading.append(copy, total, windowControls(state, onWindow));
-  main.append(heading);
-
-  const charts = node('section', 'overview-chart-grid');
-  charts.dataset.testid = 'overview-charts';
-  main.append(charts);
+  main.append(heading, renderOverviewInsightCanvases(response, transitions, state, companion));
 
   if (response.metric === 'attention') {
     main.append(node('p', 'overview-chart-note', 'The headline count is the current active queue. Transition charts show notable changes observed during the selected window, not historical queue snapshots.'));
