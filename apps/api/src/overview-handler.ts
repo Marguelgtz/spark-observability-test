@@ -1,4 +1,5 @@
 import type { ActivityWindowV1 } from '@spark/dashboard-contracts';
+import type { OutcomeOverviewV1 } from '@spark/dashboard-contracts/outcome';
 import type { Env } from './app';
 import { readActivityDrilldown, type OverviewMetricV1 } from './activity-drilldown';
 import { readNotableTransitionInsights } from './activity-transitions';
@@ -68,7 +69,7 @@ export async function handleOverviewRequest(request: Request, env: Env): Promise
   const drilldown = await readActivityDrilldown(env.DB, { ...input, metric });
   if (metric !== 'merged-unresolved') return json(drilldown);
 
-  const outcomes = await readOutcomeOverview(env.DB, {
+  const outcomes: OutcomeOverviewV1 = await readOutcomeOverview(env.DB, {
     ...input,
     githubUserId: principal.viewer.id,
   });
