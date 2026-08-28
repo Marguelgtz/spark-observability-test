@@ -1,64 +1,102 @@
-# Product Experience Phase 3 — First-class Change Story
+# Product Experience Phase 3 — Key Moments and Change Evolution
 
 **Status:** in progress  
 **Branch:** `product-experience/3-change-story`  
 **Base:** `product-experience/2b-insight-canvases`
 
+## Product correction
+
+Spark does not yet know enough to truthfully *tell* a software-change story. It has strong immutable observations and deterministic trajectory transitions, but it should not turn those facts into unsupported causal narrative.
+
+This phase therefore treats the PR page as a **story-building substrate**:
+
+```text
+observations
+    ↓
+key moments / change evolution
+    ↓
+analytical trajectory
+    ↓
+forensic detail
+    ↓
+future human / deployment / incident context
+```
+
+The UI helps a developer reconstruct what happened without claiming Spark already understands why it happened.
+
 ## Objective
 
-Make a pull request's evolution understandable as one deterministic story rather than a collection of separate forensic sections.
+Make a pull request's evolution understandable in under 30 seconds while keeping the page closer to the compact, analytical character of the earlier PR view.
 
-A developer should be able to open a Spark PR page and, in under 30 seconds, answer:
+A developer should be able to answer:
 
 1. Where did this change start?
-2. What materially changed while it evolved?
+2. Which moments materially changed its trajectory?
 3. What state is it in now?
 4. If it ended, what was the merge or close outcome?
+5. Where can I inspect the underlying evidence if I need more detail?
 
 This phase is presentation and deterministic derivation only. It does not change evaluator scoring, persistence, authorization, lifecycle semantics, feedback semantics, or external integrations.
 
-## Product shape
+## Primary interaction model
 
-The PR page becomes story-first:
+The page should not render every retained moment as a large narrative card. Instead, **Key moments** is a compact chronological spine:
 
 ```text
-PR #1938
+KEY MOMENTS
+Material changes Spark observed while this PR evolved
 
-Initial
-LOW
-
-↓ 2h14m
-
-HIGH
-Payments + shared ledger touched
-Integration evidence missing
-
-↓ 31m
-
-MEDIUM
-Unit evidence recovered
-Integration evidence still missing
-
-↓ MERGED
-
-MEDIUM
-Merged with unresolved attention
+● Initial       LOW      Evidence clear
+│
+│ 22m
+│
+● Evidence became incomplete       MEDIUM
+│ Integration evidence pending
+│
+│ 18m
+│
+● Attention increased to HIGH      HIGH          [feedback]
+│ Integration evidence failed · auth/security added
+│
+│ 5m
+│
+● Merged        HIGH
+  Merged with unresolved attention
 ```
 
-The exact visual treatment can differ, but the information hierarchy must remain chronological and scannable.
+Each row should prioritize:
 
-## Story node model
+- moment type;
+- attention/evidence state;
+- deterministic headline;
+- one or two compact cause fragments;
+- elapsed time from the previous retained moment;
+- link to the immutable evaluation when available.
 
-The UI derives story nodes from the existing `PullRequestTrajectoryV1` contract.
+The timeline is the **narrative spine**, not a stack of article cards.
 
-Story nodes are:
+## Terminology
+
+User-facing terminology for this phase:
+
+- **Key moments** — the retained material moments in the PR's evolution.
+- **Change evolution** — explanatory copy for what the sequence represents.
+- **Change trajectory** — the analytical severity/transition canvas already present below the sequence.
+
+Avoid presenting the primary component as a completed `Change story`. A true story is a future layer that may include human annotations, review decisions, deployments, incidents, or other outcome context.
+
+Internal derivation names may remain unchanged where renaming would add mechanical churn without product value.
+
+## Moment model
+
+The UI continues to derive moments from the existing `PullRequestTrajectoryV1` contract:
 
 1. **Initial** — oldest retained evaluation.
-2. **Notable transition** — one node per deterministic notable transition.
-3. **Latest** — newest retained evaluation when it is not already represented by the final notable-transition node.
+2. **Notable transition** — one moment per deterministic notable transition.
+3. **Latest** — newest retained evaluation when it is not already represented by the final transition.
 4. **Terminal lifecycle** — merged or closed state, separate from evaluation observations.
 
-Unchanged evaluations remain inspectable in forensic history but are not promoted into the primary story.
+Unchanged evaluations remain inspectable in forensic history but are not promoted into the primary sequence.
 
 ## Deterministic headline priority
 
@@ -69,7 +107,7 @@ Each material transition gets one primary headline, selected in this order:
 3. sensitive surface addition;
 4. scope expansion.
 
-Secondary causes remain visible below the headline. The story does not synthesize unsupported causal claims.
+Secondary causes remain visible as compact supporting facts. The UI does not synthesize unsupported causal claims.
 
 ## Terminal outcome copy
 
@@ -83,13 +121,31 @@ Closed, unmerged PRs use:
 
 - `Closed without merge`
 
-The lifecycle node continues to expose the retained pre-merge attention/evidence facts when available.
+The lifecycle moment continues to expose retained pre-merge attention/evidence facts when available.
 
-## Feedback placement
+## Feedback interaction
 
-Existing trajectory feedback remains attached to the material transition it describes.
+Feedback remains attached to the material transition it describes, but it must no longer occupy permanent card space.
 
-Feedback must not move to a detached page-level section and must remain:
+Eligible moments expose one compact feedback affordance:
+
+- small icon/button in the moment row;
+- tooltip on hover/focus: `Give Spark feedback on this transition`;
+- saved feedback uses a subtle selected/saved state;
+- activating it opens a **right-side drawer**.
+
+Drawer contents:
+
+1. transition context;
+2. `Useful`;
+3. `Expected`;
+4. `False positive`;
+5. `Fixed because of Spark`;
+6. optional context textarea;
+7. explicit save status;
+8. close action and Escape support.
+
+The drawer must preserve existing feedback semantics:
 
 - per viewer;
 - per stable transition ID;
@@ -97,22 +153,22 @@ Feedback must not move to a detached page-level section and must remain:
 - measurement-only;
 - independent from evaluator behavior.
 
-## Progressive disclosure
+## Page hierarchy
 
 The primary page order is:
 
-1. PR identity and current state/action.
-2. First-class Change Story.
-3. Existing trajectory canvas as a compact analytical summary.
-4. Forensic detail below the fold:
+1. PR identity and current state/actions from the existing PR view.
+2. **Key moments / Change evolution** compact timeline.
+3. Existing **Change trajectory** insight canvas.
+4. **Forensic details** progressive disclosure:
    - observations;
    - evidence issues;
    - complete evaluation history;
    - unchanged evaluations.
 
-Forensic detail may be collapsed by default, but no retained evidence or run identity is discarded.
+This is intentionally between the older dense PR page and the first story-card implementation: compact chronology first, analytical context second, full detail still one interaction away.
 
-## Data and architecture boundary
+## Architecture
 
 Use the existing fields in `PullRequestTrajectoryV1`:
 
@@ -123,52 +179,67 @@ Use the existing fields in `PullRequestTrajectoryV1`:
 - `feedback`
 - history completeness/truncation metadata
 
-Add a contract field only if the existing data cannot truthfully derive a required story node. No migration is expected.
+No new contract field or migration is expected.
 
 Implementation boundary:
 
 ```text
 PullRequestTrajectoryV1
         ↓
-pure story derivation
+pure retained-moment derivation
         ↓
-change-story UI
+compact key-moments renderer
         ↓
-existing forensic sections
+contextual feedback drawer
+        ↓
+change-trajectory canvas
+        ↓
+forensic disclosure
 ```
 
-The derivation module must be DOM-free and unit tested.
+The derivation module remains DOM-free and unit tested.
 
 ## Accessibility
 
-- Story is a semantic ordered sequence.
-- Attention is never encoded by color alone.
-- Time-between-state copy remains readable without the graphical connector.
+- Key moments remain a semantic ordered sequence.
+- Attention/evidence are never encoded by color alone.
+- Elapsed-time copy remains readable without the graphical spine.
+- Feedback trigger has an explicit accessible name and visible hover/focus tooltip.
+- Drawer uses dialog semantics, has an accessible title, supports Escape, restores focus to its trigger, and exposes save status through a live region.
 - Terminal outcome has explicit text.
-- Feedback controls preserve current keyboard behavior and live save status.
-- Mobile keeps chronological order without horizontal scrolling.
+- Mobile preserves chronological order and uses a full-width drawer treatment without horizontal scrolling.
 
 ## Exit gates
 
-- initial, notable, latest, and terminal nodes render in chronological order;
-- unchanged evaluations do not clutter the primary story;
-- transition headline priority is deterministic;
-- transition causes remain inspectable;
-- feedback is rendered on the correct material transition node;
-- merged resolved, merged unresolved, unavailable merge outcome, and closed-without-merge states use the exact outcome copy above;
+- initial, notable, latest, and terminal moments render chronologically;
+- unchanged evaluations do not clutter the primary sequence;
+- primary sequence is materially more compact than the previous large-card implementation;
+- transition headline priority remains deterministic;
+- transition causes remain inspectable without dominating the row;
+- feedback controls are absent from the resting timeline and available through tooltip + drawer;
+- saved feedback can be reopened and edited;
+- exact merge/close outcome copy is retained;
 - partial/backfilled history is labeled truthfully;
-- existing immutable run navigation remains intact;
-- desktop and mobile browser acceptance cover story structure and lifecycle copy;
+- immutable run navigation remains intact;
+- trajectory canvas remains visible without opening forensic details;
+- desktop and mobile browser acceptance cover sequence structure, feedback drawer, lifecycle copy, and forensic disclosure;
 - typecheck, unit/API tests, production build, D1 migration validation, Worker dry-run, and browser acceptance pass.
+
+## Future story layer
+
+Do not implement this in the current phase, but preserve the product direction:
+
+A future **Story** layer may combine Spark's key moments with human annotations, review decisions, deployment/runtime outcomes, incident links, or carefully bounded generated narration. The current key-moments model should make that future layer possible without pretending it exists today.
 
 ## Non-goals
 
 - AI-generated summaries;
+- human story annotations in this PR;
 - incident/deployment correlation;
 - merge enforcement;
 - RBAC;
 - organization-wide trajectory scoring;
-- a synthetic trajectory quality score;
+- synthetic trajectory quality scores;
 - architecture/modularity claims from evaluation count;
 - new lifecycle or feedback persistence.
 
