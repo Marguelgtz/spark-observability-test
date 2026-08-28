@@ -2,6 +2,7 @@ export type AttentionLevelV1 = 'LOW' | 'MEDIUM' | 'HIGH';
 export type AttentionFilterV1 = 'ALL' | AttentionLevelV1;
 export type ActivityWindowV1 = '24h' | '7d' | '30d';
 export type EvidenceStatusV1 = 'PASSED' | 'PENDING' | 'FAILED' | 'MISSING' | 'UNKNOWN';
+export type EvidenceHealthV1 = 'CLEAR' | 'FAILED' | 'PENDING_OR_MISSING' | 'UNKNOWN';
 
 export interface ViewerV1 {
   version: 1;
@@ -85,6 +86,74 @@ export interface PullRequestHistoryResponseV1 {
   repository: RepositoryRefV1;
   pullRequest: PullRequestRefV1;
   totalRunCount: number;
+  runs: EvaluationSummaryV1[];
+  truncated: boolean;
+}
+
+export type PullRequestTransitionKindV1 =
+  | 'EVIDENCE_RECOVERED'
+  | 'EVIDENCE_REGRESSED'
+  | 'EVIDENCE_BECAME_PENDING'
+  | 'EVIDENCE_RESOLVED'
+  | 'ATTENTION_INCREASED'
+  | 'ATTENTION_DECREASED';
+
+export interface PullRequestTransitionV1 {
+  kind: PullRequestTransitionKindV1;
+  fromHeadSha: string;
+  toHeadSha: string;
+  fromAttention: AttentionLevelV1;
+  toAttention: AttentionLevelV1;
+  fromEvidenceHealth: EvidenceHealthV1;
+  toEvidenceHealth: EvidenceHealthV1;
+  evaluatedAt: string;
+}
+
+export type PullRequestInsightKindV1 =
+  | 'CURRENTLY_CLEAR'
+  | 'CURRENTLY_FAILING'
+  | 'CURRENTLY_WAITING'
+  | 'CLEAR_STREAK'
+  | 'FAILURE_STREAK'
+  | 'EVIDENCE_RECOVERED'
+  | 'EVIDENCE_REGRESSED'
+  | 'ATTENTION_INCREASED'
+  | 'ATTENTION_DECREASED';
+
+export interface PullRequestInsightV1 {
+  kind: PullRequestInsightKindV1;
+  value?: number;
+  headSha?: string;
+}
+
+export interface PullRequestEvidenceIssueV1 {
+  name: string;
+  failedRuns: number;
+  pendingRuns: number;
+  missingRuns: number;
+  unknownRuns: number;
+  latestStatus: EvidenceStatusV1;
+  lastProblemHeadSha?: string;
+  lastProblemAt?: string;
+}
+
+export interface PullRequestDetailV1 {
+  version: 1;
+  repository: RepositoryRefV1;
+  pullRequest: PullRequestRefV1;
+  latest: EvaluationSummaryV1;
+  history: {
+    totalRuns: number;
+    evidenceCounts: Record<EvidenceHealthV1, number>;
+    attentionCounts: Record<AttentionLevelV1, number>;
+    firstEvaluatedAt: string;
+    lastEvaluatedAt: string;
+    currentClearStreak: number;
+    currentFailureStreak: number;
+  };
+  evidenceIssues: PullRequestEvidenceIssueV1[];
+  transitions: PullRequestTransitionV1[];
+  insights: PullRequestInsightV1[];
   runs: EvaluationSummaryV1[];
   truncated: boolean;
 }
