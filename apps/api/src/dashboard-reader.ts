@@ -5,8 +5,11 @@ import type {
   ChangeSummaryV1,
   EvaluationDetailResponseV1,
   EvaluationDetailV1,
+  EvaluationObservationSourceV1,
   EvaluationSummaryV1,
+  EvidenceHealthV1,
   EvidenceSummaryV1,
+  HistoryCompletenessV1,
   ObservedRepositoryV1,
   PullRequestActivityV1,
   PullRequestDetailV1,
@@ -15,7 +18,7 @@ import type {
 } from '@spark/dashboard-contracts';
 import type { D1Database } from './d1';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
-import { buildPullRequestDetail } from './pull-request-insights';
+import { buildPullRequestDetail, type PullRequestHistoryAggregate } from './pull-request-insights';
 
 const EVAL_TIME_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', COALESCE(d.evaluated_at, e.updated_at))";
 const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
@@ -30,6 +33,9 @@ interface ActivityRow {
   evaluated_at: string;
   normalized_json: string | null;
   check_url: string | null;
+  run_id?: string | null;
+  observation_source?: EvaluationObservationSourceV1 | null;
+  evidence_health?: EvidenceHealthV1 | null;
 }
 
 interface PullRequestActivityRow extends ActivityRow {
@@ -39,8 +45,20 @@ interface PullRequestActivityRow extends ActivityRow {
   high_count: number;
 }
 
-interface HistoryRow extends ActivityRow {
+interface HistoryRow extends ActivityRow {}
+
+interface HistoryAggregateRow {
   total_run_count: number;
+  low_count: number;
+  medium_count: number;
+  high_count: number;
+  clear_count: number;
+  failed_count: number;
+  pending_missing_count: number;
+  unknown_count: number;
+  first_evaluated_at: string;
+  last_evaluated_at: string;
+  backfill_count: number;
 }
 
 interface RepositoryRow {
@@ -146,6 +164,8 @@ export function summaryFromRow(row: ActivityRow): EvaluationSummaryV1 {
     : splitRepository(row.repository_id, row.full_name);
   const prUrl = detail?.pullRequest.url ?? pullUrl(row.full_name, row.pull_request_number);
   return {
+    ...(row.run_id ? { runId: row.run_id } : {}),
+    ...(row.observation_source ? { observationSource: row.observation_source } : {}),
     repository,
     pullRequest: {
       number: row.pull_request_number,
@@ -190,6 +210,8 @@ export function detailFromRow(row: ActivityRow): EvaluationDetailResponseV1 {
     : [];
   const response: EvaluationDetailV1 = {
     version: 1,
+    ...(row.run_id ? { runId: row.run_id } : {}),
+    ...(row.observation_source ? { observationSource: row.observation_source } : {}),
     repository: summary.repository,
     pullRequest: summary.pullRequest,
     headSha: detail.headSha,
@@ -227,6 +249,27 @@ function runInputFromRow(row: ActivityRow) {
   return {
     summary: response.status === 'available' ? summaryFromRow(row) : response.summary,
     ...(response.status === 'available' ? { detail: response.detail } : {}),
+  };
+}
+
+function aggregateFromRow(row: HistoryAggregateRow): PullRequestHistoryAggregate {
+  const historyCompleteness: HistoryCompletenessV1 = Number(row.backfill_count ?? 0) > 0 ? 'PARTIAL_BACKFILL' : 'COMPLETE';
+  return {
+    totalRuns: Number(row.total_run_count ?? 0),
+    evidenceCounts: {
+      CLEAR: Number(row.clear_count ?? 0),
+      FAILED: Number(row.failed_count ?? 0),
+      PENDING_OR_MISSING: Number(row.pending_missing_count ?? 0),
+      UNKNOWN: Number(row.unknown_count ?? 0),
+    },
+    attentionCounts: {
+      LOW: Number(row.low_count ?? 0),
+      MEDIUM: Number(row.medium_count ?? 0),
+      HIGH: Number(row.high_count ?? 0),
+    },
+    firstEvaluatedAt: row.first_evaluated_at,
+    lastEvaluatedAt: row.last_evaluated_at,
+    historyCompleteness,
   };
 }
 
@@ -321,19 +364,23 @@ export class D1DashboardReader implements DashboardReader {
                 SUM(CASE WHEN attention = 'LOW' THEN 1 ELSE 0 END) AS low_count,
                 SUM(CASE WHEN attention = 'MEDIUM' THEN 1 ELSE 0 END) AS medium_count,
                 SUM(CASE WHEN attention = 'HIGH' THEN 1 ELSE 0 END) AS high_count
-         FROM ranked
+         FROM evaluation_runs
+         WHERE repository_id IN (${REPOSITORY_SCOPE_SQL})
          GROUP BY repository_id, pull_request_number
        )
        SELECT l.repository_id, l.full_name, l.head_sha, l.pull_request_number, l.attention,
               l.evaluated_at, l.normalized_json, l.check_url,
-              h.run_count, h.low_count, h.medium_count, h.high_count
+              COALESCE(h.run_count, 1) AS run_count,
+              COALESCE(h.low_count, CASE WHEN l.attention = 'LOW' THEN 1 ELSE 0 END) AS low_count,
+              COALESCE(h.medium_count, CASE WHEN l.attention = 'MEDIUM' THEN 1 ELSE 0 END) AS medium_count,
+              COALESCE(h.high_count, CASE WHEN l.attention = 'HIGH' THEN 1 ELSE 0 END) AS high_count
        FROM ranked l
-       JOIN history h
+       LEFT JOIN history h
          ON h.repository_id = l.repository_id AND h.pull_request_number = l.pull_request_number
        WHERE ${where.join(' AND ')}
        ORDER BY l.evaluated_at DESC, l.repository_id DESC, l.pull_request_number DESC
        LIMIT ?`,
-    ).bind(...bindings, limit + 1).all<PullRequestActivityRow>();
+    ).bind(repositoryScope, repositoryScope, ...bindings.slice(1), limit + 1).all<PullRequestActivityRow>();
     const rows = activityResult.results ?? [];
     const page = rows.slice(0, limit);
     const last = page.at(-1);
@@ -356,39 +403,63 @@ export class D1DashboardReader implements DashboardReader {
 
   private async pullRequestRows(repositoryId: number, pullRequestNumber: number): Promise<HistoryRow[]> {
     const result = await this.db.prepare(
-      `SELECT e.repository_id, r.full_name, e.head_sha, e.pull_request_number, e.attention,
-              ${EVAL_TIME_SQL} AS evaluated_at, d.normalized_json, d.check_url,
-              COUNT(*) OVER () AS total_run_count
-       FROM evaluations e
-       JOIN repositories r ON r.id = e.repository_id
-       LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
-       WHERE e.repository_id = ? AND e.pull_request_number = ?
-       ORDER BY datetime(COALESCE(d.evaluated_at, e.updated_at)) DESC, e.head_sha DESC
+      `SELECT er.repository_id, r.full_name, er.head_sha, er.pull_request_number, er.attention,
+              er.evaluated_at, er.normalized_json, NULL AS check_url,
+              er.id AS run_id, er.observation_source, er.evidence_health
+       FROM evaluation_runs er
+       JOIN repositories r ON r.id = er.repository_id
+       WHERE er.repository_id = ? AND er.pull_request_number = ?
+       ORDER BY datetime(er.evaluated_at) DESC, datetime(er.created_at) DESC, er.id DESC
        LIMIT ?`,
     ).bind(repositoryId, pullRequestNumber, MAX_HISTORY_RUNS).all<HistoryRow>();
     return result.results ?? [];
   }
 
+  private async pullRequestAggregate(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryAggregate | undefined> {
+    const row = await this.db.prepare(
+      `SELECT COUNT(*) AS total_run_count,
+              SUM(CASE WHEN attention = 'LOW' THEN 1 ELSE 0 END) AS low_count,
+              SUM(CASE WHEN attention = 'MEDIUM' THEN 1 ELSE 0 END) AS medium_count,
+              SUM(CASE WHEN attention = 'HIGH' THEN 1 ELSE 0 END) AS high_count,
+              SUM(CASE WHEN evidence_health = 'CLEAR' THEN 1 ELSE 0 END) AS clear_count,
+              SUM(CASE WHEN evidence_health = 'FAILED' THEN 1 ELSE 0 END) AS failed_count,
+              SUM(CASE WHEN evidence_health = 'PENDING_OR_MISSING' THEN 1 ELSE 0 END) AS pending_missing_count,
+              SUM(CASE WHEN evidence_health = 'UNKNOWN' THEN 1 ELSE 0 END) AS unknown_count,
+              MIN(evaluated_at) AS first_evaluated_at,
+              MAX(evaluated_at) AS last_evaluated_at,
+              SUM(CASE WHEN observation_source = 'BACKFILL' THEN 1 ELSE 0 END) AS backfill_count
+       FROM evaluation_runs
+       WHERE repository_id = ? AND pull_request_number = ?`,
+    ).bind(repositoryId, pullRequestNumber).first<HistoryAggregateRow>();
+    if (!row || Number(row.total_run_count ?? 0) === 0) return undefined;
+    return aggregateFromRow(row);
+  }
+
   async pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined> {
-    const rows = await this.pullRequestRows(repositoryId, pullRequestNumber);
-    if (!rows.length) return undefined;
-    const totalRunCount = Number(rows[0].total_run_count ?? rows.length);
-    return buildPullRequestDetail(rows.map(runInputFromRow), totalRunCount);
+    const [rows, aggregate] = await Promise.all([
+      this.pullRequestRows(repositoryId, pullRequestNumber),
+      this.pullRequestAggregate(repositoryId, pullRequestNumber),
+    ]);
+    if (!rows.length || !aggregate) return undefined;
+    return buildPullRequestDetail(rows.map(runInputFromRow), aggregate.totalRuns, aggregate);
   }
 
   async pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined> {
-    const rows = await this.pullRequestRows(repositoryId, pullRequestNumber);
-    if (!rows.length) return undefined;
+    const [rows, aggregate] = await Promise.all([
+      this.pullRequestRows(repositoryId, pullRequestNumber),
+      this.pullRequestAggregate(repositoryId, pullRequestNumber),
+    ]);
+    if (!rows.length || !aggregate) return undefined;
     const runs = rows.map(summaryFromRow);
     const latest = runs[0];
-    const totalRunCount = Number(rows[0].total_run_count ?? runs.length);
     return {
       version: 1,
       repository: latest.repository,
       pullRequest: latest.pullRequest,
-      totalRunCount,
+      totalRunCount: aggregate.totalRuns,
       runs,
-      truncated: totalRunCount > runs.length,
+      historyCompleteness: aggregate.historyCompleteness,
+      truncated: aggregate.totalRuns > runs.length,
     };
   }
 
