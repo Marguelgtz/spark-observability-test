@@ -26,23 +26,23 @@ function collectForensics(page: HTMLElement): HTMLElement | undefined {
   ].filter((item): item is HTMLElement => Boolean(item));
   if (!sections.length) return undefined;
 
-  const forensics = document.createElement('section');
-  forensics.className = 'pr-forensics';
-  forensics.dataset.testid = 'pr-forensics';
+  const details = document.createElement('details');
+  details.className = 'pr-forensics';
+  details.dataset.testid = 'pr-forensics';
 
-  const heading = document.createElement('div');
-  heading.className = 'pr-forensics-heading';
+  const summary = document.createElement('summary');
+  summary.className = 'pr-forensics-heading';
   const title = document.createElement('h2');
   title.textContent = 'Forensic details';
   const description = document.createElement('p');
   description.textContent = 'Underlying observations, evidence issues, and complete evaluation history.';
-  heading.append(title, description);
+  summary.append(title, description);
 
   const body = document.createElement('div');
   body.className = 'pr-forensics-body';
   body.append(...sections);
-  forensics.append(heading, body);
-  return forensics;
+  details.append(summary, body);
+  return details;
 }
 
 export function enhancePullRequestWithSeverityTimeline(
@@ -69,15 +69,14 @@ export function enhancePullRequestWithSeverityTimeline(
   }
 
   // Key moments own the compact lifecycle/transition sequence. Remove the old
-  // duplicate terminal and transition list while preserving the underlying
-  // observations, evidence, and run history as visible forensic detail.
+  // duplicate terminal and transition list while retaining complete run-level
+  // evidence and observations in a compact forensic disclosure.
   page.querySelector<HTMLElement>('.pr-terminal')?.remove();
   page.querySelector<HTMLElement>('.pr-transition-list')?.remove();
   const forensics = collectForensics(page);
 
-  // Change evolution is supporting synthesis after the analytical trajectory.
-  // Forensic detail follows it immediately so the user can continue directly
-  // from the compressed sequence into the complete retained evidence.
+  // Change evolution comes after the analytical trajectory. Forensic detail is
+  // the final layer, collapsed by default and directly beneath that sequence.
   let moments = root.querySelector<HTMLElement>('[data-testid="key-moments"]');
   if (!moments) {
     moments = renderChangeStory(detail, {
