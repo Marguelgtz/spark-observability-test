@@ -430,29 +430,24 @@
 
 .pr-forensics {
   margin-top: 18px;
+  padding-top: 18px;
   border-top: 1px solid #deded8;
 }
 
-.pr-forensics > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 15px 0;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 800;
+.pr-forensics-heading {
+  margin-bottom: 14px;
 }
 
-.pr-forensics > summary::after {
-  content: 'Show';
+.pr-forensics-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.pr-forensics-heading p {
+  margin: 5px 0 0;
   color: #777771;
   font-size: 11px;
-  font-weight: 600;
-}
-
-.pr-forensics[open] > summary::after {
-  content: 'Hide';
+  line-height: 1.45;
 }
 
 .pr-forensics-body {
