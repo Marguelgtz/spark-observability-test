@@ -116,4 +116,22 @@ describe('HttpDashboardApi', () => {
       expect.any(Object),
     );
   });
+
+  it('encodes immutable run IDs on the repository-scoped run endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      version: 1,
+      status: 'unavailable',
+      reason: 'LEGACY_RECORD',
+      summary: {},
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+
+    await api.getRun(2, 'run:with/slash and space');
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://spark.test/api/repositories/2/runs/run%3Awith%2Fslash%20and%20space',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
 });
