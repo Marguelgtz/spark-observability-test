@@ -9,6 +9,7 @@ import type {
   ViewerV1
 } from '@spark/dashboard-contracts';
 import type { ActivityUrlState } from './state';
+import { FavoriteStore, type FavoriteTarget } from './favorites';
 import { changeLabel, evidenceLabel, relativeTime, shortSha, trustedGitHubUrl } from './format';
 import { serializeActivityState } from './state';
 
@@ -36,6 +37,47 @@ function safeExternalLink(label: string, value: string, className = 'external-li
   anchor.target = '_blank';
   anchor.rel = 'noreferrer noopener';
   return anchor;
+}
+
+export function evaluationTarget(summary: Pick<EvaluationSummaryV1, 'repository' | 'pullRequest' | 'runId' | 'headSha'>): FavoriteTarget {
+  return {
+    kind: 'evaluation',
+    repositoryId: summary.repository.id,
+    pullRequestNumber: summary.pullRequest.number,
+    runId: summary.runId,
+    headSha: summary.headSha,
+  };
+}
+
+export function favoriteButton(
+  favorites: FavoriteStore,
+  target: FavoriteTarget,
+  label: string,
+  onChange: () => void = () => undefined,
+): HTMLButtonElement {
+  const element = node('button', 'favorite-button') as HTMLButtonElement;
+  element.type = 'button';
+  const sync = (active: boolean) => {
+    element.classList.toggle('is-favorite', active);
+    element.setAttribute('aria-pressed', active ? 'true' : 'false');
+    element.setAttribute('aria-label', `${active ? 'Remove' : 'Favorite'} ${label}${active ? ' from favorites' : ''}`);
+    element.title = active ? 'Remove from favorites' : 'Add to favorites';
+    element.textContent = active ? '★' : '☆';
+  };
+  sync(favorites.isFavorite(target));
+  element.addEventListener('click', async () => {
+    element.disabled = true;
+    try {
+      sync(await favorites.toggle(target));
+      onChange();
+    } catch {
+      element.title = 'Could not update favorite';
+      element.classList.add('has-error');
+    } finally {
+      element.disabled = false;
+    }
+  });
+  return element;
 }
 
 function shell(viewer?: ViewerV1): { root: HTMLElement; main: HTMLElement } {
@@ -144,7 +186,7 @@ function sameObservation(run: EvaluationSummaryV1, latest: EvaluationSummaryV1):
   return latest.runId ? run.runId === latest.runId : run.headSha === latest.headSha;
 }
 
-function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: EvaluationSummaryV1, state: ActivityUrlState): HTMLElement {
+function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: EvaluationSummaryV1, state: ActivityUrlState, favorites: FavoriteStore): HTMLElement {
   const panel = node('div', 'pr-history-panel');
   panel.dataset.testid = `history-${history.repository.id}-${history.pullRequest.number}`;
 
@@ -163,18 +205,22 @@ function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: Evalu
   rail.setAttribute('role', 'list');
   for (const run of history.runs) {
     const isLatest = sameObservation(run, latest);
+    const shell = node('div', 'history-card-shell');
+    shell.setAttribute('role', 'listitem');
     const card = node('a', `history-card${isLatest ? ' is-latest' : ''}`) as HTMLAnchorElement;
     card.href = activityHref(run, state);
     card.dataset.routerLink = 'true';
     if (run.runId) card.dataset.runId = run.runId;
-    card.setAttribute('role', 'listitem');
     card.setAttribute('aria-label', `${isLatest ? 'Latest, ' : ''}${run.attention}, ${shortSha(run.headSha)}, ${evidenceLabel(run.evidenceSummary)}`);
     const top = node('span', 'history-card-top');
     top.append(node('span', attentionClass(run.attention), run.attention), node('code', undefined, shortSha(run.headSha)));
     card.append(top, node('strong', 'history-evidence', evidenceLabel(run.evidenceSummary)), node('time', 'history-time', relativeTime(run.evaluatedAt)));
     if (run.observationSource === 'BACKFILL') card.append(node('span', 'history-latest-label', 'Backfilled'));
     else if (isLatest) card.append(node('span', 'history-latest-label', 'Latest'));
-    rail.append(card);
+    const favorite = favoriteButton(favorites, evaluationTarget(run), `evaluation ${shortSha(run.headSha)}`);
+    favorite.classList.add('favorite-overlay');
+    shell.append(card, favorite);
+    rail.append(shell);
   }
   panel.append(rail);
   return panel;
@@ -183,7 +229,9 @@ function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: Evalu
 function pullRequestRow(
   activity: PullRequestActivityV1,
   state: ActivityUrlState,
-  loadHistory: (repositoryId: number, pullRequestNumber: number) => Promise<PullRequestHistoryResponseV1>
+  loadHistory: (repositoryId: number, pullRequestNumber: number) => Promise<PullRequestHistoryResponseV1>,
+  favorites: FavoriteStore,
+  onFavoriteChange: () => void,
 ): HTMLElement {
   const latest = activity.latest;
   const wrapper = node('div', 'pull-request-activity');
@@ -193,10 +241,11 @@ function pullRequestRow(
   const level = node('span', attentionClass(latest.attention), latest.attention);
 
   const link = node('a', 'evaluation-main-link') as HTMLAnchorElement;
-  link.href = activityHref(latest, state);
+  const activitySearch = serializeActivityState(state);
+  link.href = `/app/repositories/${latest.repository.id}/pulls/${latest.pullRequest.number}${activitySearch ? `?${activitySearch}` : ''}`;
   link.dataset.routerLink = 'true';
   link.dataset.testid = `evaluation-${latest.repository.id}-${shortSha(latest.headSha)}`;
-  link.setAttribute('aria-label', `${latest.attention}: ${latest.pullRequest.title}, ${latest.repository.name} pull request ${latest.pullRequest.number}`);
+  link.setAttribute('aria-label', `Open pull request ${latest.pullRequest.number}: ${latest.pullRequest.title}`);
   const body = node('span', 'evaluation-body');
   body.append(node('strong', 'evaluation-title', latest.pullRequest.title));
   const compact = node('span', 'evaluation-compact');
@@ -214,12 +263,23 @@ function pullRequestRow(
   const meta = node('div', 'evaluation-meta');
   const time = node('time', 'evaluation-time', relativeTime(latest.evaluatedAt));
   time.dateTime = latest.evaluatedAt;
-  const historyButton = node('button', 'history-toggle', `↻ ${activity.history.runCount}`) as HTMLButtonElement;
+  const historyButton = node('button', 'history-toggle', String(activity.history.runCount)) as HTMLButtonElement;
   historyButton.type = 'button';
+  historyButton.classList.toggle('is-singular', activity.history.runCount === 1);
   historyButton.dataset.testid = `history-toggle-${latest.repository.id}-${latest.pullRequest.number}`;
   historyButton.setAttribute('aria-expanded', 'false');
   historyButton.setAttribute('aria-label', `Show ${activity.history.runCount} evaluations for pull request ${latest.pullRequest.number}`);
-  meta.append(time, historyButton);
+  const actions = node('div', 'evaluation-row-actions');
+  actions.append(
+    favoriteButton(
+      favorites,
+      { kind: 'pull-request', repositoryId: latest.repository.id, pullRequestNumber: latest.pullRequest.number },
+      `pull request #${latest.pullRequest.number}`,
+      onFavoriteChange,
+    ),
+    historyButton,
+  );
+  meta.append(time, actions);
   row.append(level, link, meta);
   wrapper.append(row);
 
@@ -240,7 +300,7 @@ function pullRequestRow(
     try {
       const history = await loadHistory(latest.repository.id, latest.pullRequest.number);
       const newest = history.runs[0] ?? latest;
-      panel = renderHistoryPanel(history, newest, state);
+      panel = renderHistoryPanel(history, newest, state, favorites);
       wrapper.append(panel);
       historyButton.setAttribute('aria-expanded', 'true');
     } catch {
@@ -262,7 +322,9 @@ export interface ActivityHandlers {
   setAttention(value: AttentionFilterV1): void;
   setRepository(value: number | null): void;
   showAllAttention(): void;
+  setClientFilters(query: string, favoritesOnly: boolean): void;
   loadHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
+  favorites: FavoriteStore;
 }
 
 export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, state: ActivityUrlState, handlers: ActivityHandlers): HTMLElement {
@@ -308,13 +370,93 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
   repositoryField.append(select);
   main.append(repositoryField);
 
-  const section = node('section', 'activity-section');
-  section.append(node('div', 'section-label', 'Recent pull requests'));
+  let query = state.query ?? '';
+  let favoritesOnly = state.favoritesOnly ?? false;
+  const clientFilters = node('div', 'client-filters');
+  const searchField = node('label', 'search-filter');
+  searchField.append(node('span', 'filter-label', 'Search'));
+  const search = node('input', 'search-input') as HTMLInputElement;
+  search.type = 'search';
+  search.placeholder = 'Title, repository, PR, SHA, reason…';
+  search.value = query;
+  search.dataset.testid = 'activity-search';
+  searchField.append(search);
+  const favoriteFilter = button('★ Favorites', () => {
+    favoritesOnly = !favoritesOnly;
+    favoriteFilter.classList.toggle('is-active', favoritesOnly);
+    favoriteFilter.setAttribute('aria-pressed', favoritesOnly ? 'true' : 'false');
+    handlers.setClientFilters(query, favoritesOnly);
+    paintRows();
+  }, { active: favoritesOnly, testId: 'favorites-only' });
+  favoriteFilter.classList.add('favorites-filter');
+  clientFilters.append(searchField, favoriteFilter);
+  main.append(clientFilters);
 
-  if (response.pullRequests.length === 0) {
+  const section = node('section', 'activity-section');
+  const sectionLabel = node('div', 'section-label');
+  const results = node('div', 'activity-results');
+  section.append(sectionLabel, results);
+  main.append(section);
+
+  function matchesQuery(activity: PullRequestActivityV1): boolean {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) return true;
+    const latest = activity.latest;
+    const searchable = [
+      latest.pullRequest.title,
+      latest.repository.owner,
+      latest.repository.name,
+      `${latest.repository.owner}/${latest.repository.name}`,
+      `#${latest.pullRequest.number}`,
+      String(latest.pullRequest.number),
+      latest.headSha,
+      latest.attention,
+      ...latest.topReasons,
+      ...latest.sensitiveSurfaces,
+    ].join(' ').toLocaleLowerCase();
+    return searchable.includes(normalized);
+  }
+
+  function paintRows(): void {
+    const visible = response.pullRequests.filter((activity) => {
+      if (!matchesQuery(activity)) return false;
+      return !favoritesOnly || handlers.favorites.hasFavoriteForPullRequest(activity.repository.id, activity.pullRequest.number);
+    });
+    sectionLabel.textContent = `Recent pull requests · ${visible.length}`;
+    results.replaceChildren();
+
+    if (visible.length > 0) {
+      const list = node('div', 'evaluation-list');
+      const rowState: ActivityUrlState = { ...state, query: query.trim() || undefined, favoritesOnly };
+      for (const activity of visible) {
+        list.append(pullRequestRow(activity, rowState, handlers.loadHistory, handlers.favorites, () => {
+          if (favoritesOnly) paintRows();
+        }));
+      }
+      results.append(list);
+      return;
+    }
+
     const empty = node('div', 'empty-state');
     empty.dataset.testid = 'empty-result';
-    if (response.repositories.length === 0) {
+    if (query || favoritesOnly) {
+      empty.append(
+        node('h2', undefined, 'No pull requests match these filters.'),
+        node('p', 'state-copy', favoritesOnly ? 'Try clearing search or showing all pull requests. Favorited evaluations also keep their pull request in this view.' : 'Try a different title, repository, PR number, SHA, or reason.'),
+      );
+      const reset = node('button', 'secondary-button', 'Clear search and favorites filter');
+      reset.type = 'button';
+      reset.addEventListener('click', () => {
+        query = '';
+        favoritesOnly = false;
+        search.value = '';
+        favoriteFilter.classList.remove('is-active');
+        favoriteFilter.setAttribute('aria-pressed', 'false');
+        handlers.setClientFilters(query, favoritesOnly);
+        paintRows();
+      });
+      empty.append(reset);
+    } else if (response.repositories.length === 0) {
       empty.append(node('h2', undefined, "Spark hasn't observed any pull requests yet."), node('p', 'state-copy', 'Pull requests will appear here after Spark evaluates them.'));
     } else {
       empty.append(node('h2', undefined, `No ${state.attention === 'ALL' ? '' : `${state.attention} `}pull requests in this view.`), node('p', 'state-copy', 'Try a broader time window, another repository, or all attention levels.'));
@@ -325,13 +467,15 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
         empty.append(reset);
       }
     }
-    section.append(empty);
-  } else {
-    const list = node('div', 'evaluation-list');
-    for (const activity of response.pullRequests) list.append(pullRequestRow(activity, state, handlers.loadHistory));
-    section.append(list);
+    results.append(empty);
   }
-  main.append(section);
+
+  search.addEventListener('input', () => {
+    query = search.value.slice(0, 100);
+    handlers.setClientFilters(query, favoritesOnly);
+    paintRows();
+  });
+  paintRows();
   return root;
 }
 
@@ -348,7 +492,7 @@ function detailSection(title: string, values: string[], emptyLabel = 'None obser
   return section;
 }
 
-function availableDetail(detail: EvaluationDetailV1, activitySearch: string): HTMLElement {
+function availableDetail(detail: EvaluationDetailV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const fragment = node('div', 'detail-content');
   const back = node('a', 'back-link', '← Activity');
   back.href = `/app${activitySearch ? `?${activitySearch}` : ''}`;
@@ -359,7 +503,7 @@ function availableDetail(detail: EvaluationDetailV1, activitySearch: string): HT
   header.append(node('span', attentionClass(detail.attention), detail.attention));
   const identity = node('div', 'detail-identity');
   identity.append(node('p', 'detail-repo', `${detail.repository.owner}/${detail.repository.name} · PR #${detail.pullRequest.number}`), node('h1', undefined, detail.pullRequest.title));
-  header.append(identity);
+  header.append(identity, favoriteButton(favorites, evaluationTarget(detail), `evaluation ${shortSha(detail.headSha)}`));
   fragment.append(header);
 
   fragment.append(detailSection('Why', detail.reasons));
@@ -420,12 +564,12 @@ function availableDetail(detail: EvaluationDetailV1, activitySearch: string): HT
   return fragment;
 }
 
-export function renderEvaluation(viewer: ViewerV1, response: EvaluationDetailResponseV1, activitySearch: string): HTMLElement {
+export function renderEvaluation(viewer: ViewerV1, response: EvaluationDetailResponseV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const { root, main } = shell(viewer);
   main.dataset.testid = 'evaluation-detail';
 
   if (response.status === 'available') {
-    main.append(availableDetail(response.detail, activitySearch));
+    main.append(availableDetail(response.detail, activitySearch, favorites));
     return root;
   }
 
@@ -437,7 +581,12 @@ export function renderEvaluation(viewer: ViewerV1, response: EvaluationDetailRes
   const sourceNote = response.summary.observationSource === 'BACKFILL'
     ? ' This record was reconstructed from Spark\'s previously retained latest-per-SHA history.'
     : '';
-  unavailable.append(node('span', attentionClass(response.summary.attention), response.summary.attention), node('h1', undefined, 'Historical detail unavailable'), node('p', 'state-copy', `This evaluation predates Spark's detailed dashboard history. Attention and PR identity were retained, but the full normalized evaluation was not stored.${sourceNote}`), node('p', 'muted', `${response.summary.repository.owner}/${response.summary.repository.name} · PR #${response.summary.pullRequest.number} · ${shortSha(response.summary.headSha)}`), safeExternalLink('Open GitHub PR', response.summary.pullRequest.url, 'primary-link'));
+  const unavailableTop = node('div', 'unavailable-top');
+  unavailableTop.append(
+    node('span', attentionClass(response.summary.attention), response.summary.attention),
+    favoriteButton(favorites, evaluationTarget(response.summary), `evaluation ${shortSha(response.summary.headSha)}`),
+  );
+  unavailable.append(unavailableTop, node('h1', undefined, 'Historical detail unavailable'), node('p', 'state-copy', `This evaluation predates Spark's detailed dashboard history. Attention and PR identity were retained, but the full normalized evaluation was not stored.${sourceNote}`), node('p', 'muted', `${response.summary.repository.owner}/${response.summary.repository.name} · PR #${response.summary.pullRequest.number} · ${shortSha(response.summary.headSha)}`), safeExternalLink('Open GitHub PR', response.summary.pullRequest.url, 'primary-link'));
   main.append(back, unavailable);
   return root;
 }

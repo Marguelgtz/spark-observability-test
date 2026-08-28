@@ -6,7 +6,9 @@ import type {
   PullRequestTransitionV1,
   ViewerV1,
 } from '@spark/dashboard-contracts';
+import type { FavoriteStore } from './favorites';
 import { evidenceLabel, relativeTime, shortSha, trustedGitHubUrl } from './format';
+import { evaluationTarget, favoriteButton } from './ui';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -216,7 +218,7 @@ function evidenceIssuesSection(detail: PullRequestDetailV1): HTMLElement {
   return section;
 }
 
-function timelineSection(detail: PullRequestDetailV1, activitySearch: string): HTMLElement {
+function timelineSection(detail: PullRequestDetailV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const section = node('section', 'pr-section');
   const heading = node('div', 'pr-section-heading');
   heading.append(node('h2', undefined, 'Evaluation history'), node('span', 'muted', 'Newest first'));
@@ -224,17 +226,21 @@ function timelineSection(detail: PullRequestDetailV1, activitySearch: string): H
   const rail = node('div', 'pr-timeline');
   rail.setAttribute('role', 'list');
   for (const [index, run] of detail.runs.entries()) {
+    const runShell = node('div', 'pr-run-shell');
+    runShell.setAttribute('role', 'listitem');
     const link = node('a', `pr-run${index === 0 ? ' is-latest' : ''}`) as HTMLAnchorElement;
     link.href = observationHref(run, activitySearch);
     link.dataset.routerLink = 'true';
-    link.setAttribute('role', 'listitem');
     if (run.runId) link.dataset.runId = run.runId;
     const top = node('span', 'pr-run-top');
     top.append(node('span', attentionClass(run.attention), run.attention), node('code', undefined, shortSha(run.headSha)));
     link.append(top, node('strong', undefined, evidenceLabel(run.evidenceSummary)), node('time', undefined, `${relativeTime(run.evaluatedAt)} ago`));
     if (run.observationSource === 'BACKFILL') link.append(node('span', 'pr-run-latest', 'Backfilled'));
     else if (index === 0) link.append(node('span', 'pr-run-latest', 'Latest'));
-    rail.append(link);
+    const favorite = favoriteButton(favorites, evaluationTarget(run), `evaluation ${shortSha(run.headSha)}`);
+    favorite.classList.add('favorite-overlay');
+    runShell.append(link, favorite);
+    rail.append(runShell);
   }
   section.append(rail);
 
@@ -251,7 +257,7 @@ function timelineSection(detail: PullRequestDetailV1, activitySearch: string): H
   return section;
 }
 
-export function renderPullRequest(viewer: ViewerV1, detail: PullRequestDetailV1, activitySearch: string): HTMLElement {
+export function renderPullRequest(viewer: ViewerV1, detail: PullRequestDetailV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const { root, main } = shell(viewer);
   main.dataset.testid = 'pull-request-detail';
   const back = node('a', 'back-link', '← Activity') as HTMLAnchorElement;
@@ -260,8 +266,17 @@ export function renderPullRequest(viewer: ViewerV1, detail: PullRequestDetailV1,
   main.append(back);
 
   const header = node('header', 'pr-header');
-  header.append(node('p', 'pr-repo', `${detail.repository.owner}/${detail.repository.name} · PR #${detail.pullRequest.number}`), node('h1', undefined, detail.pullRequest.title));
-  main.append(header, currentSection(detail, activitySearch), historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch));
+  const headerCopy = node('div');
+  headerCopy.append(node('p', 'pr-repo', `${detail.repository.owner}/${detail.repository.name} · PR #${detail.pullRequest.number}`), node('h1', undefined, detail.pullRequest.title));
+  header.append(
+    headerCopy,
+    favoriteButton(
+      favorites,
+      { kind: 'pull-request', repositoryId: detail.repository.id, pullRequestNumber: detail.pullRequest.number },
+      `pull request #${detail.pullRequest.number}`,
+    ),
+  );
+  main.append(header, currentSection(detail, activitySearch), historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch, favorites));
   return root;
 }
 

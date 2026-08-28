@@ -134,4 +134,31 @@ describe('HttpDashboardApi', () => {
       expect.objectContaining({ credentials: 'include' }),
     );
   });
+
+  it('loads and mutates database-backed favorites', async () => {
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith('/api/favorites') && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify({ version: 1, favorites: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+    const favorite = { kind: 'evaluation' as const, repositoryId: 2, pullRequestNumber: 13, runId: 'run:1', headSha: 'abc1234' };
+
+    await api.getFavorites();
+    await api.addFavorite(favorite);
+    await api.removeFavorite(favorite);
+
+    expect(fetcher).toHaveBeenNthCalledWith(1, 'https://spark.test/api/favorites', expect.objectContaining({ credentials: 'include' }));
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'https://spark.test/api/favorites', expect.objectContaining({
+      method: 'PUT', credentials: 'include', body: JSON.stringify(favorite),
+    }));
+    expect(fetcher).toHaveBeenNthCalledWith(3, 'https://spark.test/api/favorites', expect.objectContaining({
+      method: 'DELETE', credentials: 'include', body: JSON.stringify(favorite),
+    }));
+  });
 });

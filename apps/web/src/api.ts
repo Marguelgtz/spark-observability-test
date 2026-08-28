@@ -3,9 +3,11 @@ import type {
   ActivityQueryV1,
   ActivityResponseV1,
   AttentionLevelV1,
+  DashboardFavoriteV1,
   EvaluationDetailResponseV1,
   EvaluationSummaryV1,
   EvidenceHealthV1,
+  FavoritesResponseV1,
   PullRequestDetailV1,
   PullRequestHistoryResponseV1,
   PullRequestTransitionV1,
@@ -21,6 +23,9 @@ export interface DashboardApi {
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
   getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1>;
+  getFavorites(): Promise<FavoritesResponseV1>;
+  addFavorite(favorite: DashboardFavoriteV1): Promise<void>;
+  removeFavorite(favorite: DashboardFavoriteV1): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -76,6 +81,26 @@ export class HttpDashboardApi implements DashboardApi {
 
   getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1> {
     return this.request(`/api/repositories/${repositoryId}/runs/${encodeURIComponent(runId)}`);
+  }
+
+  getFavorites(): Promise<FavoritesResponseV1> {
+    return this.request('/api/favorites');
+  }
+
+  addFavorite(favorite: DashboardFavoriteV1): Promise<void> {
+    return this.request('/api/favorites', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(favorite),
+    });
+  }
+
+  removeFavorite(favorite: DashboardFavoriteV1): Promise<void> {
+    return this.request('/api/favorites', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(favorite),
+    });
   }
 
   logout(): Promise<void> {
@@ -285,8 +310,43 @@ export class FixtureDashboardApi implements DashboardApi {
     return fixtureRun(repositoryId, runId);
   }
 
+  async getFavorites(): Promise<FavoritesResponseV1> {
+    return { version: 1, favorites: this.readFavorites() };
+  }
+
+  async addFavorite(favorite: DashboardFavoriteV1): Promise<void> {
+    const favorites = this.readFavorites();
+    const key = JSON.stringify(favorite);
+    if (!favorites.some((item) => JSON.stringify(item) === key)) favorites.push(favorite);
+    this.writeFavorites(favorites);
+  }
+
+  async removeFavorite(favorite: DashboardFavoriteV1): Promise<void> {
+    const key = JSON.stringify(favorite);
+    this.writeFavorites(this.readFavorites().filter((item) => JSON.stringify(item) !== key));
+  }
+
   async logout(): Promise<void> {
     return undefined;
+  }
+
+  private readFavorites(): DashboardFavoriteV1[] {
+    try {
+      const raw = globalThis.localStorage?.getItem(`spark:fixture:favorites:v1:${fixtureViewer.id}`);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed as DashboardFavoriteV1[] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private writeFavorites(favorites: DashboardFavoriteV1[]): void {
+    try {
+      globalThis.localStorage?.setItem(`spark:fixture:favorites:v1:${fixtureViewer.id}`, JSON.stringify(favorites));
+    } catch {
+      // Fixture persistence is best effort when browser storage is unavailable.
+    }
   }
 }
 

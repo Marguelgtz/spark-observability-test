@@ -9,6 +9,7 @@ import type {
 } from '@spark/dashboard-contracts';
 import { handleRequest, type Env, type WorkerExecutionContext } from '../src/app';
 import type { DashboardAuthorizer } from '../src/dashboard-access';
+import type { DashboardFavoriteStore } from '../src/dashboard-favorites';
 import type { DashboardReader } from '../src/dashboard-reader';
 
 const viewer: ViewerV1 = { version: 1, id: 7, login: 'marguel', avatarUrl: 'https://avatars.githubusercontent.com/u/7' };
@@ -120,6 +121,14 @@ function reader() {
   } satisfies DashboardReader;
 }
 
+function favoriteStore() {
+  return {
+    list: vi.fn(async () => ({ version: 1 as const, favorites: [] })),
+    add: vi.fn(async () => true),
+    remove: vi.fn(async () => undefined),
+  } satisfies DashboardFavoriteStore;
+}
+
 describe('dashboard read API', () => {
   it('denies dashboard API requests without a valid session', async () => {
     const response = await handleRequest(new Request('https://spark.test/api/me'), env, context);
@@ -143,6 +152,62 @@ describe('dashboard read API', () => {
       sessionExpiresAt: '2026-08-27T22:00:00.000Z',
       githubInstallUrl: 'https://github.com/apps/spark-observability/installations/new',
     });
+  });
+
+  it('lists favorites for the authenticated viewer and current repository scope', async () => {
+    const dashboardFavoriteStore = favoriteStore();
+    const response = await handleRequest(
+      new Request('https://spark.test/api/favorites'), env, context,
+      { dashboardAuthorizer: authorizer([2, 4]), dashboardFavoriteStore },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ version: 1, favorites: [] });
+    expect(dashboardFavoriteStore.list).toHaveBeenCalledWith(7, [2, 4]);
+  });
+
+  it('adds and removes viewer-scoped favorites with same-origin protection', async () => {
+    const dashboardFavoriteStore = favoriteStore();
+    const favorite = { kind: 'evaluation', repositoryId: 2, pullRequestNumber: 3, runId: 'run:1', headSha: 'abc1234' };
+    const allowed = await handleRequest(new Request('https://spark.test/api/favorites', {
+      method: 'PUT',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify(favorite),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardFavoriteStore });
+    expect(allowed.status).toBe(200);
+    expect(dashboardFavoriteStore.add).toHaveBeenCalledWith(7, favorite);
+
+    const removed = await handleRequest(new Request('https://spark.test/api/favorites', {
+      method: 'DELETE',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify(favorite),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardFavoriteStore });
+    expect(removed.status).toBe(204);
+    expect(dashboardFavoriteStore.remove).toHaveBeenCalledWith(7, favorite);
+
+    const crossOrigin = await handleRequest(new Request('https://spark.test/api/favorites', {
+      method: 'PUT',
+      headers: { origin: 'https://evil.test', 'content-type': 'application/json' },
+      body: JSON.stringify(favorite),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardFavoriteStore });
+    expect(crossOrigin.status).toBe(403);
+  });
+
+  it('rejects invalid and out-of-scope favorite targets', async () => {
+    const dashboardFavoriteStore = favoriteStore();
+    const outOfScope = await handleRequest(new Request('https://spark.test/api/favorites', {
+      method: 'PUT',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'pull-request', repositoryId: 99, pullRequestNumber: 3 }),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardFavoriteStore });
+    expect(outOfScope.status).toBe(404);
+
+    const invalid = await handleRequest(new Request('https://spark.test/api/favorites', {
+      method: 'PUT',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'evaluation', repositoryId: 2, pullRequestNumber: 3 }),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardFavoriteStore });
+    expect(invalid.status).toBe(400);
+    expect(dashboardFavoriteStore.add).not.toHaveBeenCalled();
   });
 
   it('parses activity filters and passes only authorized repositories to the reader', async () => {

@@ -13,6 +13,15 @@ export interface ViewerV1 {
   avatarUrl: string;
 }
 
+export type DashboardFavoriteV1 =
+  | { kind: 'pull-request'; repositoryId: number; pullRequestNumber: number }
+  | { kind: 'evaluation'; repositoryId: number; pullRequestNumber: number; runId?: string; headSha: string };
+
+export interface FavoritesResponseV1 {
+  version: 1;
+  favorites: DashboardFavoriteV1[];
+}
+
 export interface AccountV1 {
   version: 1;
   viewer: ViewerV1;
