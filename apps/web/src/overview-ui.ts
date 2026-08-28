@@ -1,19 +1,8 @@
-import './insight-charts.css';
-import type { ActivityWindowV1, AttentionLevelV1, EvaluationSummaryV1, PullRequestActivityV1, ViewerV1 } from '@spark/dashboard-contracts';
+import type { ActivityWindowV1, EvaluationSummaryV1, PullRequestActivityV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime, shortSha } from './format';
-import {
-  attentionTransitionChart,
-  donutChart,
-  horizontalBarChart,
-  lineChart,
-  regressionRecoveryChart,
-  timeBarChart,
-  transitionMixChart,
-  type NamedValue,
-} from './insight-charts';
 import type { ActivityUrlState } from './state';
 import { serializeActivityState } from './state';
-import { getNotableTransitionInsights, type OverviewDrilldownResponseV1, type OverviewMetricV1 } from './overview-api';
+import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -109,112 +98,6 @@ function evaluationItem(evaluation: EvaluationSummaryV1, state: ActivityUrlState
   return link;
 }
 
-function repositoryDistribution(response: OverviewDrilldownResponseV1): NamedValue[] {
-  const counts = new Map<string, number>();
-  for (const item of response.items) {
-    const repository = item.kind === 'pull-request'
-      ? item.activity.repository
-      : item.kind === 'evaluation'
-        ? item.evaluation.repository
-        : item.repository;
-    const label = `${repository.owner}/${repository.name}`;
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return [...counts.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
-}
-
-function attentionMix(response: OverviewDrilldownResponseV1, preMerge = false): NamedValue[] {
-  const counts: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 0, HIGH: 0 };
-  for (const item of response.items) {
-    let attention: AttentionLevelV1 | undefined;
-    if (preMerge && item.kind === 'merge') attention = item.lifecycle.preMergeAttention;
-    else if (item.kind === 'pull-request') attention = item.activity.latest.attention;
-    else if (item.kind === 'evaluation') attention = item.evaluation.attention;
-    else attention = item.latest?.attention;
-    if (attention) counts[attention] += 1;
-  }
-  return [
-    { label: 'HIGH', value: counts.HIGH, tone: 'high' as const },
-    { label: 'MEDIUM', value: counts.MEDIUM, tone: 'medium' as const },
-    { label: 'LOW', value: counts.LOW, tone: 'low' as const },
-  ].filter((item) => item.value > 0);
-}
-
-function mergeEvidenceMix(response: OverviewDrilldownResponseV1): NamedValue[] {
-  const counts = new Map<string, number>();
-  for (const item of response.items) {
-    if (item.kind !== 'merge') continue;
-    const health = item.lifecycle.preMergeEvidenceHealth ?? 'UNKNOWN';
-    counts.set(health, (counts.get(health) ?? 0) + 1);
-  }
-  const tone = (label: string): NamedValue['tone'] => {
-    if (label === 'FAILED') return 'failed';
-    if (label === 'PENDING_OR_MISSING') return 'waiting';
-    if (label === 'CLEAR') return 'clear';
-    return 'unknown';
-  };
-  return [...counts.entries()].map(([label, value]) => ({ label: label.replaceAll('_', ' '), value, tone: tone(label) }));
-}
-
-function immediateCharts(response: OverviewDrilldownResponseV1, state: ActivityUrlState): HTMLElement[] {
-  if (response.metric === 'pull-requests') {
-    return [
-      horizontalBarChart('PRs by repository', 'Where observed changes are concentrated', repositoryDistribution(response)),
-      donutChart('Latest attention mix', 'Current state of observed PRs', attentionMix(response)),
-    ];
-  }
-
-  if (response.metric === 'evaluations') {
-    return [
-      lineChart(
-        response.trend,
-        'Evaluation flow',
-        [
-          { label: 'Evaluations', read: (point) => point.evaluations },
-          { label: 'PRs observed', read: (point) => point.observedPRs },
-        ],
-        state.window,
-      ),
-      donutChart('Evaluation attention mix', 'Attention at evaluation time', attentionMix(response)),
-    ];
-  }
-
-  if (response.metric === 'attention') {
-    return [
-      donutChart('Current attention queue', 'HIGH vs MEDIUM open PRs', attentionMix(response)),
-      horizontalBarChart('Attention by repository', 'Where current attention is concentrated', repositoryDistribution(response)),
-    ];
-  }
-
-  return [
-    donutChart('Pre-merge attention', 'Attention immediately before merge', attentionMix(response, true)),
-    horizontalBarChart('Pre-merge evidence', 'Evidence health at merge', mergeEvidenceMix(response)),
-    timeBarChart(response.trend, 'Unresolved merge timing', (point) => point.mergedUnresolved, state.window),
-  ];
-}
-
-function appendTransitionInsight(charts: HTMLElement, metric: OverviewMetricV1, state: ActivityUrlState): void {
-  if (metric === 'merged-unresolved') return;
-  const slot = node('div', 'overview-transition-slot', 'Loading notable transition insight…');
-  slot.dataset.testid = 'transition-chart-loading';
-  charts.append(slot);
-  void getNotableTransitionInsights(state)
-    .then((insights) => {
-      if (!slot.isConnected) return;
-      if (metric === 'attention') {
-        slot.replaceWith(
-          regressionRecoveryChart(insights, state.window),
-          attentionTransitionChart(insights, state.window),
-        );
-        return;
-      }
-      slot.replaceWith(transitionMixChart(insights));
-    })
-    .catch(() => {
-      if (slot.isConnected) slot.remove();
-    });
-}
-
 export function renderOverviewDrilldown(
   viewer: ViewerV1,
   response: OverviewDrilldownResponseV1,
@@ -240,8 +123,6 @@ export function renderOverviewDrilldown(
 
   const charts = node('section', 'overview-chart-grid');
   charts.dataset.testid = 'overview-charts';
-  charts.append(...immediateCharts(response, state));
-  appendTransitionInsight(charts, response.metric, state);
   main.append(charts);
 
   if (response.metric === 'attention') {
