@@ -178,7 +178,8 @@ export function enhanceActivityHome(
     return root;
   }
 
-  if (response.hasObservedHistory === false) {
+  const hasObservedHistory = response.hasObservedHistory ?? response.repositories.length > 0;
+  if (!hasObservedHistory) {
     main.replaceChildren(...(heading ? [heading] : []), renderNoHistory(account));
     return root;
   }
