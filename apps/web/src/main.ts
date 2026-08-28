@@ -8,6 +8,11 @@ import type { AccountV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
 import { createPersistentAppShell } from './app-shell';
+import {
+  enhanceHomeWithEvaluationVolume,
+  enhanceOverviewWithEvaluationVolume,
+  enhancePullRequestWithSeverityTimeline,
+} from './context-insight-enhancers';
 import { FavoriteStore } from './favorites';
 import { enhanceActivityHome } from './home-ui';
 import { getOverviewDrilldown } from './overview-api';
@@ -170,7 +175,9 @@ async function render(): Promise<void> {
         },
         favorites,
       });
-      shell.show(enhanceActivityHome(view, account, activity, state, overviewDetail));
+      const homeView = enhanceActivityHome(view, account, activity, state, overviewDetail);
+      enhanceHomeWithEvaluationVolume(homeView, overviewDetail);
+      shell.show(homeView);
       return;
     }
 
@@ -179,10 +186,12 @@ async function render(): Promise<void> {
       const overviewTask = abortable(getOverviewDrilldown(route.metric, state), signal);
       const [viewer, , , overview] = await Promise.all([viewerTask, accountTask, favoritesTask, overviewTask]);
       if (generation !== routeGeneration || signal.aborted) return;
-      shell.show(renderOverviewDrilldown(viewer, overview, state, (value) => {
+      const overviewView = renderOverviewDrilldown(viewer, overview, state, (value) => {
         const next = withActivityState(state, { window: value, attention: 'ALL' });
         navigate(`/app/overview/${route.metric}?${serializeActivityState(next)}`);
-      }));
+      });
+      enhanceOverviewWithEvaluationVolume(overviewView, overview);
+      shell.show(overviewView);
       return;
     }
 
@@ -202,7 +211,7 @@ async function render(): Promise<void> {
       const trajectoryTask = abortable(api.getTrajectory(route.repositoryId, route.pullRequestNumber), signal);
       const [viewer, , favorites, trajectory] = await Promise.all([viewerTask, accountTask, favoritesTask, trajectoryTask]);
       if (generation !== routeGeneration || signal.aborted) return;
-      shell.show(renderPullRequest(
+      const pullRequestView = renderPullRequest(
         viewer,
         trajectory,
         currentActivitySearch(),
@@ -213,7 +222,9 @@ async function render(): Promise<void> {
           transitionId,
           input,
         ),
-      ));
+      );
+      enhancePullRequestWithSeverityTimeline(pullRequestView, trajectory);
+      shell.show(pullRequestView);
       return;
     }
 
