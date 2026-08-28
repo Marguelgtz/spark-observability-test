@@ -51,14 +51,6 @@ export function enhancePullRequestWithSeverityTimeline(
   const trajectorySection = trajectoryHeading?.closest<HTMLElement>('.pr-section');
   if (!trajectorySection) return root;
 
-  if (!root.querySelector('[data-testid="key-moments"]')) {
-    const moments = renderChangeStory(detail, {
-      observationHref: (run) => observationHref(run, activitySearch),
-      ...(saveFeedback ? { saveFeedback } : {}),
-    });
-    trajectorySection.insertAdjacentElement('beforebegin', moments);
-  }
-
   if (!root.querySelector('[data-testid="insight-canvas-pr-trajectory"]')) {
     const canvas = renderPullRequestTrajectoryCanvas(detail);
     if (canvas) {
@@ -74,5 +66,16 @@ export function enhancePullRequestWithSeverityTimeline(
   page.querySelector<HTMLElement>('.pr-terminal')?.remove();
   page.querySelector<HTMLElement>('.pr-transition-list')?.remove();
   moveForensicsBelowTrajectory(page, trajectorySection);
+
+  // Change evolution is supporting context, not the primary PR reading path.
+  // Keep it at the bottom after the analytical trajectory and forensic detail.
+  let moments = root.querySelector<HTMLElement>('[data-testid="key-moments"]');
+  if (!moments) {
+    moments = renderChangeStory(detail, {
+      observationHref: (run) => observationHref(run, activitySearch),
+      ...(saveFeedback ? { saveFeedback } : {}),
+    });
+  }
+  page.append(moments);
   return root;
 }
