@@ -6,7 +6,7 @@ test('pull request page keeps analysis first and change evolution at the bottom'
   const moments = page.getByTestId('key-moments');
   await expect(moments).toBeVisible();
   await expect(moments.getByRole('heading', { name: 'Key moments', exact: true })).toBeVisible();
-  await expect(moments.getByText('Material changes Spark observed while this pull request evolved.', { exact: true })).toBeVisible();
+  await expect(moments.getByText('Attention changes stay visible; evaluations at the same attention level are grouped for inspection.', { exact: true })).toBeVisible();
 
   const items = moments.locator('.change-story-item');
   await expect(items).toHaveCount(4);
