@@ -96,6 +96,16 @@ const trajectory: PullRequestTrajectoryV1 = {
   insights: [],
   notableTransitions: [],
   runs: [summary],
+  lifecycle: {
+    state: 'MERGED',
+    mergedAt: '2026-08-27T12:05:00.000Z',
+    mergeSha: 'merge-sha',
+    preMergeRunId: 'run:1',
+    preMergeAttention: 'LOW',
+    preMergeEvidenceHealth: 'CLEAR',
+    unresolvedAtMerge: false,
+    lastEventAt: '2026-08-27T12:05:00.000Z',
+  },
   truncated: true,
 };
 

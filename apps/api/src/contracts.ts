@@ -62,6 +62,19 @@ export interface EvaluationObservationRecord {
   detail: EvaluationDetailRecord;
 }
 
+export interface PullRequestLifecycleRecord {
+  repositoryId: number;
+  installationId: number;
+  repositoryFullName: string;
+  pullRequestNumber: number;
+  state: 'OPEN' | 'CLOSED' | 'MERGED';
+  openedAt?: string;
+  closedAt?: string;
+  mergedAt?: string;
+  mergeSha?: string;
+  occurredAt: string;
+}
+
 export interface SparkStore {
   claimDelivery(deliveryId: string, event: string): Promise<boolean>;
   releaseDelivery(deliveryId: string): Promise<void>;
@@ -71,4 +84,5 @@ export interface SparkStore {
   saveEvaluation(record: EvaluationRecord): Promise<void>;
   saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void>;
   saveEvaluationObservation(record: EvaluationObservationRecord): Promise<void>;
+  savePullRequestLifecycle(record: PullRequestLifecycleRecord): Promise<void>;
 }

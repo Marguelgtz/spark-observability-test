@@ -173,4 +173,18 @@ describe('Change Trajectory engine', () => {
     expect(trajectory.historyCompleteness).toBe('PARTIAL_BACKFILL');
     expect(trajectory.truncated).toBe(true);
   });
+
+  it('carries lifecycle facts without deriving or rewriting merge state', () => {
+    const lifecycle = {
+      state: 'MERGED' as const,
+      mergedAt: '2026-08-28T10:05:00.000Z',
+      mergeSha: 'merge-sha',
+      preMergeRunId: 'run:1',
+      preMergeAttention: 'HIGH' as const,
+      preMergeEvidenceHealth: 'FAILED' as const,
+      unresolvedAtMerge: true,
+      lastEventAt: '2026-08-28T10:05:00.000Z',
+    };
+    expect(buildTrajectory([run('run:1', 1, 'HIGH', 'FAILED')], { lifecycle })?.lifecycle).toEqual(lifecycle);
+  });
 });

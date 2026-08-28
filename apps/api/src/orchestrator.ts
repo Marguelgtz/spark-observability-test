@@ -23,6 +23,7 @@ export interface OrchestratorResult {
 
 type EvaluationStage =
   | 'installation_auth'
+  | 'persist_lifecycle'
   | 'fetch_github_input'
   | 'persist_repository'
   | 'evaluate_core'
@@ -91,6 +92,25 @@ export class SparkOrchestrator {
       installationId, repository: repositoryFullName, repositoryId: request.repositoryId,
       pullRequestNumber, headSha,
     };
+    if (request.kind === 'pull_request_lifecycle') {
+      const lifecycle = request.lifecycle;
+      if (!request.repositoryId || !lifecycle?.occurredAt || (lifecycle.state === 'MERGED' && !lifecycle.mergedAt)) {
+        throw new Error('GitHub lifecycle event is missing required immutable identifiers');
+      }
+      await this.runStage('persist_lifecycle', logContext, () => this.dependencies.store.savePullRequestLifecycle({
+        repositoryId: request.repositoryId!,
+        installationId,
+        repositoryFullName,
+        pullRequestNumber,
+        state: lifecycle.state,
+        ...(lifecycle.openedAt ? { openedAt: lifecycle.openedAt } : {}),
+        ...(lifecycle.closedAt ? { closedAt: lifecycle.closedAt } : {}),
+        ...(lifecycle.mergedAt ? { mergedAt: lifecycle.mergedAt } : {}),
+        ...(lifecycle.mergeSha ? { mergeSha: lifecycle.mergeSha } : {}),
+        occurredAt: lifecycle.occurredAt,
+      }));
+      if (!lifecycle.evaluate) return { status: 'stored' };
+    }
     const client = await this.runStage('installation_auth', logContext, () => this.dependencies.createClient(installationId));
     const source = await this.runStage('fetch_github_input', logContext, () => buildSparkInputFromPullRequest(
       client, installationId, repositoryFullName, pullRequestNumber, headSha, this.dependencies.sparkAppId,

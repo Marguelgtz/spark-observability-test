@@ -6,6 +6,7 @@ import type {
   EvaluationObservationRecord,
   EvaluationRecord,
   EvaluationRunRecord,
+  PullRequestLifecycleRecord,
   SparkStore,
   StoredEvaluation,
 } from '../src/contracts';
@@ -18,6 +19,7 @@ class MemoryStore implements SparkStore {
   runs = new Map<string, EvaluationRunRecord>();
   repositories: GitHubRepository[] = [];
   installationEvents: GitHubEventRequest[] = [];
+  lifecycleEvents: PullRequestLifecycleRecord[] = [];
   failObservation = false;
 
   async claimDelivery(id: string): Promise<boolean> {
@@ -38,6 +40,7 @@ class MemoryStore implements SparkStore {
     this.evaluations.set(`${record.evaluation.repositoryId}:${record.evaluation.headSha}`, record.evaluation);
     this.details.set(`${record.detail.repositoryId}:${record.detail.headSha}`, record.detail);
   }
+  async savePullRequestLifecycle(record: PullRequestLifecycleRecord): Promise<void> { this.lifecycleEvents.push(record); }
 }
 
 class TestExecutionContext implements WorkerExecutionContext {
@@ -113,6 +116,61 @@ async function sign(body: string, secret: string): Promise<string> {
 }
 
 describe('Spark orchestration', () => {
+  it('persists closed lifecycle events without running an evaluation', async () => {
+    const store = new MemoryStore();
+    const createClient = vi.fn();
+    const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient });
+    const request: GitHubEventRequest = {
+      kind: 'pull_request_lifecycle',
+      action: 'closed',
+      installationId: 1,
+      repositoryId: 2,
+      repositoryFullName: 'acme/repo',
+      pullRequestNumber: 3,
+      headSha: 'sha-1',
+      lifecycle: {
+        state: 'MERGED',
+        openedAt: '2026-08-28T09:00:00.000Z',
+        closedAt: '2026-08-28T10:00:00.000Z',
+        mergedAt: '2026-08-28T10:00:00.000Z',
+        mergeSha: 'merge-sha',
+        occurredAt: '2026-08-28T10:00:00.000Z',
+        evaluate: false,
+      },
+      payload: {},
+    };
+
+    await expect(orchestrator.handle(request, trigger('merge-delivery', 'pull_request', 'closed'))).resolves.toEqual({ status: 'stored' });
+    expect(store.lifecycleEvents).toEqual([expect.objectContaining({
+      state: 'MERGED', mergedAt: '2026-08-28T10:00:00.000Z', mergeSha: 'merge-sha',
+    })]);
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
+  it('persists opened lifecycle state and retains the initial evaluation', async () => {
+    const store = new MemoryStore();
+    const fake = fakeClient('sha-1');
+    const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient: async () => fake.client });
+    const request = routeGitHubEvent('pull_request', {
+      action: 'opened',
+      installation: { id: 1 },
+      repository: { id: 2, full_name: 'acme/repo' },
+      pull_request: {
+        number: 3,
+        head: { sha: 'sha-1' },
+        merged: false,
+        created_at: '2026-08-28T09:00:00.000Z',
+        updated_at: '2026-08-28T09:00:00.000Z',
+      },
+    });
+
+    const result = await orchestrator.handle(request, trigger('opened-delivery', 'pull_request', 'opened'));
+
+    expect(result.status).toBe('evaluated');
+    expect(store.lifecycleEvents).toEqual([expect.objectContaining({ state: 'OPEN', openedAt: '2026-08-28T09:00:00.000Z' })]);
+    expect(store.runs.size).toBe(1);
+  });
+
   it('retains same-SHA pending, failed, and passed observations while advancing the current projection', async () => {
     const store = new MemoryStore();
     const pending = fakeClient('sha-1', 'queued');

@@ -58,7 +58,29 @@ export function routeGitHubEvent(event: string, payload: Record<string, unknown>
   if (event === 'installation_repositories') {
     return { kind: 'installation_repositories', action, installationId, payload };
   }
-  if (event === 'pull_request' && ['opened', 'synchronize', 'reopened'].includes(action)) {
+  if (event === 'pull_request' && ['opened', 'reopened', 'closed'].includes(action)) {
+    const pullRequest = object(payload.pull_request);
+    const merged = pullRequest?.merged === true;
+    const openedAt = string(pullRequest?.created_at);
+    const closedAt = string(pullRequest?.closed_at);
+    const mergedAt = string(pullRequest?.merged_at);
+    const occurredAt = mergedAt ?? closedAt ?? string(pullRequest?.updated_at) ?? openedAt ?? '';
+    return {
+      kind: 'pull_request_lifecycle', action, installationId, repositoryId, repositoryFullName,
+      pullRequestNumber: number(pullRequest?.number),
+      headSha: string(object(pullRequest?.head)?.sha), payload,
+      lifecycle: {
+        state: merged ? 'MERGED' : action === 'closed' ? 'CLOSED' : 'OPEN',
+        ...(openedAt ? { openedAt } : {}),
+        ...(closedAt ? { closedAt } : {}),
+        ...(mergedAt ? { mergedAt } : {}),
+        ...(string(pullRequest?.merge_commit_sha) ? { mergeSha: string(pullRequest?.merge_commit_sha) } : {}),
+        occurredAt,
+        evaluate: action !== 'closed',
+      },
+    };
+  }
+  if (event === 'pull_request' && action === 'synchronize') {
     const pullRequest = object(payload.pull_request);
     return {
       kind: 'evaluate', action, installationId, repositoryId, repositoryFullName,

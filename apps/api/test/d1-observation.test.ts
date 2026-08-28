@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
-import type { EvaluationObservationRecord } from '../src/contracts';
+import type { EvaluationObservationRecord, PullRequestLifecycleRecord } from '../src/contracts';
 import { D1SparkStore, type D1Database, type D1PreparedStatement, type D1Result } from '../src/d1';
 import type { StoredEvaluationDetailV1 } from '../src/evaluation-detail';
 
@@ -106,6 +106,22 @@ function observation(
   };
 }
 
+function lifecycle(
+  state: PullRequestLifecycleRecord['state'],
+  occurredAt: string,
+  patch: Partial<PullRequestLifecycleRecord> = {},
+): PullRequestLifecycleRecord {
+  return {
+    repositoryId: 2,
+    installationId: 1,
+    repositoryFullName: 'acme/repo',
+    pullRequestNumber: 3,
+    state,
+    occurredAt,
+    ...patch,
+  };
+}
+
 describe('D1 observation persistence', () => {
   it('retains three same-SHA runs and advances both current projections atomically', async () => {
     const database = new DatabaseSync(':memory:');
@@ -113,6 +129,7 @@ describe('D1 observation persistence', () => {
       database.exec(migration('0001_initial.sql'));
       database.exec(migration('0002_evaluation_details.sql'));
       database.exec(migration('0004_evaluation_runs.sql'));
+      database.exec(migration('0007_pull_request_lifecycle.sql'));
       database.exec("INSERT INTO installations (id, account_id, account_login) VALUES (1, 7, 'acme')");
       database.exec("INSERT INTO repositories (id, installation_id, full_name) VALUES (2, 1, 'acme/repo')");
 
@@ -147,6 +164,85 @@ describe('D1 observation persistence', () => {
       expect(database.prepare('SELECT COUNT(*) AS count FROM evaluation_runs').get()).toEqual({ count: 3 });
       expect(database.prepare('SELECT COUNT(*) AS count FROM evaluations').get()).toEqual({ count: 1 });
       expect(database.prepare('SELECT COUNT(*) AS count FROM evaluation_details').get()).toEqual({ count: 1 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('reconciles the latest eligible pre-merge run regardless of webhook arrival order', async () => {
+    const database = new DatabaseSync(':memory:');
+    try {
+      database.exec(migration('0001_initial.sql'));
+      database.exec(migration('0002_evaluation_details.sql'));
+      database.exec(migration('0004_evaluation_runs.sql'));
+      database.exec(migration('0007_pull_request_lifecycle.sql'));
+      database.exec("INSERT INTO installations (id, account_id, account_login) VALUES (1, 7, 'acme')");
+      database.exec("INSERT INTO repositories (id, installation_id, full_name) VALUES (2, 1, 'acme/repo')");
+      const store = new D1SparkStore(sqliteD1(database));
+
+      await store.saveEvaluationObservation(observation('run-1', 'delivery-1', '2026-08-28T10:00:00.000Z', 'CLEAR', 'LOW'));
+      const merged = lifecycle('MERGED', '2026-08-28T10:05:00.000Z', {
+        openedAt: '2026-08-28T09:00:00.000Z',
+        closedAt: '2026-08-28T10:05:00.000Z',
+        mergedAt: '2026-08-28T10:05:00.000Z',
+        mergeSha: 'merge-sha',
+      });
+      await store.savePullRequestLifecycle(merged);
+
+      expect(database.prepare(
+        `SELECT state, pre_merge_run_id, pre_merge_attention, pre_merge_evidence_health, unresolved_at_merge
+         FROM pull_request_lifecycle WHERE repository_id = 2 AND pull_request_number = 3`,
+      ).get()).toEqual({
+        state: 'MERGED', pre_merge_run_id: 'run-1', pre_merge_attention: 'LOW',
+        pre_merge_evidence_health: 'CLEAR', unresolved_at_merge: 0,
+      });
+
+      await store.saveEvaluationObservation(observation('run-2', 'delivery-2', '2026-08-28T10:04:00.000Z', 'PENDING_OR_MISSING', 'HIGH'));
+      await store.saveEvaluationObservation(observation('run-3', 'delivery-3', '2026-08-28T10:06:00.000Z', 'CLEAR', 'LOW'));
+      await store.savePullRequestLifecycle(merged);
+      await store.savePullRequestLifecycle(lifecycle('OPEN', '2026-08-28T10:07:00.000Z'));
+
+      expect(database.prepare(
+        `SELECT state, merge_sha, pre_merge_run_id, pre_merge_attention,
+                pre_merge_evidence_health, unresolved_at_merge
+         FROM pull_request_lifecycle WHERE repository_id = 2 AND pull_request_number = 3`,
+      ).get()).toEqual({
+        state: 'MERGED', merge_sha: 'merge-sha', pre_merge_run_id: 'run-2',
+        pre_merge_attention: 'HIGH', pre_merge_evidence_health: 'PENDING_OR_MISSING', unresolved_at_merge: 1,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('orders closed and reopened lifecycle updates and supports merge without a prior run', async () => {
+    const database = new DatabaseSync(':memory:');
+    try {
+      database.exec(migration('0001_initial.sql'));
+      database.exec(migration('0002_evaluation_details.sql'));
+      database.exec(migration('0004_evaluation_runs.sql'));
+      database.exec(migration('0007_pull_request_lifecycle.sql'));
+      database.exec("INSERT INTO installations (id, account_id, account_login) VALUES (1, 7, 'acme')");
+      const store = new D1SparkStore(sqliteD1(database));
+
+      await store.savePullRequestLifecycle(lifecycle('CLOSED', '2026-08-28T10:05:00.000Z', {
+        closedAt: '2026-08-28T10:05:00.000Z',
+      }));
+      await store.savePullRequestLifecycle(lifecycle('OPEN', '2026-08-28T10:06:00.000Z'));
+      await store.savePullRequestLifecycle(lifecycle('CLOSED', '2026-08-28T10:04:00.000Z', {
+        closedAt: '2026-08-28T10:04:00.000Z',
+      }));
+      expect(database.prepare(
+        'SELECT state, closed_at FROM pull_request_lifecycle WHERE repository_id = 2 AND pull_request_number = 3',
+      ).get()).toEqual({ state: 'OPEN', closed_at: null });
+
+      await store.savePullRequestLifecycle(lifecycle('MERGED', '2026-08-28T10:10:00.000Z', {
+        mergedAt: '2026-08-28T10:10:00.000Z', mergeSha: 'merge-without-run',
+      }));
+      expect(database.prepare(
+        `SELECT state, pre_merge_run_id, unresolved_at_merge
+         FROM pull_request_lifecycle WHERE repository_id = 2 AND pull_request_number = 3`,
+      ).get()).toEqual({ state: 'MERGED', pre_merge_run_id: null, unresolved_at_merge: null });
     } finally {
       database.close();
     }

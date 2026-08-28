@@ -8,6 +8,7 @@ import type {
   NotableTransitionV1,
   PullRequestEvidenceIssueV1,
   PullRequestInsightV1,
+  PullRequestLifecycleV1,
   PullRequestTrajectoryV1,
   TransitionDeltaV1,
 } from '@spark/dashboard-contracts';
@@ -26,6 +27,7 @@ export interface TrajectoryBuildOptions {
   historyCompleteness?: HistoryCompletenessV1;
   evidenceIssues?: PullRequestEvidenceIssueV1[];
   insights?: PullRequestInsightV1[];
+  lifecycle?: PullRequestLifecycleV1;
 }
 
 const ATTENTION_RANK: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
@@ -214,6 +216,7 @@ export function buildTrajectory(
     insights: options.insights ?? [],
     notableTransitions,
     runs: newestFirst.map(run => run.summary),
+    ...(options.lifecycle ? { lifecycle: options.lifecycle } : {}),
     ...(options.historyCompleteness ? { historyCompleteness: options.historyCompleteness } : {}),
     truncated: totalRuns > newestFirst.length,
   };

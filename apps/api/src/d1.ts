@@ -4,6 +4,7 @@ import type {
   EvaluationObservationRecord,
   EvaluationRecord,
   EvaluationRunRecord,
+  PullRequestLifecycleRecord,
   SparkStore,
   StoredEvaluation,
 } from './contracts';
@@ -175,6 +176,73 @@ export class D1SparkStore implements SparkStore {
     );
   }
 
+  private reconcilePreMergeRun(repositoryId: number, pullRequestNumber: number): D1PreparedStatement {
+    return this.db.prepare(
+      `WITH candidate AS (
+         SELECT er.id, er.attention, er.evidence_health
+         FROM evaluation_runs er
+         JOIN pull_request_lifecycle lifecycle
+           ON lifecycle.repository_id = er.repository_id
+          AND lifecycle.pull_request_number = er.pull_request_number
+         WHERE er.repository_id = ? AND er.pull_request_number = ?
+           AND lifecycle.state = 'MERGED'
+           AND datetime(er.evaluated_at) <= datetime(lifecycle.merged_at)
+         ORDER BY datetime(er.evaluated_at) DESC, datetime(er.created_at) DESC, er.id DESC
+         LIMIT 1
+       )
+       UPDATE pull_request_lifecycle
+       SET pre_merge_run_id = candidate.id,
+           pre_merge_attention = candidate.attention,
+           pre_merge_evidence_health = candidate.evidence_health,
+           unresolved_at_merge = CASE
+             WHEN candidate.attention != 'LOW' OR candidate.evidence_health != 'CLEAR' THEN 1
+             ELSE 0
+           END,
+           updated_at = CURRENT_TIMESTAMP
+       FROM candidate
+       WHERE repository_id = ? AND pull_request_number = ? AND state = 'MERGED'
+         AND (
+           pre_merge_run_id IS NOT candidate.id
+           OR pre_merge_attention IS NOT candidate.attention
+           OR pre_merge_evidence_health IS NOT candidate.evidence_health
+         )`,
+    ).bind(repositoryId, pullRequestNumber, repositoryId, pullRequestNumber);
+  }
+
+  private lifecycleUpsert(record: PullRequestLifecycleRecord): D1PreparedStatement {
+    return this.db.prepare(
+      `INSERT INTO pull_request_lifecycle
+       (repository_id, installation_id, pull_request_number, state, opened_at, closed_at,
+        merged_at, merge_sha, last_event_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(repository_id, pull_request_number) DO UPDATE SET
+         installation_id = excluded.installation_id,
+         state = excluded.state,
+         opened_at = COALESCE(pull_request_lifecycle.opened_at, excluded.opened_at),
+         closed_at = CASE WHEN excluded.state = 'OPEN' THEN NULL ELSE excluded.closed_at END,
+         merged_at = CASE WHEN excluded.state = 'MERGED' THEN excluded.merged_at ELSE NULL END,
+         merge_sha = CASE WHEN excluded.state = 'MERGED' THEN excluded.merge_sha ELSE NULL END,
+         pre_merge_run_id = CASE WHEN excluded.state = 'MERGED' THEN pull_request_lifecycle.pre_merge_run_id ELSE NULL END,
+         pre_merge_attention = CASE WHEN excluded.state = 'MERGED' THEN pull_request_lifecycle.pre_merge_attention ELSE NULL END,
+         pre_merge_evidence_health = CASE WHEN excluded.state = 'MERGED' THEN pull_request_lifecycle.pre_merge_evidence_health ELSE NULL END,
+         unresolved_at_merge = CASE WHEN excluded.state = 'MERGED' THEN pull_request_lifecycle.unresolved_at_merge ELSE NULL END,
+         last_event_at = excluded.last_event_at,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE datetime(excluded.last_event_at) >= datetime(pull_request_lifecycle.last_event_at)
+         AND (pull_request_lifecycle.state != 'MERGED' OR excluded.state = 'MERGED')`,
+    ).bind(
+      record.repositoryId,
+      record.installationId,
+      record.pullRequestNumber,
+      record.state,
+      record.openedAt ?? null,
+      record.closedAt ?? null,
+      record.mergedAt ?? null,
+      record.mergeSha ?? null,
+      record.occurredAt,
+    );
+  }
+
   async saveRepository(installationId: number, repository: GitHubRepository): Promise<void> {
     await this.repositoryUpsert(installationId, repository).run();
   }
@@ -197,10 +265,43 @@ export class D1SparkStore implements SparkStore {
   }
 
   async saveEvaluationObservation(record: EvaluationObservationRecord): Promise<void> {
-    await this.db.batch([
+    const results = await this.db.batch([
       this.evaluationRunInsert(record.run),
       this.evaluationUpsert(record.evaluation),
       this.evaluationDetailUpsert(record.detail),
+      this.reconcilePreMergeRun(record.run.repositoryId, record.run.pullRequestNumber),
     ]);
+    if ((results[3]?.meta?.changes ?? 0) > 0) {
+      console.info(JSON.stringify({
+        event: 'pre_merge_projection_reconciled',
+        repositoryId: record.run.repositoryId,
+        pr: record.run.pullRequestNumber,
+        source: 'evaluation_run',
+      }));
+    }
+  }
+
+  async savePullRequestLifecycle(record: PullRequestLifecycleRecord): Promise<void> {
+    const results = await this.db.batch([
+      this.repositoryUpsert(record.installationId, { id: record.repositoryId, full_name: record.repositoryFullName }),
+      this.lifecycleUpsert(record),
+      this.reconcilePreMergeRun(record.repositoryId, record.pullRequestNumber),
+    ]);
+    if ((results[1]?.meta?.changes ?? 0) > 0) {
+      console.info(JSON.stringify({
+        event: 'lifecycle_projection_updated',
+        repositoryId: record.repositoryId,
+        pr: record.pullRequestNumber,
+        state: record.state,
+      }));
+    }
+    if ((results[2]?.meta?.changes ?? 0) > 0) {
+      console.info(JSON.stringify({
+        event: 'pre_merge_projection_reconciled',
+        repositoryId: record.repositoryId,
+        pr: record.pullRequestNumber,
+        source: 'lifecycle',
+      }));
+    }
   }
 }
