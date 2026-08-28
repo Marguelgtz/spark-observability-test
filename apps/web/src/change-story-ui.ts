@@ -40,71 +40,6 @@ const FEEDBACK_OPTIONS: Array<{ value: TrajectoryFeedbackClassificationV1; label
   { value: 'FIXED_BECAUSE_SPARK', label: 'Fixed because of Spark' },
 ];
 
-function feedbackControls(
-  transition: NotableTransitionV1,
-  saved: TrajectoryFeedbackV1 | undefined,
-  saveFeedback: SaveStoryFeedback,
-): HTMLElement {
-  const controls = node('div', 'pr-feedback');
-  controls.dataset.testid = 'transition-feedback';
-  controls.append(node('span', 'pr-feedback-question', 'Was this useful?'));
-
-  const options = node('div', 'pr-feedback-options');
-  const buttons: HTMLButtonElement[] = [];
-  for (const option of FEEDBACK_OPTIONS) {
-    const button = node('button', 'pr-feedback-option', option.label) as HTMLButtonElement;
-    button.type = 'button';
-    button.dataset.classification = option.value;
-    button.setAttribute('aria-pressed', String(saved?.classification === option.value));
-    if (saved?.classification === option.value) button.classList.add('is-selected');
-    buttons.push(button);
-    options.append(button);
-  }
-  controls.append(options);
-
-  const context = node('details', 'pr-feedback-context');
-  context.append(node('summary', undefined, saved?.note ? 'Edit optional context' : 'Add optional context'));
-  const note = node('textarea') as HTMLTextAreaElement;
-  note.maxLength = 500;
-  note.rows = 2;
-  note.placeholder = 'What made this useful or inaccurate? (500 characters max)';
-  note.setAttribute('aria-label', 'Optional feedback context');
-  note.value = saved?.note ?? '';
-  context.append(note);
-  controls.append(context);
-
-  const status = node('span', 'pr-feedback-status', saved ? 'Feedback saved' : '');
-  status.setAttribute('role', 'status');
-  status.setAttribute('aria-live', 'polite');
-  controls.append(status);
-
-  for (const button of buttons) {
-    button.addEventListener('click', () => {
-      const classification = button.dataset.classification as TrajectoryFeedbackClassificationV1;
-      const noteValue = note.value.trim();
-      for (const item of buttons) item.disabled = true;
-      status.textContent = 'Saving feedback…';
-      void saveFeedback(transition.id, {
-        classification,
-        ...(noteValue ? { note: noteValue } : {}),
-      }).then((result) => {
-        for (const item of buttons) {
-          const selected = item.dataset.classification === result.classification;
-          item.classList.toggle('is-selected', selected);
-          item.setAttribute('aria-pressed', String(selected));
-        }
-        note.value = result.note ?? '';
-        status.textContent = `Saved as ${FEEDBACK_OPTIONS.find(item => item.value === result.classification)?.label ?? 'feedback'}`;
-      }).catch(() => {
-        status.textContent = 'Feedback could not be saved. Try again.';
-      }).finally(() => {
-        for (const item of buttons) item.disabled = false;
-      });
-    });
-  }
-  return controls;
-}
-
 function attentionBadge(attention: string | undefined): HTMLElement | undefined {
   if (!attention) return undefined;
   return node('span', `attention attention-${attention.toLowerCase()}`, attention);
@@ -118,9 +53,9 @@ function healthLabel(health: ChangeStoryNode['evidenceHealth']): string | undefi
   return 'Evidence unknown';
 }
 
-function storyKindLabel(item: ChangeStoryNode): string {
+function momentKindLabel(item: ChangeStoryNode): string {
   if (item.kind === 'TERMINAL') return item.lifecycle.state === 'MERGED' ? 'Merge outcome' : 'Close outcome';
-  if (item.kind === 'TRANSITION') return item.latest ? 'Notable transition · Latest' : 'Notable transition';
+  if (item.kind === 'TRANSITION') return item.latest ? 'Latest change' : 'Change';
   if (item.kind === 'LATEST') return 'Latest';
   return 'Initial';
 }
@@ -129,139 +64,313 @@ function connector(item: ChangeStoryNode): HTMLElement | undefined {
   if (item.kind === 'INITIAL' || item.elapsedMs <= 0) return undefined;
   const row = node('div', 'change-story-connector');
   row.setAttribute('aria-label', `${formatStoryDuration(item.elapsedMs)} later`);
-  row.append(node('span', 'change-story-connector-line'), node('span', 'change-story-connector-time', `${formatStoryDuration(item.elapsedMs)} later`));
+  row.append(node('span', 'change-story-connector-line'), node('span', 'change-story-connector-time', formatStoryDuration(item.elapsedMs)));
   return row;
 }
 
 function runLink(run: EvaluationSummaryV1, href: string): HTMLAnchorElement {
-  const link = node('a', 'change-story-run-link', `Open evaluation ${shortSha(run.headSha)}`) as HTMLAnchorElement;
+  const link = node('a', 'change-story-run-link', shortSha(run.headSha)) as HTMLAnchorElement;
   link.href = href;
   link.dataset.routerLink = 'true';
+  link.setAttribute('aria-label', `Open evaluation ${shortSha(run.headSha)}`);
+  link.title = `Open evaluation ${shortSha(run.headSha)}`;
   return link;
 }
 
-function transitionCard(
+function feedbackTriggerState(button: HTMLButtonElement, saved: TrajectoryFeedbackV1 | undefined): void {
+  const savedState = Boolean(saved);
+  button.classList.toggle('is-saved', savedState);
+  button.textContent = savedState ? '✓' : '✎';
+  const label = savedState ? 'Edit Spark feedback on this transition' : 'Give Spark feedback on this transition';
+  button.setAttribute('aria-label', label);
+  button.dataset.tooltip = label;
+}
+
+function openFeedbackDrawer(
+  host: HTMLElement,
+  item: ChangeStoryTransitionNode,
+  saved: TrajectoryFeedbackV1 | undefined,
+  saveFeedback: SaveStoryFeedback,
+  trigger: HTMLButtonElement,
+  onSaved: (result: TrajectoryFeedbackV1) => void,
+): void {
+  host.querySelector<HTMLElement>('.change-story-feedback-layer')?.remove();
+
+  const layer = node('div', 'change-story-feedback-layer');
+  const backdrop = node('div', 'change-story-feedback-backdrop');
+  backdrop.setAttribute('aria-hidden', 'true');
+  const drawer = node('aside', 'change-story-feedback-drawer');
+  drawer.setAttribute('role', 'dialog');
+  drawer.setAttribute('aria-modal', 'true');
+  drawer.setAttribute('aria-labelledby', 'transition-feedback-title');
+  drawer.dataset.testid = 'transition-feedback-drawer';
+
+  const header = node('div', 'change-story-feedback-header');
+  const heading = node('div');
+  heading.append(node('span', 'change-story-kind', 'TRANSITION FEEDBACK'));
+  const title = node('h2', undefined, 'Feedback on this transition');
+  title.id = 'transition-feedback-title';
+  heading.append(title);
+  const closeButton = node('button', 'change-story-feedback-close', '×') as HTMLButtonElement;
+  closeButton.type = 'button';
+  closeButton.setAttribute('aria-label', 'Close feedback drawer');
+  header.append(heading, closeButton);
+
+  const context = node('div', 'change-story-feedback-summary');
+  const contextTop = node('div', 'change-story-feedback-summary-top');
+  contextTop.append(node('strong', undefined, item.headline));
+  const attention = attentionBadge(item.attention);
+  if (attention) contextTop.append(attention);
+  context.append(contextTop);
+  if (item.causes.length) context.append(node('p', undefined, item.causes.slice(0, 2).join(' · ')));
+
+  const question = node('p', 'change-story-feedback-question', 'How would you classify this transition?');
+  const options = node('div', 'change-story-feedback-options');
+  options.setAttribute('role', 'group');
+  options.setAttribute('aria-label', 'Transition feedback classification');
+  const buttons: HTMLButtonElement[] = [];
+  let selected = saved?.classification;
+
+  const syncSelection = () => {
+    for (const button of buttons) {
+      const active = button.dataset.classification === selected;
+      button.classList.toggle('is-selected', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  };
+
+  for (const option of FEEDBACK_OPTIONS) {
+    const button = node('button', 'change-story-feedback-option', option.label) as HTMLButtonElement;
+    button.type = 'button';
+    button.dataset.classification = option.value;
+    button.addEventListener('click', () => {
+      selected = option.value;
+      syncSelection();
+      saveButton.disabled = false;
+    });
+    buttons.push(button);
+    options.append(button);
+  }
+  syncSelection();
+
+  const noteLabel = node('label', 'change-story-feedback-note-label', 'Optional context');
+  const note = node('textarea', 'change-story-feedback-note') as HTMLTextAreaElement;
+  note.maxLength = 500;
+  note.rows = 4;
+  note.placeholder = 'What made this useful, expected, or inaccurate?';
+  note.setAttribute('aria-label', 'Optional feedback context');
+  note.value = saved?.note ?? '';
+  noteLabel.append(note);
+
+  const footer = node('div', 'change-story-feedback-footer');
+  const status = node('span', 'change-story-feedback-status', saved ? 'Feedback saved' : '');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  const saveButton = node('button', 'change-story-feedback-save', 'Save feedback') as HTMLButtonElement;
+  saveButton.type = 'button';
+  saveButton.disabled = !selected;
+  footer.append(status, saveButton);
+
+  drawer.append(header, context, question, options, noteLabel, footer);
+  layer.append(backdrop, drawer);
+  host.append(layer);
+
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', onKeyDown);
+    layer.remove();
+    trigger.focus();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') close();
+  };
+  document.addEventListener('keydown', onKeyDown);
+  backdrop.addEventListener('click', close);
+  closeButton.addEventListener('click', close);
+
+  saveButton.addEventListener('click', () => {
+    if (!selected) return;
+    const noteValue = note.value.trim();
+    saveButton.disabled = true;
+    for (const button of buttons) button.disabled = true;
+    status.textContent = 'Saving feedback…';
+    void saveFeedback(item.transition.id, {
+      classification: selected,
+      ...(noteValue ? { note: noteValue } : {}),
+    }).then((result) => {
+      selected = result.classification;
+      note.value = result.note ?? '';
+      syncSelection();
+      status.textContent = `Saved as ${FEEDBACK_OPTIONS.find((option) => option.value === result.classification)?.label ?? 'feedback'}`;
+      onSaved(result);
+    }).catch(() => {
+      status.textContent = 'Feedback could not be saved. Try again.';
+    }).finally(() => {
+      for (const button of buttons) button.disabled = false;
+      saveButton.disabled = !selected;
+    });
+  });
+
+  closeButton.focus();
+}
+
+function feedbackTrigger(
+  host: HTMLElement,
+  item: ChangeStoryTransitionNode,
+  detail: PullRequestTrajectoryV1,
+  saveFeedback: SaveStoryFeedback,
+): HTMLButtonElement {
+  let saved = detail.feedback?.find((feedback) => feedback.transitionId === item.transition.id);
+  const button = node('button', 'change-story-feedback-trigger') as HTMLButtonElement;
+  button.type = 'button';
+  button.dataset.testid = 'transition-feedback-trigger';
+  button.dataset.transitionId = item.transition.id;
+  button.setAttribute('aria-haspopup', 'dialog');
+  feedbackTriggerState(button, saved);
+  button.addEventListener('click', () => {
+    openFeedbackDrawer(host, item, saved, saveFeedback, button, (result) => {
+      saved = result;
+      feedbackTriggerState(button, saved);
+    });
+  });
+  return button;
+}
+
+function compactCauses(causes: string[]): HTMLElement | undefined {
+  if (!causes.length) return undefined;
+  const wrapper = node('div', 'change-story-causes');
+  wrapper.append(node('p', undefined, causes.slice(0, 2).join(' · ')));
+  if (causes.length > 2) {
+    const details = node('details', 'change-story-more');
+    details.append(node('summary', undefined, `+${causes.length - 2} more`));
+    const list = node('ul');
+    for (const cause of causes.slice(2)) list.append(node('li', undefined, cause));
+    details.append(list);
+    wrapper.append(details);
+  }
+  return wrapper;
+}
+
+function momentShell(item: ChangeStoryNode): { row: HTMLElement; body: HTMLElement; meta: HTMLElement; actions: HTMLElement } {
+  const row = node('article', `change-story-moment change-story-moment-${item.kind.toLowerCase()}`);
+  const marker = node('span', 'change-story-marker');
+  marker.setAttribute('aria-hidden', 'true');
+  const body = node('div', 'change-story-moment-body');
+  const meta = node('div', 'change-story-moment-meta');
+  meta.append(node('span', 'change-story-kind', momentKindLabel(item)));
+  const attention = attentionBadge(item.attention);
+  if (attention) meta.append(attention);
+  const health = healthLabel(item.evidenceHealth);
+  if (health) meta.append(node('span', 'change-story-health', health));
+  const actions = node('div', 'change-story-moment-actions');
+  const time = node('time', 'change-story-time', `${relativeTime(item.at)} ago`);
+  time.dateTime = item.at;
+  actions.append(time);
+  row.append(marker, body, actions);
+  return { row, body, meta, actions };
+}
+
+function transitionMoment(
+  host: HTMLElement,
   item: ChangeStoryTransitionNode,
   detail: PullRequestTrajectoryV1,
   options: ChangeStoryRenderOptions,
 ): HTMLElement {
-  const card = node('article', `change-story-card change-story-transition change-story-${item.transition.severity.toLowerCase()}`);
-  card.dataset.testid = 'notable-transition';
-  card.dataset.transitionId = item.transition.id;
-
-  const top = node('div', 'change-story-card-top');
-  const meta = node('div', 'change-story-card-meta');
-  meta.append(node('span', 'change-story-kind', storyKindLabel(item)));
-  const attention = attentionBadge(item.attention);
-  if (attention) meta.append(attention);
-  const health = healthLabel(item.evidenceHealth);
-  if (health) meta.append(node('span', 'change-story-health', health));
-  const time = node('time', 'change-story-time', `${relativeTime(item.at)} ago`);
-  time.dateTime = item.at;
-  top.append(meta, time);
-  card.append(top, node('h3', undefined, item.headline));
-
-  if (item.causes.length) {
-    const causes = node('ul', 'change-story-causes');
-    for (const cause of item.causes) causes.append(node('li', undefined, cause));
-    card.append(causes);
-  }
-
-  if (item.run) card.append(runLink(item.run, options.observationHref(item.run)));
+  const { row, body, meta, actions } = momentShell(item);
+  row.classList.add(`change-story-${item.transition.severity.toLowerCase()}`);
+  row.dataset.testid = 'notable-transition';
+  row.dataset.transitionId = item.transition.id;
+  body.append(meta, node('h3', undefined, item.headline));
+  const causes = compactCauses(item.causes);
+  if (causes) body.append(causes);
+  if (item.run) actions.append(runLink(item.run, options.observationHref(item.run)));
   if (item.transition.severity === 'MATERIAL' && options.saveFeedback) {
-    card.append(feedbackControls(
-      item.transition,
-      detail.feedback?.find((feedback) => feedback.transitionId === item.transition.id),
-      options.saveFeedback,
-    ));
+    actions.append(feedbackTrigger(host, item, detail, options.saveFeedback));
   }
-  return card;
+  return row;
 }
 
-function observationCard(item: Extract<ChangeStoryNode, { kind: 'INITIAL' | 'LATEST' }>, options: ChangeStoryRenderOptions): HTMLElement {
-  const card = node('article', `change-story-card change-story-observation change-story-${item.kind.toLowerCase()}`);
-  const top = node('div', 'change-story-card-top');
-  const meta = node('div', 'change-story-card-meta');
-  meta.append(node('span', 'change-story-kind', storyKindLabel(item)));
-  const attention = attentionBadge(item.attention);
-  if (attention) meta.append(attention);
-  const health = healthLabel(item.evidenceHealth);
-  if (health) meta.append(node('span', 'change-story-health', health));
-  const time = node('time', 'change-story-time', `${relativeTime(item.at)} ago`);
-  time.dateTime = item.at;
-  top.append(meta, time);
-  card.append(top, node('h3', undefined, item.headline));
-
-  const detail = node('p', 'change-story-copy', item.detail);
+function observationMoment(
+  item: Extract<ChangeStoryNode, { kind: 'INITIAL' | 'LATEST' }>,
+  options: ChangeStoryRenderOptions,
+): HTMLElement {
+  const { row, body, meta, actions } = momentShell(item);
+  body.append(meta, node('h3', undefined, item.kind === 'INITIAL' ? 'Initial state' : item.headline));
+  const copy = node('p', 'change-story-copy', item.detail);
   const evidence = evidenceLabel(item.run.evidenceSummary);
-  if (evidence && evidence !== item.detail) detail.append(document.createTextNode(` · ${evidence}`));
-  card.append(detail, runLink(item.run, options.observationHref(item.run)));
-  return card;
+  if (evidence && evidence !== item.detail) copy.append(document.createTextNode(` · ${evidence}`));
+  body.append(copy);
+  actions.append(runLink(item.run, options.observationHref(item.run)));
+  return row;
 }
 
-function terminalCard(item: ChangeStoryTerminalNode): HTMLElement {
-  const card = node('article', `change-story-card change-story-terminal change-story-terminal-${item.lifecycle.state.toLowerCase()}`);
-  card.dataset.testid = 'lifecycle-terminal';
-
-  const top = node('div', 'change-story-card-top');
-  const meta = node('div', 'change-story-card-meta');
-  meta.append(node('span', 'change-story-kind', storyKindLabel(item)));
+function terminalMoment(item: ChangeStoryTerminalNode): HTMLElement {
+  const { row, body, meta, actions } = momentShell(item);
+  row.classList.add(`change-story-terminal-${item.lifecycle.state.toLowerCase()}`);
+  row.dataset.testid = 'lifecycle-terminal';
   if (item.lifecycle.state === 'MERGED') {
     meta.append(node('strong', 'change-story-lifecycle-state', `Merged${item.attention ? ` · ${item.attention}` : ''}`));
   } else {
     meta.append(node('strong', 'change-story-lifecycle-state', 'Closed'));
   }
-  const time = node('time', 'change-story-time', `${relativeTime(item.at)} ago`);
-  time.dateTime = item.at;
-  top.append(meta, time);
-  card.append(top, node('h3', undefined, item.headline), node('p', 'change-story-copy', item.detail));
-
+  body.append(meta, node('h3', undefined, item.headline), node('p', 'change-story-copy', item.detail));
   if (item.lifecycle.state === 'MERGED' && item.lifecycle.unresolvedAtMerge !== undefined) {
-    card.append(node(
+    actions.append(node(
       'span',
       item.lifecycle.unresolvedAtMerge ? 'pr-terminal-status is-unresolved' : 'pr-terminal-status is-resolved',
       item.lifecycle.unresolvedAtMerge ? 'Unresolved at merge' : 'Clear at merge',
     ));
   }
-  return card;
+  return row;
 }
 
-function storyCard(item: ChangeStoryNode, detail: PullRequestTrajectoryV1, options: ChangeStoryRenderOptions): HTMLElement {
-  if (item.kind === 'TRANSITION') return transitionCard(item, detail, options);
-  if (item.kind === 'TERMINAL') return terminalCard(item);
-  return observationCard(item, options);
+function renderMoment(
+  host: HTMLElement,
+  item: ChangeStoryNode,
+  detail: PullRequestTrajectoryV1,
+  options: ChangeStoryRenderOptions,
+): HTMLElement {
+  if (item.kind === 'TRANSITION') return transitionMoment(host, item, detail, options);
+  if (item.kind === 'TERMINAL') return terminalMoment(item);
+  return observationMoment(item, options);
 }
 
 export function renderChangeStory(detail: PullRequestTrajectoryV1, options: ChangeStoryRenderOptions): HTMLElement {
   const story = deriveChangeStory(detail);
   const section = node('section', 'change-story');
-  section.dataset.testid = 'change-story';
+  section.dataset.testid = 'key-moments';
 
   const heading = node('div', 'change-story-heading');
   const copy = node('div');
-  copy.append(node('p', 'pr-section-kicker', 'CHANGE STORY'), node('h2', undefined, 'Change story'));
+  copy.append(
+    node('p', 'pr-section-kicker', 'CHANGE EVOLUTION'),
+    node('h2', undefined, 'Key moments'),
+    node('p', 'change-story-intro', 'Material changes Spark observed while this pull request evolved.'),
+  );
   const summary = node('p', 'change-story-summary');
   summary.append(document.createTextNode(`${story.retainedEvaluations} evaluation${story.retainedEvaluations === 1 ? '' : 's'} · ${detail.summary.totalTransitions} notable transition${detail.summary.totalTransitions === 1 ? '' : 's'}`));
-  if (story.collapsedEvaluations > 0) summary.append(document.createTextNode(` · ${story.collapsedEvaluations} unchanged evaluation${story.collapsedEvaluations === 1 ? '' : 's'} collapsed`));
+  if (story.collapsedEvaluations > 0) summary.append(document.createTextNode(` · ${story.collapsedEvaluations} unchanged collapsed`));
   copy.append(summary);
   heading.append(copy);
 
   if (story.partialHistory || story.truncated) {
     const history = story.truncated
-      ? 'Story is based on the retained trajectory window; older evaluations are not shown.'
-      : 'Story includes reconstructed historical evaluations where full transition detail is unavailable.';
+      ? 'Based on the retained trajectory window; older evaluations are not shown.'
+      : 'Includes reconstructed historical evaluations where full transition detail is unavailable.';
     heading.append(node('span', 'change-story-history-note', history));
   }
   section.append(heading);
 
   const list = node('ol', 'change-story-list');
-  list.setAttribute('aria-label', 'Pull request change story');
+  list.setAttribute('aria-label', 'Pull request key moments');
   for (const item of story.nodes) {
     const listItem = node('li', `change-story-item change-story-item-${item.kind.toLowerCase()}`);
     listItem.dataset.storyKind = item.kind;
     const gap = connector(item);
     if (gap) listItem.append(gap);
-    listItem.append(storyCard(item, detail, options));
+    listItem.append(renderMoment(section, item, detail, options));
     list.append(listItem);
   }
   section.append(list);
