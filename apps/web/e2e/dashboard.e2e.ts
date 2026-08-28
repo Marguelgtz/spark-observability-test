@@ -27,7 +27,7 @@ test('activity renders one row per pull request and captures screenshot', async 
 test('pull request history expands into a horizontal evaluation rail', async ({ page }, testInfo) => {
   await page.goto('/app?window=7d&attention=ALL');
   const toggle = page.getByTestId('history-toggle-101-42');
-  await expect(toggle).toHaveText('↻ 3');
+  await expect(toggle).toContainText('3');
   await toggle.click();
   const history = page.getByTestId('history-101-42');
   await expect(history).toBeVisible();
@@ -66,18 +66,33 @@ test('API error state is explicit', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
 });
 
-test('evaluation detail renders and links to GitHub', async ({ page }, testInfo) => {
+test('activity opens a pull request observability page', async ({ page }, testInfo) => {
   await page.goto('/app?window=7d&attention=ALL');
-  await page.getByRole('link', { name: /HIGH: API authentication changes/ }).click();
+  await page.getByRole('link', { name: 'Open pull request 42: API authentication changes' }).click();
+  await expect(page.getByTestId('pull-request-detail')).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/repositories\/101\/pulls\/42/);
+  await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Trajectory' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Observations' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evaluation history' })).toBeVisible();
+  await expect(page.locator('.pr-run')).toHaveCount(3);
+  await page.screenshot({ path: `${screenshotDir}/pull-request-${suffix(testInfo.project.name)}.png`, fullPage: true });
+});
+
+test('pull request page drills into latest evaluation and keeps PR context', async ({ page }, testInfo) => {
+  await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
+  await page.getByRole('link', { name: 'View latest evaluation' }).click();
   await expect(page.getByTestId('evaluation-detail')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
   await expect(page.getByText('integration-test', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '← PR #42' })).toBeVisible();
+  await expect(page.getByText(/Evaluation 3 of 3/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open GitHub PR' })).toHaveAttribute('href', /^https:\/\/github\.com\//);
   await expect(page.getByRole('link', { name: 'Open full Spark Check' })).toHaveAttribute('href', /^https:\/\/github\.com\//);
   await page.screenshot({ path: `${screenshotDir}/detail-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
-test('history cards navigate to a specific evaluation SHA', async ({ page }) => {
+test('history cards navigate to a specific evaluation SHA with previous and next context', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
   await page.getByTestId('history-toggle-101-42').click();
   const history = page.getByTestId('history-101-42');
@@ -85,20 +100,24 @@ test('history cards navigate to a specific evaluation SHA', async ({ page }) => 
   await older.click();
   await expect(page.getByTestId('evaluation-detail')).toBeVisible();
   await expect(page).toHaveURL(/\/app\/evaluations\/101\//);
+  await expect(page.getByRole('link', { name: '← Previous' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Next →' })).toBeVisible();
 });
 
-test('legacy evaluation has a truthful unavailable state', async ({ page }) => {
+test('legacy evaluation has a truthful unavailable state through the PR page', async ({ page }) => {
   await page.goto('/app?window=30d&attention=ALL');
-  await page.getByRole('link', { name: /Initial repository mapping/ }).click();
+  await page.getByRole('link', { name: 'Open pull request 37: Initial repository mapping' }).click();
+  await expect(page.getByTestId('pull-request-detail')).toBeVisible();
+  await page.getByRole('link', { name: 'View latest evaluation' }).click();
   await expect(page.getByTestId('detail-unavailable')).toBeVisible();
   await expect(page.getByText('Historical detail unavailable')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open GitHub PR' })).toBeVisible();
 });
 
-test('back navigation preserves activity filters', async ({ page }) => {
+test('back navigation preserves activity filters through the PR layer', async ({ page }) => {
   await page.goto('/app?window=24h&attention=HIGH');
   await page.locator('.evaluation-main-link').first().click();
-  await expect(page.getByTestId('evaluation-detail')).toBeVisible();
+  await expect(page.getByTestId('pull-request-detail')).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(/window=24h/);
   await expect(page).toHaveURL(/attention=HIGH/);
