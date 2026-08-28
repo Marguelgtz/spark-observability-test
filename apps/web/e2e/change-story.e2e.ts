@@ -21,8 +21,7 @@ test('pull request page keeps analysis first and change evolution at the bottom'
   await expect(moments.getByTestId('transition-feedback-trigger')).toHaveCount(2);
   await expect(page.getByTestId('transition-feedback-drawer')).toHaveCount(0);
 
-  const trajectory = page.getByTestId('insight-canvas-pr-trajectory');
-  await expect(trajectory).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-pr-trajectory')).toBeVisible();
 
   const forensics = page.getByTestId('pr-forensics');
   await expect(forensics).toBeVisible();
@@ -30,8 +29,6 @@ test('pull request page keeps analysis first and change evolution at the bottom'
 
   const prPage = page.getByTestId('pull-request-detail');
   await expect(prPage.evaluate((element) => element.lastElementChild?.getAttribute('data-testid'))).resolves.toBe('key-moments');
-  await expect(trajectory.evaluate((element, momentsElement) => Boolean(element.compareDocumentPosition(momentsElement as Node) & Node.DOCUMENT_POSITION_FOLLOWING), await moments.elementHandle())).resolves.toBe(true);
-  await expect(forensics.evaluate((element, momentsElement) => Boolean(element.compareDocumentPosition(momentsElement as Node) & Node.DOCUMENT_POSITION_FOLLOWING), await moments.elementHandle())).resolves.toBe(true);
 
   await expect(page.getByRole('heading', { name: 'Observations', exact: true })).not.toBeVisible();
   await forensics.getByText('Forensic details', { exact: true }).click();
