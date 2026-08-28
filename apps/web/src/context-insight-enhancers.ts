@@ -51,12 +51,12 @@ export function enhancePullRequestWithSeverityTimeline(
   const trajectorySection = trajectoryHeading?.closest<HTMLElement>('.pr-section');
   if (!trajectorySection) return root;
 
-  if (!root.querySelector('[data-testid="change-story"]')) {
-    const story = renderChangeStory(detail, {
+  if (!root.querySelector('[data-testid="key-moments"]')) {
+    const moments = renderChangeStory(detail, {
       observationHref: (run) => observationHref(run, activitySearch),
       ...(saveFeedback ? { saveFeedback } : {}),
     });
-    trajectorySection.insertAdjacentElement('beforebegin', story);
+    trajectorySection.insertAdjacentElement('beforebegin', moments);
   }
 
   if (!root.querySelector('[data-testid="insight-canvas-pr-trajectory"]')) {
@@ -68,9 +68,9 @@ export function enhancePullRequestWithSeverityTimeline(
     }
   }
 
-  // The story owns lifecycle outcome and notable transition feedback. Remove the
-  // previous duplicate terminal/transition presentation while retaining the
-  // complete run history below progressive disclosure.
+  // Key moments own the compact lifecycle/transition sequence. Remove the old
+  // duplicate terminal and transition list while retaining all run-level
+  // evidence and observations under progressive disclosure.
   page.querySelector<HTMLElement>('.pr-terminal')?.remove();
   page.querySelector<HTMLElement>('.pr-transition-list')?.remove();
   moveForensicsBelowTrajectory(page, trajectorySection);
