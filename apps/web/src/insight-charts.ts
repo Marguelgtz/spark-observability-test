@@ -15,7 +15,7 @@ export interface TimePoint {
 export interface NamedValue {
   label: string;
   value: number;
-  tone?: 'high' | 'medium' | 'low' | 'failed' | 'waiting' | 'clear' | 'unknown';
+  tone?: string;
 }
 
 function bucketLabel(value: string, hourly: boolean): string {
