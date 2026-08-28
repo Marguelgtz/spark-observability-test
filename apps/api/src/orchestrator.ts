@@ -5,7 +5,8 @@ import {
   GitHubApiClient,
   type GitHubEventRequest,
 } from '@spark/github';
-import type { SparkStore } from './contracts';
+import type { EvidenceHealthV1 } from '@spark/dashboard-contracts';
+import type { EvaluationRunTrigger, SparkStore } from './contracts';
 import { buildStoredEvaluationDetail } from './evaluation-detail';
 
 export interface OrchestratorDependencies {
@@ -28,8 +29,7 @@ type EvaluationStage =
   | 'lookup_evaluation'
   | 'create_check'
   | 'update_check'
-  | 'persist_evaluation'
-  | 'persist_evaluation_detail';
+  | 'persist_observation';
 
 interface EvaluationLogContext {
   installationId: number;
@@ -37,6 +37,13 @@ interface EvaluationLogContext {
   repositoryId?: number;
   pullRequestNumber: number;
   headSha: string;
+}
+
+function evidenceHealth(evaluation: SparkEvaluation): EvidenceHealthV1 {
+  if (evaluation.evidence.some(item => item.status === 'FAILED')) return 'FAILED';
+  if (evaluation.evidence.some(item => item.status === 'PENDING' || item.status === 'MISSING')) return 'PENDING_OR_MISSING';
+  if (evaluation.evidence.length > 0 && evaluation.evidence.every(item => item.status === 'UNKNOWN')) return 'UNKNOWN';
+  return 'CLEAR';
 }
 
 export class SparkOrchestrator {
@@ -70,7 +77,7 @@ export class SparkOrchestrator {
     }
   }
 
-  async handle(request: GitHubEventRequest): Promise<OrchestratorResult> {
+  async handle(request: GitHubEventRequest, trigger?: EvaluationRunTrigger): Promise<OrchestratorResult> {
     if (request.kind === 'ignore') return { status: 'ignored' };
     if (request.kind === 'installation' || request.kind === 'installation_repositories') {
       await this.dependencies.store.saveInstallationEvent(request);
@@ -99,33 +106,56 @@ export class SparkOrchestrator {
     const checkRun = existingCheckRunId
       ? await this.runStage('update_check', logContext, () => client.updateCheckRun(owner, repo, existingCheckRunId, payload))
       : await this.runStage('create_check', logContext, () => client.createCheckRun(owner, repo, { ...payload, head_sha: headSha }));
-    await this.runStage('persist_evaluation', logContext, () => this.dependencies.store.saveEvaluation({
+
+    const detail = buildStoredEvaluationDetail(source, evaluation, { id: checkRun.id, url: checkRun.html_url });
+    const runId = crypto.randomUUID();
+    const effectiveTrigger: EvaluationRunTrigger = trigger ?? { event: 'manual', action: request.action };
+    const idempotencyKey = effectiveTrigger.deliveryId ? `github:${effectiveTrigger.deliveryId}` : `manual:${runId}`;
+    const currentEvaluation = {
       repositoryId: source.repository.id,
       installationId,
       headSha,
       pullRequestNumber,
       checkRunId: checkRun.id,
       attention: evaluation.attention,
-    }));
+    };
+    const currentDetail = {
+      repositoryId: source.repository.id,
+      headSha,
+      schemaVersion: detail.version,
+      baseSha: detail.baseSha,
+      pullRequestTitle: detail.pullRequest.title,
+      pullRequestUrl: detail.pullRequest.url,
+      evaluatorVersion: detail.evaluatorVersion,
+      evaluatedAt: detail.evaluatedAt,
+      checkUrl: detail.check.url,
+      normalized: detail,
+      truncated: detail.truncation.truncated,
+    };
 
-    const detail = buildStoredEvaluationDetail(source, evaluation, { id: checkRun.id, url: checkRun.html_url });
-    try {
-      await this.runStage('persist_evaluation_detail', logContext, () => this.dependencies.store.saveEvaluationDetail({
+    await this.runStage('persist_observation', logContext, () => this.dependencies.store.saveEvaluationObservation({
+      run: {
+        id: runId,
+        idempotencyKey,
         repositoryId: source.repository.id,
+        installationId,
+        pullRequestNumber,
         headSha,
-        schemaVersion: detail.version,
         baseSha: detail.baseSha,
-        pullRequestTitle: detail.pullRequest.title,
-        pullRequestUrl: detail.pullRequest.url,
+        checkRunId: checkRun.id,
+        trigger: effectiveTrigger,
+        observationSource: 'LIVE',
+        schemaVersion: detail.version,
         evaluatorVersion: detail.evaluatorVersion,
         evaluatedAt: detail.evaluatedAt,
-        checkUrl: detail.check.url,
+        attention: evaluation.attention,
+        evidenceHealth: evidenceHealth(evaluation),
         normalized: detail,
         truncated: detail.truncation.truncated,
-      }));
-    } catch {
-      // Dashboard history is supplemental. The GitHub-native Check remains authoritative.
-    }
+      },
+      evaluation: currentEvaluation,
+      detail: currentDetail,
+    }));
 
     return { status: 'evaluated', evaluation, checkRunId: checkRun.id };
   }
