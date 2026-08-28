@@ -67,11 +67,16 @@ export function enhancePullRequestWithSeverityTimeline(
     }
   }
 
+  // Key moments own the compact lifecycle/transition sequence. Remove the old
+  // duplicate terminal and transition list while retaining complete run-level
+  // evidence and observations in a compact forensic disclosure.
   page.querySelector<HTMLElement>('.pr-terminal')?.remove();
   page.querySelector<HTMLElement>('.pr-transition-list')?.remove();
   const evaluationHistory = sectionByHeading(page, 'Evaluation history');
   const forensics = collectForensics(page);
 
+  // The detailed run history is useful context before the compressed change
+  // evolution. Deeper observations/evidence remain a final collapsed layer.
   let moments = root.querySelector<HTMLElement>('[data-testid="key-moments"]');
   if (!moments) {
     moments = renderChangeStory(detail, {
