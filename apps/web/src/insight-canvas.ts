@@ -1,3 +1,4 @@
+import './insight-charts.css';
 import './insight-canvas.css';
 import './insight-chart-extras.css';
 
