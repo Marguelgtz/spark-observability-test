@@ -1,9 +1,19 @@
-import type { AccountV1, ActivityQueryV1, ActivityWindowV1, AttentionFilterV1, DashboardFavoriteV1 } from '@spark/dashboard-contracts';
+import type {
+  AccountV1,
+  ActivityQueryV1,
+  ActivityWindowV1,
+  AttentionFilterV1,
+  DashboardFavoriteV1,
+  PullRequestTrajectoryV1,
+  SaveTrajectoryFeedbackV1,
+  TrajectoryFeedbackClassificationV1,
+} from '@spark/dashboard-contracts';
 import { createInstallationToken, GitHubApiClient, routeGitHubEvent, verifyWebhookSignature } from '@spark/github';
 import type { DashboardAuthorizer, DashboardPrincipal } from './dashboard-access';
 import { D1DashboardReader, type DashboardReader } from './dashboard-reader';
 import { D1SparkStore, type D1Database } from './d1';
 import { D1DashboardFavoriteStore, type DashboardFavoriteStore } from './dashboard-favorites';
+import { D1DashboardFeedbackStore, type DashboardFeedbackStore } from './dashboard-feedback';
 import { GitHubDashboardAuth } from './github-auth';
 import { SparkOrchestrator } from './orchestrator';
 import type { SparkStore } from './contracts';
@@ -29,6 +39,7 @@ export interface WebhookDependencies {
   dashboardAuthorizer?: DashboardAuthorizer;
   dashboardAuth?: GitHubDashboardAuth;
   dashboardFavoriteStore?: DashboardFavoriteStore;
+  dashboardFeedbackStore?: DashboardFeedbackStore;
 }
 
 export interface WorkerExecutionContext {
@@ -134,6 +145,32 @@ async function parseFavorite(request: Request): Promise<DashboardFavoriteV1 | un
   };
 }
 
+const FEEDBACK_CLASSIFICATIONS: TrajectoryFeedbackClassificationV1[] = [
+  'USEFUL',
+  'EXPECTED',
+  'FALSE_POSITIVE',
+  'FIXED_BECAUSE_SPARK',
+];
+
+async function parseFeedback(request: Request): Promise<SaveTrajectoryFeedbackV1 | undefined> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    return undefined;
+  }
+  if (!value || typeof value !== 'object') return undefined;
+  const input = value as Record<string, unknown>;
+  if (!FEEDBACK_CLASSIFICATIONS.includes(input.classification as TrajectoryFeedbackClassificationV1)) return undefined;
+  if (input.note !== undefined && typeof input.note !== 'string') return undefined;
+  const note = typeof input.note === 'string' ? input.note.trim() : undefined;
+  if (note && note.length > 500) return undefined;
+  return {
+    classification: input.classification as TrajectoryFeedbackClassificationV1,
+    ...(note ? { note } : {}),
+  };
+}
+
 async function handleDashboardRequest(
   request: Request,
   env: Env,
@@ -166,6 +203,7 @@ async function handleDashboardRequest(
   }
 
   const reader = dependencies.dashboardReader ?? new D1DashboardReader(env.DB);
+  const feedbackStore = dependencies.dashboardFeedbackStore ?? new D1DashboardFeedbackStore(env.DB);
   if (request.method === 'GET' && url.pathname === '/api/activity') {
     const query = parseActivityQuery(url);
     if (!query) return json({ error: 'invalid activity query' }, 400);
@@ -193,16 +231,50 @@ async function handleDashboardRequest(
     if (!validPullRequestPath(repositoryId, pullRequestNumber, principal.repositoryIds)) {
       return json({ error: 'not found' }, 404);
     }
+    let result: PullRequestTrajectoryV1 | undefined;
     try {
-      const result = await reader.trajectory(repositoryId, pullRequestNumber);
+      result = await reader.trajectory(repositoryId, pullRequestNumber);
       if (result?.truncated) {
         console.info(JSON.stringify({ event: 'trajectory_history_truncated', repositoryId, pr: pullRequestNumber, analyzedRuns: result.summary.analyzedRuns, totalRuns: result.summary.totalRuns }));
       }
-      return result ? json(result) : json({ error: 'not found' }, 404);
     } catch (error) {
       console.error(JSON.stringify({ event: 'trajectory_build_failed', repositoryId, pr: pullRequestNumber, error: errorMessage(error) }));
       throw error;
     }
+    if (!result) return json({ error: 'not found' }, 404);
+    const feedback = await feedbackStore.list(principal.viewer.id, repositoryId, pullRequestNumber);
+    return json({ ...result, feedback });
+  }
+
+  const feedbackMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)\/trajectory\/([^/]+)\/feedback$/);
+  if (request.method === 'PUT' && feedbackMatch) {
+    const repositoryId = Number(feedbackMatch[1]);
+    const pullRequestNumber = Number(feedbackMatch[2]);
+    if (!validPullRequestPath(repositoryId, pullRequestNumber, principal.repositoryIds)) {
+      return json({ error: 'not found' }, 404);
+    }
+    if (request.headers.get('origin') !== url.origin) return json({ error: 'forbidden' }, 403);
+    let transitionId: string;
+    try {
+      transitionId = decodeURIComponent(feedbackMatch[3]);
+    } catch {
+      return json({ error: 'invalid transition feedback' }, 400);
+    }
+    if (!transitionId || transitionId.length > 1024) return json({ error: 'invalid transition feedback' }, 400);
+    const input = await parseFeedback(request);
+    if (!input) return json({ error: 'invalid transition feedback' }, 400);
+    const trajectory = await reader.trajectory(repositoryId, pullRequestNumber);
+    const transition = trajectory?.notableTransitions.find(item => item.id === transitionId && item.severity === 'MATERIAL');
+    if (!transition) return json({ error: 'not found' }, 404);
+    const saved = await feedbackStore.save(
+      principal.viewer.id,
+      repositoryId,
+      pullRequestNumber,
+      transitionId,
+      input,
+    );
+    console.info(JSON.stringify({ event: 'feedback_saved', repositoryId, pr: pullRequestNumber, transitionId }));
+    return json(saved);
   }
 
   const runMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/runs\/([^/]+)$/);

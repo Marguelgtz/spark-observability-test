@@ -6,6 +6,9 @@ import type {
   PullRequestInsightV1,
   PullRequestTrajectoryV1,
   PullRequestTransitionV1,
+  SaveTrajectoryFeedbackV1,
+  TrajectoryFeedbackClassificationV1,
+  TrajectoryFeedbackV1,
   ViewerV1,
 } from '@spark/dashboard-contracts';
 import type { FavoriteStore } from './favorites';
@@ -139,6 +142,82 @@ function notableTransitionCauses(transition: NotableTransitionV1): string[] {
   for (const reason of delta.reasons.added.slice(0, 2)) causes.push(reason);
   if (delta.detailCompleteness === 'PARTIAL') causes.push('Structured detail is incomplete for this boundary');
   return [...new Set(causes)];
+}
+
+const FEEDBACK_OPTIONS: Array<{ value: TrajectoryFeedbackClassificationV1; label: string }> = [
+  { value: 'USEFUL', label: 'Useful' },
+  { value: 'EXPECTED', label: 'Expected' },
+  { value: 'FALSE_POSITIVE', label: 'False positive' },
+  { value: 'FIXED_BECAUSE_SPARK', label: 'Fixed because of Spark' },
+];
+
+export type SaveTransitionFeedback = (
+  transitionId: string,
+  input: SaveTrajectoryFeedbackV1,
+) => Promise<TrajectoryFeedbackV1>;
+
+function feedbackControls(
+  transition: NotableTransitionV1,
+  saved: TrajectoryFeedbackV1 | undefined,
+  saveFeedback: SaveTransitionFeedback,
+): HTMLElement {
+  const controls = node('div', 'pr-feedback');
+  controls.dataset.testid = 'transition-feedback';
+  controls.append(node('span', 'pr-feedback-question', 'Was this useful?'));
+  const options = node('div', 'pr-feedback-options');
+  const buttons: HTMLButtonElement[] = [];
+  for (const option of FEEDBACK_OPTIONS) {
+    const button = node('button', 'pr-feedback-option', option.label) as HTMLButtonElement;
+    button.type = 'button';
+    button.dataset.classification = option.value;
+    button.setAttribute('aria-pressed', String(saved?.classification === option.value));
+    if (saved?.classification === option.value) button.classList.add('is-selected');
+    buttons.push(button);
+    options.append(button);
+  }
+  controls.append(options);
+
+  const context = node('details', 'pr-feedback-context');
+  context.append(node('summary', undefined, saved?.note ? 'Edit optional context' : 'Add optional context'));
+  const note = node('textarea') as HTMLTextAreaElement;
+  note.maxLength = 500;
+  note.rows = 2;
+  note.placeholder = 'What made this useful or inaccurate? (500 characters max)';
+  note.setAttribute('aria-label', 'Optional feedback context');
+  note.value = saved?.note ?? '';
+  context.append(note);
+  controls.append(context);
+
+  const status = node('span', 'pr-feedback-status', saved ? 'Feedback saved' : '');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  controls.append(status);
+
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      const classification = button.dataset.classification as TrajectoryFeedbackClassificationV1;
+      const noteValue = note.value.trim();
+      for (const item of buttons) item.disabled = true;
+      status.textContent = 'Saving feedback…';
+      void saveFeedback(transition.id, {
+        classification,
+        ...(noteValue ? { note: noteValue } : {}),
+      }).then((result) => {
+        for (const item of buttons) {
+          const selected = item.dataset.classification === result.classification;
+          item.classList.toggle('is-selected', selected);
+          item.setAttribute('aria-pressed', String(selected));
+        }
+        note.value = result.note ?? '';
+        status.textContent = `Saved as ${FEEDBACK_OPTIONS.find(item => item.value === result.classification)?.label ?? 'feedback'}`;
+      }).catch(() => {
+        status.textContent = 'Feedback could not be saved. Try again.';
+      }).finally(() => {
+        for (const item of buttons) item.disabled = false;
+      });
+    });
+  }
+  return controls;
 }
 
 function currentSection(detail: PullRequestTrajectoryV1, activitySearch: string): HTMLElement {
@@ -275,7 +354,12 @@ function evidenceIssuesSection(detail: Pick<PullRequestTrajectoryV1, 'evidenceIs
   return section;
 }
 
-function timelineSection(detail: PullRequestTrajectoryV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
+function timelineSection(
+  detail: PullRequestTrajectoryV1,
+  activitySearch: string,
+  favorites: FavoriteStore,
+  saveFeedback: SaveTransitionFeedback,
+): HTMLElement {
   const section = node('section', 'pr-section');
   const heading = node('div', 'pr-section-heading');
   heading.append(node('h2', undefined, 'Evaluation history'), node('span', 'muted', 'Newest first'));
@@ -319,6 +403,9 @@ function timelineSection(detail: PullRequestTrajectoryV1, activitySearch: string
         for (const cause of causes) list.append(node('li', undefined, cause));
         row.append(list);
       }
+      if (item.severity === 'MATERIAL') {
+        row.append(feedbackControls(item, detail.feedback?.find(feedback => feedback.transitionId === item.id), saveFeedback));
+      }
       transitions.append(row);
     }
     section.append(transitions);
@@ -326,7 +413,13 @@ function timelineSection(detail: PullRequestTrajectoryV1, activitySearch: string
   return section;
 }
 
-export function renderPullRequest(viewer: ViewerV1, detail: PullRequestTrajectoryV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
+export function renderPullRequest(
+  viewer: ViewerV1,
+  detail: PullRequestTrajectoryV1,
+  activitySearch: string,
+  favorites: FavoriteStore,
+  saveFeedback: SaveTransitionFeedback,
+): HTMLElement {
   const { root, main } = shell(viewer);
   main.dataset.testid = 'pull-request-detail';
   const back = node('a', 'back-link', '← Activity') as HTMLAnchorElement;
@@ -348,7 +441,7 @@ export function renderPullRequest(viewer: ViewerV1, detail: PullRequestTrajector
   const terminal = lifecycleTerminal(detail);
   main.append(header, currentSection(detail, activitySearch));
   if (terminal) main.append(terminal);
-  main.append(historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch, favorites));
+  main.append(historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch, favorites, saveFeedback));
   return root;
 }
 

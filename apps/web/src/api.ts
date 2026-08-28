@@ -12,6 +12,8 @@ import type {
   PullRequestHistoryResponseV1,
   PullRequestTrajectoryV1,
   PullRequestTransitionV1,
+  SaveTrajectoryFeedbackV1,
+  TrajectoryFeedbackV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
 import { buildFixtureActivity, fixtureViewer, getFixtureEvaluation, getFixturePullRequestHistory } from './fixtures';
@@ -22,6 +24,12 @@ export interface DashboardApi {
   getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1>;
   getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1>;
   getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1>;
+  saveTrajectoryFeedback(
+    repositoryId: number,
+    pullRequestNumber: number,
+    transitionId: string,
+    input: SaveTrajectoryFeedbackV1,
+  ): Promise<TrajectoryFeedbackV1>;
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
   getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1>;
@@ -75,6 +83,22 @@ export class HttpDashboardApi implements DashboardApi {
 
   getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1> {
     return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/trajectory`);
+  }
+
+  saveTrajectoryFeedback(
+    repositoryId: number,
+    pullRequestNumber: number,
+    transitionId: string,
+    input: SaveTrajectoryFeedbackV1,
+  ): Promise<TrajectoryFeedbackV1> {
+    return this.request(
+      `/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/trajectory/${encodeURIComponent(transitionId)}/feedback`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    );
   }
 
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
@@ -402,7 +426,32 @@ export class FixtureDashboardApi implements DashboardApi {
   async getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1> {
     if (this.mode === 'loading') return new Promise<PullRequestTrajectoryV1>(() => undefined);
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
-    return fixturePullRequestTrajectory(identifyFixtureHistory(getFixturePullRequestHistory(repositoryId, pullRequestNumber)));
+    const trajectory = fixturePullRequestTrajectory(identifyFixtureHistory(getFixturePullRequestHistory(repositoryId, pullRequestNumber)));
+    return { ...trajectory, feedback: this.readTrajectoryFeedback(repositoryId, pullRequestNumber) };
+  }
+
+  async saveTrajectoryFeedback(
+    repositoryId: number,
+    pullRequestNumber: number,
+    transitionId: string,
+    input: SaveTrajectoryFeedbackV1,
+  ): Promise<TrajectoryFeedbackV1> {
+    const feedback = this.readTrajectoryFeedback(repositoryId, pullRequestNumber);
+    const previous = feedback.find(item => item.transitionId === transitionId);
+    const timestamp = new Date().toISOString();
+    const saved: TrajectoryFeedbackV1 = {
+      transitionId,
+      classification: input.classification,
+      ...(input.note ? { note: input.note } : {}),
+      createdAt: previous?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    };
+    this.writeTrajectoryFeedback(
+      repositoryId,
+      pullRequestNumber,
+      [...feedback.filter(item => item.transitionId !== transitionId), saved],
+    );
+    return saved;
   }
 
   async getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
@@ -457,6 +506,29 @@ export class FixtureDashboardApi implements DashboardApi {
   private writeFavorites(favorites: DashboardFavoriteV1[]): void {
     try {
       globalThis.localStorage?.setItem(`spark:fixture:favorites:v1:${fixtureViewer.id}`, JSON.stringify(favorites));
+    } catch {
+      // Fixture persistence is best effort when browser storage is unavailable.
+    }
+  }
+
+  private trajectoryFeedbackKey(repositoryId: number, pullRequestNumber: number): string {
+    return `spark:fixture:trajectory-feedback:v1:${fixtureViewer.id}:${repositoryId}:${pullRequestNumber}`;
+  }
+
+  private readTrajectoryFeedback(repositoryId: number, pullRequestNumber: number): TrajectoryFeedbackV1[] {
+    try {
+      const raw = globalThis.localStorage?.getItem(this.trajectoryFeedbackKey(repositoryId, pullRequestNumber));
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      return Array.isArray(parsed) ? parsed as TrajectoryFeedbackV1[] : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private writeTrajectoryFeedback(repositoryId: number, pullRequestNumber: number, feedback: TrajectoryFeedbackV1[]): void {
+    try {
+      globalThis.localStorage?.setItem(this.trajectoryFeedbackKey(repositoryId, pullRequestNumber), JSON.stringify(feedback));
     } catch {
       // Fixture persistence is best effort when browser storage is unavailable.
     }

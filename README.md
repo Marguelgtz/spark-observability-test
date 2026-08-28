@@ -194,10 +194,11 @@ The implementation has progressed through several independently reviewed layers:
 - Search and database-backed favorites
 - Deterministic Change Trajectory deltas and transition explanations
 - Race-safe pull-request lifecycle and pre-merge state reconstruction
+- Viewer-private feedback on material trajectory transitions
 
 The accumulated trajectory stack has passed the permanent dashboard/Worker verification workflow. Earlier experimental PRs remain open as evaluation fixtures and are not part of the product landing sequence.
 
-The append-only Phase 1 foundation and deterministic Phase 2 trajectory engine are on `main`. Phase 3 is split into merge outcome and human feedback: Subphase 3A adds durable lifecycle context and pre-merge state reconstruction; Subphase 3B remains a separate feedback-measurement follow-on.
+The append-only Phase 1 foundation and deterministic Phase 2 trajectory engine are on `main`. Phase 3 is split into merge outcome and human feedback: Subphase 3A adds durable lifecycle context and pre-merge state reconstruction, while Subphase 3B adds bounded viewer feedback for material transitions. The next product gate is dogfood and pilot validation rather than broader analytics.
 
 ## Documentation
 

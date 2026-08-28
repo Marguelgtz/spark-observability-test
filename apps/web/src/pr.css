@@ -71,6 +71,18 @@
 .pr-transition-heading span { color: #777771; }
 .pr-transition-causes { margin: 8px 0 0; padding-left: 18px; color: #54544f; }
 .pr-transition-causes li + li { margin-top: 4px; }
+.pr-feedback { margin-top: 12px; padding-top: 10px; border-top: 1px dashed #d9d9d3; }
+.pr-feedback-question { display: block; margin-bottom: 7px; color: #5d5d57; font-size: 11px; font-weight: 750; }
+.pr-feedback-options { display: flex; gap: 6px; flex-wrap: wrap; }
+.pr-feedback-option { min-height: 30px; border: 1px solid #cecec7; border-radius: 999px; padding: 5px 9px; background: #fff; color: #50504b; font: inherit; font-size: 11px; cursor: pointer; }
+.pr-feedback-option:hover { border-color: #8d8d85; }
+.pr-feedback-option:focus-visible { outline: 2px solid #44443f; outline-offset: 2px; }
+.pr-feedback-option.is-selected { border-color: #44443f; background: #44443f; color: #fff; }
+.pr-feedback-option:disabled { cursor: wait; opacity: 0.65; }
+.pr-feedback-context { margin-top: 8px; color: #696963; font-size: 11px; }
+.pr-feedback-context summary { width: fit-content; cursor: pointer; }
+.pr-feedback-context textarea { display: block; width: min(100%, 520px); margin-top: 7px; border: 1px solid #cecec7; border-radius: 6px; padding: 8px; resize: vertical; color: #333330; font: inherit; font-size: 12px; line-height: 1.4; }
+.pr-feedback-status { display: block; min-height: 16px; margin-top: 6px; color: #676761; font-size: 10px; }
 
 .evaluation-pr-context { margin: -12px 0 28px; border: 1px solid #deded8; border-radius: 8px; background: #fafaf8; padding: 14px; }
 .evaluation-pr-position { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
