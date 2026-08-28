@@ -3,6 +3,8 @@ export type AttentionFilterV1 = 'ALL' | AttentionLevelV1;
 export type ActivityWindowV1 = '24h' | '7d' | '30d';
 export type EvidenceStatusV1 = 'PASSED' | 'PENDING' | 'FAILED' | 'MISSING' | 'UNKNOWN';
 export type EvidenceHealthV1 = 'CLEAR' | 'FAILED' | 'PENDING_OR_MISSING' | 'UNKNOWN';
+export type EvaluationObservationSourceV1 = 'LIVE' | 'BACKFILL';
+export type HistoryCompletenessV1 = 'COMPLETE' | 'PARTIAL_BACKFILL';
 
 export interface ViewerV1 {
   version: 1;
@@ -56,6 +58,10 @@ export interface ObservedRepositoryV1 extends RepositoryRefV1 {
 }
 
 export interface EvaluationSummaryV1 {
+  /** Immutable observation identity when this summary came from evaluation_runs. */
+  runId?: string;
+  /** LIVE for fully observed runs, BACKFILL for lossy historical reconstruction. */
+  observationSource?: EvaluationObservationSourceV1;
   repository: RepositoryRefV1;
   pullRequest: PullRequestRefV1;
   headSha: string;
@@ -87,6 +93,7 @@ export interface PullRequestHistoryResponseV1 {
   pullRequest: PullRequestRefV1;
   totalRunCount: number;
   runs: EvaluationSummaryV1[];
+  historyCompleteness?: HistoryCompletenessV1;
   truncated: boolean;
 }
 
@@ -155,6 +162,7 @@ export interface PullRequestDetailV1 {
   transitions: PullRequestTransitionV1[];
   insights: PullRequestInsightV1[];
   runs: EvaluationSummaryV1[];
+  historyCompleteness?: HistoryCompletenessV1;
   truncated: boolean;
 }
 
@@ -210,6 +218,8 @@ export interface ProfileContextV1 {
 
 export interface EvaluationDetailV1 {
   version: 1;
+  runId?: string;
+  observationSource?: EvaluationObservationSourceV1;
   repository: RepositoryRefV1;
   pullRequest: PullRequestRefV1;
   headSha: string;
