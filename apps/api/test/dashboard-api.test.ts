@@ -5,6 +5,7 @@ import type {
   EvaluationDetailResponseV1,
   PullRequestDetailV1,
   PullRequestHistoryResponseV1,
+  PullRequestTrajectoryV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
 import { handleRequest, type Env, type WorkerExecutionContext } from '../src/app';
@@ -74,6 +75,30 @@ const pullRequest: PullRequestDetailV1 = {
   truncated: true,
 };
 
+const trajectory: PullRequestTrajectoryV1 = {
+  version: 1,
+  repository: summary.repository,
+  pullRequest: summary.pullRequest,
+  current: summary,
+  summary: {
+    totalRuns: 2,
+    analyzedRuns: 1,
+    totalTransitions: 0,
+    regressions: 0,
+    recoveries: 0,
+    attentionIncreases: 0,
+    attentionDecreases: 0,
+    currentClearStreak: 1,
+    firstEvaluatedAt: summary.evaluatedAt,
+    lastEvaluatedAt: summary.evaluatedAt,
+  },
+  evidenceIssues: [],
+  insights: [],
+  notableTransitions: [],
+  runs: [summary],
+  truncated: true,
+};
+
 const unavailable: EvaluationDetailResponseV1 = {
   version: 1,
   status: 'unavailable',
@@ -116,6 +141,7 @@ function reader() {
     activity: vi.fn(async (_query: ActivityQueryV1) => activity),
     pullRequest: vi.fn(async () => pullRequest),
     pullRequestHistory: vi.fn(async () => history),
+    trajectory: vi.fn(async () => trajectory),
     evaluation: vi.fn(async () => unavailable),
     run: vi.fn(async () => runUnavailable),
   } satisfies DashboardReader;
@@ -287,6 +313,28 @@ describe('dashboard read API', () => {
       { dashboardAuthorizer: authorizer([2]), dashboardReader },
     );
     expect(denied.status).toBe(404);
+  });
+
+  it('returns Change Trajectory only inside the authorized repository scope', async () => {
+    const dashboardReader = reader();
+    const allowed = await handleRequest(
+      new Request('https://spark.test/api/repositories/2/pulls/3/trajectory'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual(trajectory);
+    expect(dashboardReader.trajectory).toHaveBeenCalledWith(2, 3);
+
+    const denied = await handleRequest(
+      new Request('https://spark.test/api/repositories/3/pulls/3/trajectory'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(denied.status).toBe(404);
+    expect(dashboardReader.trajectory).toHaveBeenCalledTimes(1);
   });
 
   it('returns an immutable run only inside the authorized repository scope', async () => {

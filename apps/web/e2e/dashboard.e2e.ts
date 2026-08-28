@@ -115,7 +115,19 @@ test('activity opens a pull request observability page', async ({ page }, testIn
   await expect(page.getByRole('heading', { name: 'Observations' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Evaluation history' })).toBeVisible();
   await expect(page.locator('.pr-run')).toHaveCount(3);
+  await expect(page.locator('.pr-section-kicker').getByText('Notable transitions', { exact: true })).toBeVisible();
   await page.screenshot({ path: `${screenshotDir}/pull-request-${suffix(testInfo.project.name)}.png`, fullPage: true });
+});
+
+test('Change Trajectory combines and explains causes at each run boundary', async ({ page }) => {
+  await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
+
+  const transitions = page.getByTestId('notable-transition');
+  await expect(transitions).toHaveCount(2);
+  await expect(transitions.first().getByText('MEDIUM → HIGH', { exact: true })).toBeVisible();
+  await expect(transitions.first().getByText('integration-test: pending → failed', { exact: true })).toBeVisible();
+  await expect(transitions.first().getByText('Sensitive surface added: auth/security', { exact: true })).toBeVisible();
+  await expect(page.getByText('3 runs analyzed', { exact: true })).toBeVisible();
 });
 
 test('pull request page drills into latest immutable run and keeps PR context', async ({ page }, testInfo) => {

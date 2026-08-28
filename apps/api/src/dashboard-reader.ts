@@ -14,11 +14,13 @@ import type {
   PullRequestActivityV1,
   PullRequestDetailV1,
   PullRequestHistoryResponseV1,
+  PullRequestTrajectoryV1,
   RepositoryRefV1,
 } from '@spark/dashboard-contracts';
 import type { D1Database } from './d1';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
 import { buildPullRequestDetail, type PullRequestHistoryAggregate } from './pull-request-insights';
+import { buildTrajectory } from './change-trajectory';
 
 const EVAL_TIME_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', COALESCE(d.evaluated_at, e.updated_at))";
 const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
@@ -36,6 +38,7 @@ interface ActivityRow {
   run_id?: string | null;
   observation_source?: EvaluationObservationSourceV1 | null;
   evidence_health?: EvidenceHealthV1 | null;
+  created_at?: string | null;
 }
 
 interface PullRequestActivityRow extends ActivityRow {
@@ -249,6 +252,7 @@ function runInputFromRow(row: ActivityRow) {
   return {
     summary: response.status === 'available' ? summaryFromRow(row) : response.summary,
     ...(response.status === 'available' ? { detail: response.detail } : {}),
+    ...(row.created_at ? { createdAt: row.created_at } : {}),
   };
 }
 
@@ -277,6 +281,7 @@ export interface DashboardReader {
   activity(query: ActivityQueryV1, repositoryIds: number[], now?: Date): Promise<ActivityResponseV1>;
   pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined>;
   pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined>;
+  trajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1 | undefined>;
   evaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1 | undefined>;
   run(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1 | undefined>;
 }
@@ -406,7 +411,7 @@ export class D1DashboardReader implements DashboardReader {
     const result = await this.db.prepare(
       `SELECT er.repository_id, r.full_name, er.head_sha, er.pull_request_number, er.attention,
               er.evaluated_at, er.normalized_json, NULL AS check_url,
-              er.id AS run_id, er.observation_source, er.evidence_health
+              er.id AS run_id, er.observation_source, er.evidence_health, er.created_at
        FROM evaluation_runs er
        JOIN repositories r ON r.id = er.repository_id
        WHERE er.repository_id = ? AND er.pull_request_number = ?
@@ -464,6 +469,24 @@ export class D1DashboardReader implements DashboardReader {
     };
   }
 
+  async trajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1 | undefined> {
+    const [rows, aggregate] = await Promise.all([
+      this.pullRequestRows(repositoryId, pullRequestNumber),
+      this.pullRequestAggregate(repositoryId, pullRequestNumber),
+    ]);
+    if (!rows.length || !aggregate) return undefined;
+    const inputs = rows.map(runInputFromRow);
+    const detail = buildPullRequestDetail(inputs, aggregate.totalRuns, aggregate);
+    return buildTrajectory(inputs, {
+      totalRuns: aggregate.totalRuns,
+      firstEvaluatedAt: aggregate.firstEvaluatedAt,
+      lastEvaluatedAt: aggregate.lastEvaluatedAt,
+      historyCompleteness: aggregate.historyCompleteness,
+      evidenceIssues: detail?.evidenceIssues,
+      insights: detail?.insights,
+    });
+  }
+
   async evaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1 | undefined> {
     const row = await this.db.prepare(
       `SELECT e.repository_id, r.full_name, e.head_sha, e.pull_request_number, e.attention,
@@ -480,7 +503,7 @@ export class D1DashboardReader implements DashboardReader {
     const row = await this.db.prepare(
       `SELECT er.repository_id, r.full_name, er.head_sha, er.pull_request_number, er.attention,
               er.evaluated_at, er.normalized_json, NULL AS check_url,
-              er.id AS run_id, er.observation_source, er.evidence_health
+              er.id AS run_id, er.observation_source, er.evidence_health, er.created_at
        FROM evaluation_runs er
        JOIN repositories r ON r.id = er.repository_id
        WHERE er.repository_id = ? AND er.id = ?`,

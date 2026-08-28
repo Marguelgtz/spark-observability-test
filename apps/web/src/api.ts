@@ -10,6 +10,7 @@ import type {
   FavoritesResponseV1,
   PullRequestDetailV1,
   PullRequestHistoryResponseV1,
+  PullRequestTrajectoryV1,
   PullRequestTransitionV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
@@ -20,6 +21,7 @@ export interface DashboardApi {
   getAccount(): Promise<AccountV1>;
   getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1>;
   getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1>;
+  getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1>;
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
   getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
   getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1>;
@@ -69,6 +71,10 @@ export class HttpDashboardApi implements DashboardApi {
 
   getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1> {
     return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}`);
+  }
+
+  getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1> {
+    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/trajectory`);
   }
 
   getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
@@ -209,6 +215,92 @@ function fixturePullRequestDetail(history: PullRequestHistoryResponseV1): PullRe
   };
 }
 
+function fixtureEvidenceStatus(summary: EvaluationSummaryV1) {
+  if (summary.evidenceSummary.failed) return 'FAILED' as const;
+  if (summary.evidenceSummary.missing) return 'MISSING' as const;
+  if (summary.evidenceSummary.pending) return 'PENDING' as const;
+  if (summary.evidenceSummary.passed) return 'PASSED' as const;
+  return 'UNKNOWN' as const;
+}
+
+function fixturePullRequestTrajectory(history: PullRequestHistoryResponseV1): PullRequestTrajectoryV1 {
+  const detail = fixturePullRequestDetail(history);
+  const chronological = [...history.runs].reverse();
+  const notableTransitions: PullRequestTrajectoryV1['notableTransitions'] = [];
+  for (let index = 1; index < chronological.length; index += 1) {
+    const previous = chronological[index - 1];
+    const current = chronological[index];
+    const from = fixtureEvidenceStatus(previous);
+    const to = fixtureEvidenceStatus(current);
+    const attentionChanged = previous.attention !== current.attention;
+    const kinds: PullRequestTrajectoryV1['notableTransitions'][number]['kinds'] = [];
+    if (attentionChanged) kinds.push(attentionRank[current.attention] > attentionRank[previous.attention] ? 'ATTENTION_INCREASED' : 'ATTENTION_DECREASED');
+    if (to === 'FAILED' && from !== 'FAILED') kinds.push('EVIDENCE_REGRESSED');
+    if (from === 'FAILED' && to === 'PASSED') kinds.push('EVIDENCE_RECOVERED');
+    if ((to === 'PENDING' || to === 'MISSING') && from !== to) kinds.push('EVIDENCE_BECAME_PENDING');
+    if ((from === 'PENDING' || from === 'MISSING') && to === 'PASSED') kinds.push('EVIDENCE_RESOLVED');
+    const addedSurfaces = current.sensitiveSurfaces.filter(item => !previous.sensitiveSurfaces.includes(item));
+    if (addedSurfaces.length) kinds.push('SENSITIVE_SURFACE_ADDED');
+    if (!kinds.length) continue;
+    const fromRunId = previous.runId ?? `fixture:${index - 1}`;
+    const toRunId = current.runId ?? `fixture:${index}`;
+    notableTransitions.push({
+      id: `${fromRunId}:${toRunId}`,
+      fromRunId,
+      toRunId,
+      occurredAt: current.evaluatedAt,
+      kinds,
+      severity: 'MATERIAL',
+      delta: {
+        fromRunId,
+        toRunId,
+        fromHeadSha: previous.headSha,
+        toHeadSha: current.headSha,
+        evaluatedAt: current.evaluatedAt,
+        timeInPreviousStateMs: Math.max(0, Date.parse(current.evaluatedAt) - Date.parse(previous.evaluatedAt)),
+        ...(attentionChanged ? { attention: {
+          from: previous.attention,
+          to: current.attention,
+          direction: attentionRank[current.attention] > attentionRank[previous.attention] ? 'INCREASED' as const : 'DECREASED' as const,
+        } } : {}),
+        ...(fixtureEvidenceHealth(previous) !== fixtureEvidenceHealth(current) ? {
+          evidenceHealth: { from: fixtureEvidenceHealth(previous), to: fixtureEvidenceHealth(current) },
+        } : {}),
+        evidence: [{ name: 'integration-test', from, to, change: 'STATUS_CHANGED' }],
+        areas: { directAdded: [], directRemoved: [], affectedAdded: [], affectedRemoved: [] },
+        sensitiveSurfaces: { added: addedSurfaces, removed: [] },
+        changedFiles: { added: [], removed: [] },
+        reasons: { added: current.topReasons.filter(item => !previous.topReasons.includes(item)), removed: [] },
+        detailCompleteness: 'COMPLETE',
+      },
+    });
+  }
+  return {
+    version: 1,
+    repository: history.repository,
+    pullRequest: history.pullRequest,
+    current: history.runs[0],
+    summary: {
+      totalRuns: history.totalRunCount,
+      analyzedRuns: history.runs.length,
+      totalTransitions: notableTransitions.length,
+      regressions: notableTransitions.filter(item => item.kinds.includes('EVIDENCE_REGRESSED')).length,
+      recoveries: notableTransitions.filter(item => item.kinds.includes('EVIDENCE_RECOVERED')).length,
+      attentionIncreases: notableTransitions.filter(item => item.kinds.includes('ATTENTION_INCREASED')).length,
+      attentionDecreases: notableTransitions.filter(item => item.kinds.includes('ATTENTION_DECREASED')).length,
+      currentClearStreak: detail.history.currentClearStreak,
+      firstEvaluatedAt: detail.history.firstEvaluatedAt,
+      lastEvaluatedAt: detail.history.lastEvaluatedAt,
+    },
+    evidenceIssues: detail.evidenceIssues,
+    insights: detail.insights,
+    notableTransitions,
+    runs: history.runs,
+    historyCompleteness: history.historyCompleteness,
+    truncated: history.truncated,
+  };
+}
+
 function fixtureRun(repositoryId: number, runId: string): EvaluationDetailResponseV1 {
   const match = /^fixture:(\d+):(\d+):(\d+)$/.exec(runId);
   if (!match || Number(match[1]) !== repositoryId) throw new Error('Run not found');
@@ -290,6 +382,12 @@ export class FixtureDashboardApi implements DashboardApi {
     if (this.mode === 'loading') return new Promise<PullRequestDetailV1>(() => undefined);
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
     return fixturePullRequestDetail(identifyFixtureHistory(getFixturePullRequestHistory(repositoryId, pullRequestNumber)));
+  }
+
+  async getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1> {
+    if (this.mode === 'loading') return new Promise<PullRequestTrajectoryV1>(() => undefined);
+    if (this.mode === 'error') throw new Error('Synthetic fixture failure');
+    return fixturePullRequestTrajectory(identifyFixtureHistory(getFixturePullRequestHistory(repositoryId, pullRequestNumber)));
   }
 
   async getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {

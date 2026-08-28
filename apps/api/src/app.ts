@@ -186,6 +186,25 @@ async function handleDashboardRequest(
     return result ? json(result) : json({ error: 'not found' }, 404);
   }
 
+  const trajectoryMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)\/trajectory$/);
+  if (request.method === 'GET' && trajectoryMatch) {
+    const repositoryId = Number(trajectoryMatch[1]);
+    const pullRequestNumber = Number(trajectoryMatch[2]);
+    if (!validPullRequestPath(repositoryId, pullRequestNumber, principal.repositoryIds)) {
+      return json({ error: 'not found' }, 404);
+    }
+    try {
+      const result = await reader.trajectory(repositoryId, pullRequestNumber);
+      if (result?.truncated) {
+        console.info(JSON.stringify({ event: 'trajectory_history_truncated', repositoryId, pr: pullRequestNumber, analyzedRuns: result.summary.analyzedRuns, totalRuns: result.summary.totalRuns }));
+      }
+      return result ? json(result) : json({ error: 'not found' }, 404);
+    } catch (error) {
+      console.error(JSON.stringify({ event: 'trajectory_build_failed', repositoryId, pr: pullRequestNumber, error: errorMessage(error) }));
+      throw error;
+    }
+  }
+
   const runMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/runs\/([^/]+)$/);
   if (request.method === 'GET' && runMatch) {
     const repositoryId = Number(runMatch[1]);

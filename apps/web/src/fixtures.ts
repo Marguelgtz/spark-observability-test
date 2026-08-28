@@ -140,6 +140,7 @@ const older42Medium: EvaluationSummaryV1 = {
   headSha: 'a42c11e7b8f2d61f963831db8200deaffeed0031',
   attention: 'MEDIUM',
   topReasons: ['Integration evidence pending'],
+  sensitiveSurfaces: [],
   evidenceSummary: { passed: 1, pending: 1, failed: 0, missing: 0, unknown: 0 },
   evaluatedAt: ago(26 * minute),
   githubCheckUrl: 'https://github.com/acme/spark/runs/420000'
@@ -150,6 +151,7 @@ const older42Low: EvaluationSummaryV1 = {
   headSha: 'a42c11e7b8f2d61f963831db8200deaffeed0020',
   attention: 'LOW',
   topReasons: ['Routine change with passing evidence'],
+  sensitiveSurfaces: [],
   evidenceSummary: { passed: 2, pending: 0, failed: 0, missing: 0, unknown: 0 },
   evaluatedAt: ago(48 * minute),
   githubCheckUrl: 'https://github.com/acme/spark/runs/419999'
