@@ -7,10 +7,14 @@ const metrics = [
   ['merged-unresolved', 'Merged unresolved'],
 ] as const;
 
-test('home metrics are clickable, render charts, and flag unresolved merges in recent activity', async ({ page }) => {
+test('home metrics are clickable, render varied insights, and flag unresolved merges in recent activity', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
 
-  await expect(page.getByTestId('home-charts')).toBeVisible();
+  const homeCharts = page.getByTestId('home-charts');
+  await expect(homeCharts).toBeVisible();
+  await expect(homeCharts.locator('[data-chart-kind="line"]')).toBeVisible();
+  await expect(homeCharts.locator('[data-chart-kind="donut"]')).toBeVisible();
+  await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
   await expect(page.getByTestId('overview-card-pull-requests')).toHaveAttribute('href', /\/app\/overview\/pull-requests/);
   await expect(page.getByTestId('overview-card-evaluations')).toHaveAttribute('href', /\/app\/overview\/evaluations/);
   await expect(page.getByTestId('overview-card-attention')).toHaveAttribute('href', /\/app\/overview\/attention/);
@@ -34,6 +38,33 @@ for (const [metric, heading] of metrics) {
     await expect(page.getByRole('link', { name: '← Change overview' })).toBeVisible();
   });
 }
+
+test('drilldown graphs change form to match the metric context', async ({ page }) => {
+  await page.goto('/app/overview/pull-requests?window=7d&attention=ALL');
+  let charts = page.getByTestId('overview-charts');
+  await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
+  await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
+
+  await page.goto('/app/overview/evaluations?window=7d&attention=ALL');
+  charts = page.getByTestId('overview-charts');
+  await expect(charts.locator('[data-chart-kind="line"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
+  await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
+
+  await page.goto('/app/overview/attention?window=7d&attention=ALL');
+  charts = page.getByTestId('overview-charts');
+  await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
+  await expect(page.getByTestId('regression-recovery-chart')).toBeVisible();
+  await expect(page.getByTestId('attention-transition-chart')).toBeVisible();
+
+  await page.goto('/app/overview/merged-unresolved?window=7d&attention=ALL');
+  charts = page.getByTestId('overview-charts');
+  await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="bar"]')).toBeVisible();
+});
 
 test('overview drilldowns retain time-window navigation', async ({ page }) => {
   await page.goto('/app/overview/pull-requests?window=7d&attention=ALL');
