@@ -56,6 +56,12 @@ export interface EvaluationRunRecord {
   truncated: boolean;
 }
 
+export interface EvaluationObservationRecord {
+  run: EvaluationRunRecord;
+  evaluation: EvaluationRecord;
+  detail: EvaluationDetailRecord;
+}
+
 export interface SparkStore {
   claimDelivery(deliveryId: string, event: string): Promise<boolean>;
   releaseDelivery(deliveryId: string): Promise<void>;
@@ -64,4 +70,5 @@ export interface SparkStore {
   findEvaluation(repositoryId: number, headSha: string): Promise<StoredEvaluation | undefined>;
   saveEvaluation(record: EvaluationRecord): Promise<void>;
   saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void>;
+  saveEvaluationObservation(record: EvaluationObservationRecord): Promise<void>;
 }
