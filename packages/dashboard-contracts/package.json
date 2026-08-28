@@ -6,5 +6,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./outcome": "./src/outcome.ts"
+  },
+  "typesVersions": {
+    "*": {
+      "outcome": ["src/outcome.ts"]
+    }
   }
 }
