@@ -1,23 +1,27 @@
 import { expect, test } from '@playwright/test';
 
-test('pull request page leads with a chronological change story and keeps forensics behind disclosure', async ({ page }) => {
+test('pull request page leads with compact key moments and keeps analysis plus forensics available', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
-  const story = page.getByTestId('change-story');
-  await expect(story).toBeVisible();
-  await expect(story.getByRole('heading', { name: 'Change story', exact: true })).toBeVisible();
+  const moments = page.getByTestId('key-moments');
+  await expect(moments).toBeVisible();
+  await expect(moments.getByRole('heading', { name: 'Key moments', exact: true })).toBeVisible();
+  await expect(moments.getByText('Material changes Spark observed while this pull request evolved.', { exact: true })).toBeVisible();
 
-  const items = story.locator('.change-story-item');
+  const items = moments.locator('.change-story-item');
   await expect(items).toHaveCount(4);
   await expect(items.nth(0)).toHaveAttribute('data-story-kind', 'INITIAL');
   await expect(items.nth(1)).toHaveAttribute('data-story-kind', 'TRANSITION');
   await expect(items.nth(2)).toHaveAttribute('data-story-kind', 'TRANSITION');
   await expect(items.nth(3)).toHaveAttribute('data-story-kind', 'TERMINAL');
 
-  await expect(story.getByText('Attention increased to MEDIUM', { exact: true })).toBeVisible();
-  await expect(story.getByText('Attention increased to HIGH', { exact: true })).toBeVisible();
-  await expect(story.getByText('Merged with unresolved attention', { exact: true })).toBeVisible();
-  await expect(story.getByTestId('transition-feedback')).toHaveCount(2);
+  await expect(moments.getByText('Attention increased to MEDIUM', { exact: true })).toBeVisible();
+  await expect(moments.getByText('Attention increased to HIGH', { exact: true })).toBeVisible();
+  await expect(moments.getByText('Merged with unresolved attention', { exact: true })).toBeVisible();
+  await expect(moments.getByTestId('transition-feedback-trigger')).toHaveCount(2);
+  await expect(page.getByTestId('transition-feedback-drawer')).toHaveCount(0);
+
+  await expect(page.getByTestId('insight-canvas-pr-trajectory')).toBeVisible();
 
   const forensics = page.getByTestId('pr-forensics');
   await expect(forensics).toBeVisible();
@@ -31,19 +35,36 @@ test('pull request page leads with a chronological change story and keeps forens
   await expect(page.locator('.pr-run')).toHaveCount(3);
 });
 
-test('story transition feedback stays attached to its material transition and survives reload', async ({ page }) => {
+test('material transition feedback uses a tooltip trigger and contextual drawer and survives reload', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
   const transition = page.getByTestId('notable-transition').first();
-  const feedback = transition.getByTestId('transition-feedback');
-  await feedback.getByText('Add optional context', { exact: true }).click();
-  await feedback.getByLabel('Optional feedback context').fill('Story node feedback context.');
-  await feedback.getByRole('button', { name: 'Useful', exact: true }).click();
-  await expect(feedback.getByRole('status')).toHaveText('Saved as Useful');
+  const trigger = transition.getByTestId('transition-feedback-trigger');
+  await expect(trigger).toHaveAttribute('aria-label', 'Give Spark feedback on this transition');
+  await expect(trigger).toHaveAttribute('data-tooltip', 'Give Spark feedback on this transition');
+  await trigger.click();
+
+  const drawer = page.getByTestId('transition-feedback-drawer');
+  await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveAttribute('role', 'dialog');
+  await expect(drawer.getByRole('heading', { name: 'Feedback on this transition', exact: true })).toBeVisible();
+  await expect(drawer.getByText('Attention increased to MEDIUM', { exact: true })).toBeVisible();
+  await drawer.getByLabel('Optional feedback context').fill('Key moment feedback context.');
+  await drawer.getByRole('button', { name: 'Useful', exact: true }).click();
+  await expect(drawer.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await drawer.getByRole('button', { name: 'Save feedback', exact: true }).click();
+  await expect(drawer.getByRole('status')).toHaveText('Saved as Useful');
+  await expect(trigger).toHaveAttribute('aria-label', 'Edit Spark feedback on this transition');
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('transition-feedback-drawer')).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 
   await page.reload();
-  const restored = page.getByTestId('notable-transition').first().getByTestId('transition-feedback');
-  await expect(restored.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await restored.getByText('Edit optional context', { exact: true }).click();
-  await expect(restored.getByLabel('Optional feedback context')).toHaveValue('Story node feedback context.');
+  const restoredTrigger = page.getByTestId('notable-transition').first().getByTestId('transition-feedback-trigger');
+  await expect(restoredTrigger).toHaveAttribute('aria-label', 'Edit Spark feedback on this transition');
+  await restoredTrigger.click();
+  const restoredDrawer = page.getByTestId('transition-feedback-drawer');
+  await expect(restoredDrawer.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(restoredDrawer.getByLabel('Optional feedback context')).toHaveValue('Key moment feedback context.');
 });
