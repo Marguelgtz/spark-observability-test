@@ -11,7 +11,7 @@ The current dashboard work is a bounded presentation/legibility sequence on top 
 3. **Composable insight canvases** — pair related visualizations around one product question instead of presenting isolated chart cards.
 4. **First-class Change Story** — make each PR read chronologically as initial state → notable transitions → latest state → merge/close outcome, while keeping forensic detail below the primary story.
 
-Phase 4 is intentionally constrained to existing trajectory/lifecycle/feedback data. It should not add evaluator logic, enforcement, RBAC, AI narration, new integrations, or new persistence unless a truthful story cannot be derived from the existing contract.
+The fourth item is intentionally constrained to existing trajectory/lifecycle/feedback data. It should not add evaluator logic, enforcement, RBAC, AI narration, new integrations, or new persistence unless a truthful story cannot be derived from the existing contract.
 
 ## V0
 **Question: Will people install Spark for change observability?**
