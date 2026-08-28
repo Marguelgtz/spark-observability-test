@@ -117,6 +117,20 @@ async function render(): Promise<void> {
       return;
     }
 
+    if (route.kind === 'run') {
+      const response = await api.getRun(route.repositoryId, route.runId);
+      const view = renderEvaluation(viewer, response, currentActivitySearch());
+      replace(view);
+      const summary = response.status === 'available' ? response.detail : response.summary;
+      try {
+        const pullRequest = await api.getPullRequest(route.repositoryId, summary.pullRequest.number);
+        enhanceEvaluationWithPullRequestContext(view, pullRequest, { headSha: summary.headSha, runId: route.runId }, currentActivitySearch());
+      } catch {
+        // Exact run detail remains useful even if PR-level history is unavailable.
+      }
+      return;
+    }
+
     if (route.kind === 'evaluation') {
       const response = await api.getEvaluation(route.repositoryId, route.headSha);
       const view = renderEvaluation(viewer, response, currentActivitySearch());
@@ -124,9 +138,9 @@ async function render(): Promise<void> {
       const summary = response.status === 'available' ? response.detail : response.summary;
       try {
         const pullRequest = await api.getPullRequest(route.repositoryId, summary.pullRequest.number);
-        enhanceEvaluationWithPullRequestContext(view, pullRequest, route.headSha, currentActivitySearch());
+        enhanceEvaluationWithPullRequestContext(view, pullRequest, { headSha: route.headSha }, currentActivitySearch());
       } catch {
-        // Evaluation detail remains independently useful if PR-level history is unavailable.
+        // Latest-by-SHA detail remains independently useful if PR-level history is unavailable.
       }
       return;
     }
