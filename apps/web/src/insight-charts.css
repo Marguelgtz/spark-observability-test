@@ -17,6 +17,12 @@
   background: var(--surface, #fff);
 }
 
+.overview-chart-grid > .insight-chart:nth-child(3):last-child,
+.home-chart-grid > .insight-chart:nth-child(3):last-child,
+.home-chart-grid > .home-chart-wide {
+  grid-column: 1 / -1;
+}
+
 .insight-chart-caption {
   display: flex;
   align-items: baseline;
