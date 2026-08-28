@@ -1,6 +1,8 @@
+import './insight-charts.css';
 import type { AccountV1, ActivityOverviewV1, ActivityResponseV1, PullRequestActivityV1 } from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime } from './format';
-import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
+import { donutChart, lineChart, transitionMixChart } from './insight-charts';
+import { getNotableTransitionInsights, type OverviewDrilldownResponseV1, type OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -126,51 +128,46 @@ function renderNeedsAttention(response: ActivityResponseV1, state: ActivityUrlSt
   return section;
 }
 
-function chartBucketLabel(value: string, hourly: boolean): string {
-  const date = new Date(value);
-  return hourly
-    ? date.toLocaleTimeString(undefined, { hour: '2-digit' })
-    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function miniChart(
-  title: string,
-  overview: OverviewDrilldownResponseV1,
-  read: (point: OverviewDrilldownResponseV1['trend'][number]) => number,
-): HTMLElement {
-  const figure = node('figure', 'home-chart');
-  const caption = node('figcaption', 'home-chart-caption');
-  caption.append(node('strong', undefined, title), node('span', undefined, overview.selectedWindow === '24h' ? 'Hourly' : 'Daily'));
-  figure.append(caption);
-
-  const values = overview.trend.map(read);
-  const max = Math.max(1, ...values);
-  const bars = node('div', 'home-chart-bars');
-  bars.setAttribute('role', 'img');
-  bars.setAttribute('aria-label', `${title} over ${overview.selectedWindow}`);
-  overview.trend.forEach((point, index) => {
-    const value = values[index];
-    const cell = node('div', 'home-chart-cell');
-    const bar = node('div', 'home-chart-bar');
-    bar.style.height = `${Math.max(value > 0 ? 7 : 1, (value / max) * 100)}%`;
-    const label = chartBucketLabel(point.bucketStart, overview.selectedWindow === '24h');
-    cell.title = `${label}: ${value}`;
-    cell.setAttribute('aria-label', `${label}: ${value}`);
-    cell.append(bar);
-    bars.append(cell);
-  });
-  figure.append(bars);
-  return figure;
-}
-
-function renderHomeCharts(overview?: OverviewDrilldownResponseV1): HTMLElement | undefined {
+function renderHomeCharts(
+  response: ActivityResponseV1,
+  overview: OverviewDrilldownResponseV1 | undefined,
+  state: ActivityUrlState,
+): HTMLElement | undefined {
   if (!overview?.trend.length) return undefined;
   const section = node('section', 'home-chart-grid');
   section.dataset.testid = 'home-charts';
+
   section.append(
-    miniChart('Evaluation volume', overview, (point) => point.evaluations),
-    miniChart('Attention evaluations', overview, (point) => point.attentionEvaluations),
+    lineChart(
+      overview.trend,
+      'Change throughput',
+      [
+        { label: 'Evaluations', read: (point) => point.evaluations },
+        { label: 'Observed PRs', read: (point) => point.observedPRs },
+      ],
+      overview.selectedWindow,
+    ),
+    donutChart('Current attention mix', 'Latest observed PR state', [
+      { label: 'HIGH', value: response.counts.HIGH, tone: 'high' },
+      { label: 'MEDIUM', value: response.counts.MEDIUM, tone: 'medium' },
+      { label: 'LOW', value: response.counts.LOW, tone: 'low' },
+    ].filter((item) => item.value > 0)),
   );
+
+  const transitionSlot = node('div', 'home-transition-slot', 'Loading notable transition insight…');
+  transitionSlot.dataset.testid = 'home-transition-loading';
+  section.append(transitionSlot);
+  void getNotableTransitionInsights(state)
+    .then((insights) => {
+      if (!transitionSlot.isConnected) return;
+      const chart = transitionMixChart(insights, true);
+      chart.classList.add('home-chart-wide');
+      transitionSlot.replaceWith(chart);
+    })
+    .catch(() => {
+      if (transitionSlot.isConnected) transitionSlot.remove();
+    });
+
   return section;
 }
 
@@ -274,7 +271,7 @@ export function enhanceActivityHome(
   if (!heading || !attentionFilters) return root;
 
   heading.after(renderOverview(response, state), renderNeedsAttention(response, state));
-  const charts = renderHomeCharts(overviewDetail);
+  const charts = renderHomeCharts(response, overviewDetail, state);
   if (charts) main.querySelector('.needs-attention')?.insertAdjacentElement('afterend', charts);
 
   const recent = node('div', 'recent-activity-heading');
