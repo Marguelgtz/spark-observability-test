@@ -76,6 +76,27 @@ describe('HttpDashboardApi', () => {
     );
   });
 
+  it('encodes transition identity and saves feedback with credentials', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      transitionId: 'run:1/run:2',
+      classification: 'USEFUL',
+      createdAt: '2026-08-28T12:00:00.000Z',
+      updatedAt: '2026-08-28T12:00:00.000Z',
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+    const input = { classification: 'USEFUL' as const, note: 'Helped find the failure.' };
+
+    await api.saveTrajectoryFeedback(2, 13, 'run:1/run:2', input);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://spark.test/api/repositories/2/pulls/13/trajectory/run%3A1%2Frun%3A2/feedback',
+      expect.objectContaining({
+        method: 'PUT', credentials: 'include', body: JSON.stringify(input),
+      }),
+    );
+  });
+
   it('loads pull request history from the scoped history endpoint', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       version: 1,

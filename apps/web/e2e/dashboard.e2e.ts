@@ -130,6 +130,25 @@ test('Change Trajectory combines and explains causes at each run boundary', asyn
   await expect(page.getByText('3 runs analyzed', { exact: true })).toBeVisible();
 });
 
+test('material transition feedback is accessible, editable, and survives reload', async ({ page }) => {
+  await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
+
+  const controls = page.getByTestId('transition-feedback').first();
+  await controls.getByText('Add optional context', { exact: true }).click();
+  await controls.getByLabel('Optional feedback context').fill('Helped identify the failing integration check.');
+  await controls.getByRole('button', { name: 'Useful', exact: true }).click();
+  await expect(controls.getByRole('status')).toHaveText('Saved as Useful');
+  await expect(controls.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+  await page.reload();
+  const restored = page.getByTestId('transition-feedback').first();
+  await expect(restored.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await restored.getByText('Edit optional context', { exact: true }).click();
+  await expect(restored.getByLabel('Optional feedback context')).toHaveValue('Helped identify the failing integration check.');
+  await restored.getByRole('button', { name: 'Fixed because of Spark', exact: true }).click();
+  await expect(restored.getByRole('status')).toHaveText('Saved as Fixed because of Spark');
+});
+
 test('merged trajectory shows the selected pre-merge state as a terminal marker', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 

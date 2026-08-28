@@ -11,6 +11,7 @@ import type {
 import { handleRequest, type Env, type WorkerExecutionContext } from '../src/app';
 import type { DashboardAuthorizer } from '../src/dashboard-access';
 import type { DashboardFavoriteStore } from '../src/dashboard-favorites';
+import type { DashboardFeedbackStore } from '../src/dashboard-feedback';
 import type { DashboardReader } from '../src/dashboard-reader';
 
 const viewer: ViewerV1 = { version: 1, id: 7, login: 'marguel', avatarUrl: 'https://avatars.githubusercontent.com/u/7' };
@@ -75,6 +76,29 @@ const pullRequest: PullRequestDetailV1 = {
   truncated: true,
 };
 
+const materialTransition: PullRequestTrajectoryV1['notableTransitions'][number] = {
+  id: 'run:0:run:1',
+  fromRunId: 'run:0',
+  toRunId: 'run:1',
+  occurredAt: summary.evaluatedAt,
+  kinds: ['EVIDENCE_REGRESSED'],
+  severity: 'MATERIAL',
+  delta: {
+    fromRunId: 'run:0',
+    toRunId: 'run:1',
+    fromHeadSha: 'old-sha',
+    toHeadSha: summary.headSha,
+    evaluatedAt: summary.evaluatedAt,
+    timeInPreviousStateMs: 60_000,
+    evidence: [{ name: 'verify', from: 'PASSED', to: 'FAILED', change: 'STATUS_CHANGED' }],
+    areas: { directAdded: [], directRemoved: [], affectedAdded: [], affectedRemoved: [] },
+    sensitiveSurfaces: { added: [], removed: [] },
+    changedFiles: { added: [], removed: [] },
+    reasons: { added: [], removed: [] },
+    detailCompleteness: 'COMPLETE',
+  },
+};
+
 const trajectory: PullRequestTrajectoryV1 = {
   version: 1,
   repository: summary.repository,
@@ -94,7 +118,7 @@ const trajectory: PullRequestTrajectoryV1 = {
   },
   evidenceIssues: [],
   insights: [],
-  notableTransitions: [],
+  notableTransitions: [materialTransition],
   runs: [summary],
   lifecycle: {
     state: 'MERGED',
@@ -163,6 +187,18 @@ function favoriteStore() {
     add: vi.fn(async () => true),
     remove: vi.fn(async () => undefined),
   } satisfies DashboardFavoriteStore;
+}
+
+function feedbackStore() {
+  return {
+    list: vi.fn(async () => []),
+    save: vi.fn(async (_userId, _repositoryId, _pullRequestNumber, transitionId, input) => ({
+      transitionId,
+      ...input,
+      createdAt: '2026-08-28T12:00:00.000Z',
+      updatedAt: '2026-08-28T12:00:00.000Z',
+    })),
+  } satisfies DashboardFeedbackStore;
 }
 
 describe('dashboard read API', () => {
@@ -327,24 +363,90 @@ describe('dashboard read API', () => {
 
   it('returns Change Trajectory only inside the authorized repository scope', async () => {
     const dashboardReader = reader();
+    const dashboardFeedbackStore = feedbackStore();
     const allowed = await handleRequest(
       new Request('https://spark.test/api/repositories/2/pulls/3/trajectory'),
       env,
       context,
-      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+      { dashboardAuthorizer: authorizer([2]), dashboardReader, dashboardFeedbackStore },
     );
     expect(allowed.status).toBe(200);
-    expect(await allowed.json()).toEqual(trajectory);
+    expect(await allowed.json()).toEqual({ ...trajectory, feedback: [] });
     expect(dashboardReader.trajectory).toHaveBeenCalledWith(2, 3);
+    expect(dashboardFeedbackStore.list).toHaveBeenCalledWith(7, 2, 3);
 
     const denied = await handleRequest(
       new Request('https://spark.test/api/repositories/3/pulls/3/trajectory'),
       env,
       context,
-      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+      { dashboardAuthorizer: authorizer([2]), dashboardReader, dashboardFeedbackStore },
     );
     expect(denied.status).toBe(404);
     expect(dashboardReader.trajectory).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves feedback only for a material transition in the authorized PR trajectory', async () => {
+    const dashboardReader = reader();
+    const dashboardFeedbackStore = feedbackStore();
+    const path = 'https://spark.test/api/repositories/2/pulls/3/trajectory/run%3A0%3Arun%3A1/feedback';
+    const response = await handleRequest(new Request(path, {
+      method: 'PUT',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ classification: 'USEFUL', note: '  Helped find the failure.  ' }),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardReader, dashboardFeedbackStore });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      transitionId: 'run:0:run:1', classification: 'USEFUL', note: 'Helped find the failure.',
+    });
+    expect(dashboardFeedbackStore.save).toHaveBeenCalledWith(
+      7, 2, 3, 'run:0:run:1', { classification: 'USEFUL', note: 'Helped find the failure.' },
+    );
+
+    const missing = await handleRequest(new Request(path.replace('run%3A0%3Arun%3A1', 'unknown'), {
+      method: 'PUT',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ classification: 'EXPECTED' }),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardReader, dashboardFeedbackStore });
+    expect(missing.status).toBe(404);
+    expect(dashboardFeedbackStore.save).toHaveBeenCalledTimes(1);
+
+    dashboardReader.trajectory.mockResolvedValueOnce({
+      ...trajectory,
+      notableTransitions: [{ ...materialTransition, id: 'info-transition', severity: 'INFO' }],
+    });
+    const informational = await handleRequest(new Request(path.replace('run%3A0%3Arun%3A1', 'info-transition'), {
+      method: 'PUT',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ classification: 'USEFUL' }),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardReader, dashboardFeedbackStore });
+    expect(informational.status).toBe(404);
+    expect(dashboardFeedbackStore.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects cross-origin, out-of-scope, and invalid feedback writes', async () => {
+    const dashboardReader = reader();
+    const dashboardFeedbackStore = feedbackStore();
+    const path = 'https://spark.test/api/repositories/2/pulls/3/trajectory/run%3A0%3Arun%3A1/feedback';
+    const dependencies = { dashboardAuthorizer: authorizer([2]), dashboardReader, dashboardFeedbackStore };
+    const crossOrigin = await handleRequest(new Request(path, {
+      method: 'PUT', headers: { origin: 'https://evil.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ classification: 'USEFUL' }),
+    }), env, context, dependencies);
+    expect(crossOrigin.status).toBe(403);
+
+    const outOfScope = await handleRequest(new Request(path.replace('/repositories/2/', '/repositories/99/'), {
+      method: 'PUT', headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ classification: 'USEFUL' }),
+    }), env, context, dependencies);
+    expect(outOfScope.status).toBe(404);
+
+    const invalid = await handleRequest(new Request(path, {
+      method: 'PUT', headers: { origin: 'https://spark.test', 'content-type': 'application/json' },
+      body: JSON.stringify({ classification: 'VERY_USEFUL', note: 'x'.repeat(501) }),
+    }), env, context, dependencies);
+    expect(invalid.status).toBe(400);
+    expect(dashboardFeedbackStore.save).not.toHaveBeenCalled();
   });
 
   it('returns an immutable run only inside the authorized repository scope', async () => {

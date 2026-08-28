@@ -194,6 +194,25 @@ export interface PullRequestLifecycleV1 {
   lastEventAt: string;
 }
 
+export type TrajectoryFeedbackClassificationV1 =
+  | 'USEFUL'
+  | 'EXPECTED'
+  | 'FALSE_POSITIVE'
+  | 'FIXED_BECAUSE_SPARK';
+
+export interface TrajectoryFeedbackV1 {
+  transitionId: string;
+  classification: TrajectoryFeedbackClassificationV1;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveTrajectoryFeedbackV1 {
+  classification: TrajectoryFeedbackClassificationV1;
+  note?: string;
+}
+
 export type PullRequestInsightKindV1 =
   | 'CURRENTLY_CLEAR'
   | 'CURRENTLY_FAILING'
@@ -266,6 +285,7 @@ export interface PullRequestTrajectoryV1 {
   notableTransitions: NotableTransitionV1[];
   runs: EvaluationSummaryV1[];
   lifecycle?: PullRequestLifecycleV1;
+  feedback?: TrajectoryFeedbackV1[];
   historyCompleteness?: HistoryCompletenessV1;
   truncated: boolean;
 }

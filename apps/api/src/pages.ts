@@ -52,6 +52,7 @@ export function privacyPage(options: PublicPageOptions): Response {
     <p>Spark processes GitHub repository metadata, pull-request and change information, changed file paths, relevant repository context, and GitHub Check information as needed to produce an evaluation. It may read limited repository files, such as workspace manifests, while resolving project relationships.</p>
     <h2>Information Spark stores</h2>
     <p>Spark stores GitHub App installation and repository identifiers, webhook delivery identifiers, and evaluation metadata such as pull-request number, exact commit SHA, attention level, and Spark Check Run identifier. It also stores pull-request lifecycle timestamps, merge commit identifiers, and the selected pre-merge Spark observation used to reconstruct merge state.</p>
+    <p>When a signed-in user provides feedback on a material trajectory transition, Spark stores the selected feedback classification and any optional context the user submits. Feedback is associated with that GitHub user, repository, pull request, and transition.</p>
     <p>Spark does not intentionally persist GitHub installation access tokens. It does not persist full repository source code or complete diffs as part of the normal V0 evaluation record.</p>
     <h2>Removing access</h2>
     <p>You can remove the GitHub App installation or its access to repositories through GitHub. Removal stops future authorized access; limited operational metadata may remain where needed to operate or diagnose the early-stage service.</p>

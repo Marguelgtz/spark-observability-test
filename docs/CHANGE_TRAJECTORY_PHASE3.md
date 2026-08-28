@@ -69,7 +69,7 @@ Subphase 3A was verified on 2026-08-28 with:
 
 ## Subphase 3B — Human Feedback
 
-**Status:** planned; intentionally not implemented in 3A
+**Status:** complete
 
 ### Scope
 
@@ -89,6 +89,35 @@ Subphase 3A was verified on 2026-08-28 with:
 - controls are keyboard-accessible and retain saved state;
 - feedback remains measurement data and never silently changes evaluation behavior.
 
+### Landed implementation
+
+| Concern | Implementation |
+| --- | --- |
+| Migration | `0008_trajectory_feedback.sql` |
+| Identity | One record per GitHub user, repository, PR, and stable transition ID |
+| Classifications | `USEFUL`, `EXPECTED`, `FALSE_POSITIVE`, `FIXED_BECAUSE_SPARK` |
+| Optional context | Trimmed and capped at 500 characters in the API and database |
+| Read privacy | Only the authenticated viewer's feedback is included in their trajectory response |
+| Mutation safety | Same-origin, repository-authorized, material-transition-validated `PUT` |
+| Update behavior | Idempotent upsert preserves one record while allowing classification changes |
+| Presentation | Keyboard-accessible controls with saved state and an optional collapsed context field |
+
+### Product and data boundary
+
+Feedback is measurement data. It is not consumed by the evaluator, does not alter attention or evidence rules, and is not presented as proof that Spark caused an outcome. Any future aggregate must report feedback coverage alongside classification rates.
+
+### Verification record
+
+Subphase 3B was verified on 2026-08-28 with:
+
+- workspace typechecking;
+- 142 unit and integration tests, including real SQLite feedback upserts and database bounds;
+- a production dashboard build;
+- all eight migrations applied to a fresh local D1 database;
+- a Worker/static-assets dry run;
+- 40 desktop/mobile Playwright acceptance tests;
+- desktop and mobile screenshot inspection of the feedback controls.
+
 ## Phase boundary
 
-Subphase 3B depends on stable material-transition identity from Phase 2 and the merge-outcome context delivered by 3A. It does not need to share a migration, mutation path, or release with lifecycle correctness. After both subphases, Spark should stop feature expansion and dogfood the combined trajectory across genuinely different repositories before adding aggregate outcome dashboards.
+Subphase 3B depends on stable material-transition identity from Phase 2 and the merge-outcome context delivered by 3A. It remains independently persisted from lifecycle correctness. With both subphases complete, Spark should stop feature expansion and dogfood the combined trajectory across genuinely different repositories before adding aggregate outcome dashboards.
