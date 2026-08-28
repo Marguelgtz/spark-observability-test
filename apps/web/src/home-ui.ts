@@ -1,5 +1,6 @@
 import type { AccountV1, ActivityOverviewV1, ActivityResponseV1, PullRequestActivityV1 } from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime } from './format';
+import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -20,14 +21,30 @@ function overviewFallback(response: ActivityResponseV1): ActivityOverviewV1 {
   };
 }
 
-function metric(label: string, value: number, detail?: string): HTMLElement {
-  const card = node('div', 'home-metric');
+function overviewHref(metric: OverviewMetricV1, state: ActivityUrlState): string {
+  const search = serializeActivityState({
+    ...state,
+    attention: 'ALL',
+    cursor: null,
+    query: undefined,
+    favoritesOnly: false,
+  });
+  return `/app/overview/${metric}${search ? `?${search}` : ''}`;
+}
+
+function metric(label: string, value: number, metricKey: OverviewMetricV1, state: ActivityUrlState, detail?: string): HTMLAnchorElement {
+  const card = node('a', 'home-metric home-metric-link') as HTMLAnchorElement;
+  card.href = overviewHref(metricKey, state);
+  card.dataset.routerLink = 'true';
+  card.dataset.testid = `overview-card-${metricKey}`;
+  card.setAttribute('aria-label', `Open ${label.toLowerCase()} details: ${value}`);
   card.append(node('strong', 'home-metric-value', String(value)), node('span', 'home-metric-label', label));
   if (detail) card.append(node('span', 'home-metric-detail', detail));
+  card.append(node('span', 'home-metric-arrow', '→'));
   return card;
 }
 
-function renderOverview(response: ActivityResponseV1): HTMLElement {
+function renderOverview(response: ActivityResponseV1, state: ActivityUrlState): HTMLElement {
   const overview = response.overview ?? overviewFallback(response);
   const section = node('section', 'home-overview');
   section.dataset.testid = 'change-overview';
@@ -35,10 +52,10 @@ function renderOverview(response: ActivityResponseV1): HTMLElement {
 
   const metrics = node('div', 'home-metrics');
   metrics.append(
-    metric('Observed PRs', overview.observedPRs),
-    metric('Evaluations', overview.totalEvaluations),
-    metric('Need attention', overview.activePRsNeedingAttention),
-    metric('Merged unresolved', overview.mergedUnresolved),
+    metric('Observed PRs', overview.observedPRs, 'pull-requests', state),
+    metric('Evaluations', overview.totalEvaluations, 'evaluations', state),
+    metric('Need attention', overview.activePRsNeedingAttention, 'attention', state),
+    metric('Merged unresolved', overview.mergedUnresolved, 'merged-unresolved', state),
   );
 
   const recovery = node('div', 'home-recovery');
@@ -72,7 +89,12 @@ function renderNeedsAttention(response: ActivityResponseV1, state: ActivityUrlSt
   section.dataset.testid = 'needs-attention';
 
   const heading = node('div', 'home-section-heading');
-  heading.append(node('h2', undefined, 'Needs attention'), node('span', 'home-section-count', String(needsAttention.total)));
+  const title = node('h2');
+  const titleLink = node('a', 'home-section-link', 'Needs attention') as HTMLAnchorElement;
+  titleLink.href = overviewHref('attention', state);
+  titleLink.dataset.routerLink = 'true';
+  title.append(titleLink);
+  heading.append(title, node('span', 'home-section-count', String(needsAttention.total)));
   section.append(heading);
 
   if (!needsAttention.preview.length) {
@@ -86,10 +108,7 @@ function renderNeedsAttention(response: ActivityResponseV1, state: ActivityUrlSt
     const link = node('a', 'needs-attention-row') as HTMLAnchorElement;
     link.href = attentionHref(activity, state);
     link.dataset.routerLink = 'true';
-    link.setAttribute(
-      'aria-label',
-      `Review ${latest.attention} attention for pull request ${activity.pullRequest.number}: ${activity.pullRequest.title}`,
-    );
+    link.setAttribute('aria-label', `Review ${latest.attention} attention for pull request ${activity.pullRequest.number}: ${activity.pullRequest.title}`);
 
     const attention = node('span', `attention attention-${latest.attention.toLowerCase()}`, latest.attention);
     const body = node('span', 'needs-attention-body');
@@ -105,6 +124,69 @@ function renderNeedsAttention(response: ActivityResponseV1, state: ActivityUrlSt
   }
   section.append(list);
   return section;
+}
+
+function chartBucketLabel(value: string, hourly: boolean): string {
+  const date = new Date(value);
+  return hourly
+    ? date.toLocaleTimeString(undefined, { hour: '2-digit' })
+    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function miniChart(
+  title: string,
+  overview: OverviewDrilldownResponseV1,
+  read: (point: OverviewDrilldownResponseV1['trend'][number]) => number,
+): HTMLElement {
+  const figure = node('figure', 'home-chart');
+  const caption = node('figcaption', 'home-chart-caption');
+  caption.append(node('strong', undefined, title), node('span', undefined, overview.selectedWindow === '24h' ? 'Hourly' : 'Daily'));
+  figure.append(caption);
+
+  const values = overview.trend.map(read);
+  const max = Math.max(1, ...values);
+  const bars = node('div', 'home-chart-bars');
+  bars.setAttribute('role', 'img');
+  bars.setAttribute('aria-label', `${title} over ${overview.selectedWindow}`);
+  overview.trend.forEach((point, index) => {
+    const value = values[index];
+    const cell = node('div', 'home-chart-cell');
+    const bar = node('div', 'home-chart-bar');
+    bar.style.height = `${Math.max(value > 0 ? 7 : 1, (value / max) * 100)}%`;
+    const label = chartBucketLabel(point.bucketStart, overview.selectedWindow === '24h');
+    cell.title = `${label}: ${value}`;
+    cell.setAttribute('aria-label', `${label}: ${value}`);
+    cell.append(bar);
+    bars.append(cell);
+  });
+  figure.append(bars);
+  return figure;
+}
+
+function renderHomeCharts(overview?: OverviewDrilldownResponseV1): HTMLElement | undefined {
+  if (!overview?.trend.length) return undefined;
+  const section = node('section', 'home-chart-grid');
+  section.dataset.testid = 'home-charts';
+  section.append(
+    miniChart('Evaluation volume', overview, (point) => point.evaluations),
+    miniChart('Attention evaluations', overview, (point) => point.attentionEvaluations),
+  );
+  return section;
+}
+
+function markMergedUnresolved(main: HTMLElement, overview?: OverviewDrilldownResponseV1): void {
+  if (!overview) return;
+  for (const item of overview.items) {
+    if (item.kind !== 'merge') continue;
+    const wrapper = main.querySelector<HTMLElement>(`[data-testid="pull-request-${item.repository.id}-${item.pullRequest.number}"]`);
+    if (!wrapper || wrapper.querySelector('.merge-unresolved-badge')) continue;
+    wrapper.classList.add('is-merged-unresolved');
+    const title = wrapper.querySelector<HTMLElement>('.evaluation-title');
+    if (!title) continue;
+    const badge = node('span', 'merge-unresolved-badge', 'Merged unresolved');
+    badge.title = 'This pull request merged while Spark still had unresolved attention or evidence.';
+    title.insertAdjacentElement('afterend', badge);
+  }
 }
 
 function githubLink(label: string, href: string, className: string): HTMLAnchorElement {
@@ -168,6 +250,7 @@ export function enhanceActivityHome(
   account: AccountV1,
   response: ActivityResponseV1,
   state: ActivityUrlState,
+  overviewDetail?: OverviewDrilldownResponseV1,
 ): HTMLElement {
   const main = root.querySelector<HTMLElement>('main[data-testid="activity-view"]');
   if (!main) return root;
@@ -190,9 +273,13 @@ export function enhanceActivityHome(
   const attentionFilters = main.querySelector<HTMLElement>('.attention-filters');
   if (!heading || !attentionFilters) return root;
 
-  heading.after(renderOverview(response), renderNeedsAttention(response, state));
+  heading.after(renderOverview(response, state), renderNeedsAttention(response, state));
+  const charts = renderHomeCharts(overviewDetail);
+  if (charts) main.querySelector('.needs-attention')?.insertAdjacentElement('afterend', charts);
+
   const recent = node('div', 'recent-activity-heading');
   recent.append(node('h2', undefined, 'Recent activity'), node('span', undefined, 'Search, favorites, and attention filters apply below.'));
   attentionFilters.before(recent);
+  markMergedUnresolved(main, overviewDetail);
   return root;
 }
