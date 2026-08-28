@@ -1,62 +1,8 @@
-import type {
-  AttentionLevelV1,
-  EvidenceHealthV1,
-  TrajectoryFeedbackClassificationV1,
-} from '@spark/dashboard-contracts';
+import type { OutcomeOverviewV1, OutcomeUnresolvedItemV1 } from '@spark/dashboard-contracts/outcome';
 import type { NotableTransitionInsightsV1, OverviewDrilldownResponseV1 } from './overview-api';
 import type { ActivityUrlState } from './state';
 
-export interface OutcomeTimelinePointV1 {
-  bucketStart: string;
-  resolved: number;
-  unresolved: number;
-  unavailable: number;
-}
-
-export interface OutcomeTransitionTrendPointV1 {
-  bucketStart: string;
-  regressions: number;
-  recoveries: number;
-  attentionIncreases: number;
-  attentionDecreases: number;
-}
-
-export interface OutcomeUnresolvedItemV1 {
-  repository: { id: number; owner: string; name: string; url: string };
-  pullRequest: { number: number; title: string; url: string };
-  mergedAt: string;
-  mergeSha?: string;
-  preMergeAttention?: AttentionLevelV1;
-  preMergeEvidenceHealth?: EvidenceHealthV1;
-}
-
-export interface OutcomeOverviewV1 {
-  version: 1;
-  selectedWindow: ActivityUrlState['window'];
-  selectedRepositoryId: number | null;
-  merges: { total: number; resolved: number; unresolved: number; unavailable: number };
-  preMergeAttention: Record<AttentionLevelV1, number> & { UNKNOWN: number };
-  preMergeEvidence: Record<EvidenceHealthV1, number> & { UNAVAILABLE: number };
-  stabilization: {
-    regressedPRs: number;
-    recoveredPRs: number;
-    recoveredAfterRegressionPRs: number;
-    oscillatingPRs: number;
-    attentionIncreases: number;
-    attentionDecreases: number;
-    regressions: number;
-    recoveries: number;
-  };
-  feedback: {
-    materialTransitions: number;
-    classifiedTransitions: number;
-    classifications: Record<TrajectoryFeedbackClassificationV1, number>;
-  };
-  timeline: OutcomeTimelinePointV1[];
-  transitionTrend: OutcomeTransitionTrendPointV1[];
-  unresolved: OutcomeUnresolvedItemV1[];
-  unresolvedTruncated: boolean;
-}
+export type { OutcomeOverviewV1 } from '@spark/dashboard-contracts/outcome';
 
 type OutcomeEnhancedResponse = OverviewDrilldownResponseV1 & { outcomes?: OutcomeOverviewV1 };
 
