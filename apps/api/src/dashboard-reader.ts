@@ -8,13 +8,18 @@ import type {
   EvaluationSummaryV1,
   EvidenceSummaryV1,
   ObservedRepositoryV1,
+  PullRequestActivityV1,
+  PullRequestDetailV1,
+  PullRequestHistoryResponseV1,
   RepositoryRefV1,
 } from '@spark/dashboard-contracts';
 import type { D1Database } from './d1';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
+import { buildPullRequestDetail } from './pull-request-insights';
 
 const EVAL_TIME_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', COALESCE(d.evaluated_at, e.updated_at))";
 const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
+const MAX_HISTORY_RUNS = 100;
 
 interface ActivityRow {
   repository_id: number;
@@ -27,10 +32,21 @@ interface ActivityRow {
   check_url: string | null;
 }
 
+interface PullRequestActivityRow extends ActivityRow {
+  run_count: number;
+  low_count: number;
+  medium_count: number;
+  high_count: number;
+}
+
+interface HistoryRow extends ActivityRow {
+  total_run_count: number;
+}
+
 interface RepositoryRow {
   id: number;
   full_name: string;
-  evaluation_count: number;
+  pull_request_count: number;
 }
 
 interface CountRow {
@@ -41,7 +57,7 @@ interface CountRow {
 interface CursorV1 {
   t: string;
   r: number;
-  s: string;
+  p: number;
 }
 
 function encodeCursor(cursor: CursorV1): string {
@@ -53,8 +69,8 @@ function decodeCursor(value: string | null | undefined): CursorV1 | undefined {
   try {
     const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);
     const parsed = JSON.parse(atob(padded)) as Partial<CursorV1>;
-    return typeof parsed.t === 'string' && typeof parsed.r === 'number' && typeof parsed.s === 'string'
-      ? { t: parsed.t, r: parsed.r, s: parsed.s }
+    return typeof parsed.t === 'string' && typeof parsed.r === 'number' && typeof parsed.p === 'number'
+      ? { t: parsed.t, r: parsed.r, p: parsed.p }
       : undefined;
   } catch {
     return undefined;
@@ -148,6 +164,23 @@ export function summaryFromRow(row: ActivityRow): EvaluationSummaryV1 {
   };
 }
 
+function pullRequestActivityFromRow(row: PullRequestActivityRow): PullRequestActivityV1 {
+  const latest = summaryFromRow(row);
+  return {
+    repository: latest.repository,
+    pullRequest: latest.pullRequest,
+    latest,
+    history: {
+      runCount: Number(row.run_count ?? 0),
+      attentionCounts: {
+        LOW: Number(row.low_count ?? 0),
+        MEDIUM: Number(row.medium_count ?? 0),
+        HIGH: Number(row.high_count ?? 0),
+      },
+    },
+  };
+}
+
 export function detailFromRow(row: ActivityRow): EvaluationDetailResponseV1 {
   const summary = summaryFromRow(row);
   const detail = parseDetail(row.normalized_json);
@@ -189,8 +222,18 @@ export function detailFromRow(row: ActivityRow): EvaluationDetailResponseV1 {
   return { version: 1, status: 'available', detail: response };
 }
 
+function runInputFromRow(row: ActivityRow) {
+  const response = detailFromRow(row);
+  return {
+    summary: response.status === 'available' ? summaryFromRow(row) : response.summary,
+    ...(response.status === 'available' ? { detail: response.detail } : {}),
+  };
+}
+
 export interface DashboardReader {
   activity(query: ActivityQueryV1, repositoryIds: number[], now?: Date): Promise<ActivityResponseV1>;
+  pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined>;
+  pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined>;
   evaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1 | undefined>;
 }
 
@@ -206,72 +249,95 @@ export class D1DashboardReader implements DashboardReader {
         selectedRepositoryId: query.repositoryId,
         counts: { LOW: 0, MEDIUM: 0, HIGH: 0 },
         repositories: [],
-        evaluations: [],
+        pullRequests: [],
         pagination: { nextCursor: null },
       };
     }
+
     const start = windowStart(query.window, now);
     const repositoryScope = JSON.stringify(repositoryIds);
+    const rankedSql = `
+      SELECT e.repository_id, r.full_name, e.head_sha, e.pull_request_number, e.attention,
+             ${EVAL_TIME_SQL} AS evaluated_at, d.normalized_json, d.check_url,
+             ROW_NUMBER() OVER (
+               PARTITION BY e.repository_id, e.pull_request_number
+               ORDER BY datetime(COALESCE(d.evaluated_at, e.updated_at)) DESC, e.head_sha DESC
+             ) AS row_number
+      FROM evaluations e
+      JOIN repositories r ON r.id = e.repository_id
+      LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
+      WHERE e.repository_id IN (${REPOSITORY_SCOPE_SQL})`;
+
     const repositoryResult = await this.db.prepare(
-      `SELECT r.id, r.full_name,
-              SUM(CASE WHEN datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?) THEN 1 ELSE 0 END) AS evaluation_count
-       FROM repositories r
-       JOIN evaluations e ON e.repository_id = r.id
-       LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
-       WHERE r.id IN (${REPOSITORY_SCOPE_SQL})
-       GROUP BY r.id, r.full_name
-       ORDER BY r.full_name ASC`,
-    ).bind(start, repositoryScope).all<RepositoryRow>();
+      `WITH ranked AS (${rankedSql})
+       SELECT repository_id AS id, full_name,
+              SUM(CASE WHEN row_number = 1 AND datetime(evaluated_at) >= datetime(?) THEN 1 ELSE 0 END) AS pull_request_count
+       FROM ranked
+       GROUP BY repository_id, full_name
+       ORDER BY full_name ASC`,
+    ).bind(repositoryScope, start).all<RepositoryRow>();
     const repositories: ObservedRepositoryV1[] = (repositoryResult.results ?? []).map(row => ({
       ...splitRepository(row.id, row.full_name),
-      evaluationCount: Number(row.evaluation_count ?? 0),
+      pullRequestCount: Number(row.pull_request_count ?? 0),
     }));
 
-    const countWhere = [`e.repository_id IN (${REPOSITORY_SCOPE_SQL})`, 'datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?)'];
+    const countWhere = ['row_number = 1', 'datetime(evaluated_at) >= datetime(?)'];
     const countBindings: unknown[] = [repositoryScope, start];
     if (query.repositoryId !== null) {
-      countWhere.push('e.repository_id = ?');
+      countWhere.push('repository_id = ?');
       countBindings.push(query.repositoryId);
     }
     const countResult = await this.db.prepare(
-      `SELECT e.attention, COUNT(*) AS count
-       FROM evaluations e
-       LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
+      `WITH ranked AS (${rankedSql})
+       SELECT attention, COUNT(*) AS count
+       FROM ranked
        WHERE ${countWhere.join(' AND ')}
-       GROUP BY e.attention`,
+       GROUP BY attention`,
     ).bind(...countBindings).all<CountRow>();
     const counts: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 0, HIGH: 0 };
     for (const row of countResult.results ?? []) counts[row.attention] = Number(row.count ?? 0);
 
-    const where = [`e.repository_id IN (${REPOSITORY_SCOPE_SQL})`, 'datetime(COALESCE(d.evaluated_at, e.updated_at)) >= datetime(?)'];
+    const where = ['l.row_number = 1', 'datetime(l.evaluated_at) >= datetime(?)'];
     const bindings: unknown[] = [repositoryScope, start];
     if (query.repositoryId !== null) {
-      where.push('e.repository_id = ?');
+      where.push('l.repository_id = ?');
       bindings.push(query.repositoryId);
     }
     if (query.attention !== 'ALL') {
-      where.push('e.attention = ?');
+      where.push('l.attention = ?');
       bindings.push(query.attention);
     }
     const cursor = decodeCursor(query.cursor);
     if (cursor) {
-      where.push(`(${EVAL_TIME_SQL} < ? OR (${EVAL_TIME_SQL} = ? AND e.repository_id < ?) OR (${EVAL_TIME_SQL} = ? AND e.repository_id = ? AND e.head_sha < ?))`);
-      bindings.push(cursor.t, cursor.t, cursor.r, cursor.t, cursor.r, cursor.s);
+      where.push('(l.evaluated_at < ? OR (l.evaluated_at = ? AND l.repository_id < ?) OR (l.evaluated_at = ? AND l.repository_id = ? AND l.pull_request_number < ?))');
+      bindings.push(cursor.t, cursor.t, cursor.r, cursor.t, cursor.r, cursor.p);
     }
     const limit = Math.max(1, Math.min(query.limit ?? 50, 100));
     const activityResult = await this.db.prepare(
-      `SELECT e.repository_id, r.full_name, e.head_sha, e.pull_request_number, e.attention,
-              ${EVAL_TIME_SQL} AS evaluated_at, d.normalized_json, d.check_url
-       FROM evaluations e
-       JOIN repositories r ON r.id = e.repository_id
-       LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
+      `WITH ranked AS (${rankedSql}),
+       history AS (
+         SELECT repository_id, pull_request_number,
+                COUNT(*) AS run_count,
+                SUM(CASE WHEN attention = 'LOW' THEN 1 ELSE 0 END) AS low_count,
+                SUM(CASE WHEN attention = 'MEDIUM' THEN 1 ELSE 0 END) AS medium_count,
+                SUM(CASE WHEN attention = 'HIGH' THEN 1 ELSE 0 END) AS high_count
+         FROM ranked
+         GROUP BY repository_id, pull_request_number
+       )
+       SELECT l.repository_id, l.full_name, l.head_sha, l.pull_request_number, l.attention,
+              l.evaluated_at, l.normalized_json, l.check_url,
+              h.run_count, h.low_count, h.medium_count, h.high_count
+       FROM ranked l
+       JOIN history h
+         ON h.repository_id = l.repository_id AND h.pull_request_number = l.pull_request_number
        WHERE ${where.join(' AND ')}
-       ORDER BY ${EVAL_TIME_SQL} DESC, e.repository_id DESC, e.head_sha DESC
+       ORDER BY l.evaluated_at DESC, l.repository_id DESC, l.pull_request_number DESC
        LIMIT ?`,
-    ).bind(...bindings, limit + 1).all<ActivityRow>();
+    ).bind(...bindings, limit + 1).all<PullRequestActivityRow>();
     const rows = activityResult.results ?? [];
     const page = rows.slice(0, limit);
     const last = page.at(-1);
+
     return {
       version: 1,
       selectedWindow: query.window,
@@ -279,10 +345,50 @@ export class D1DashboardReader implements DashboardReader {
       selectedRepositoryId: query.repositoryId,
       counts,
       repositories,
-      evaluations: page.map(summaryFromRow),
+      pullRequests: page.map(pullRequestActivityFromRow),
       pagination: {
-        nextCursor: rows.length > limit && last ? encodeCursor({ t: last.evaluated_at, r: last.repository_id, s: last.head_sha }) : null,
+        nextCursor: rows.length > limit && last
+          ? encodeCursor({ t: last.evaluated_at, r: last.repository_id, p: last.pull_request_number })
+          : null,
       },
+    };
+  }
+
+  private async pullRequestRows(repositoryId: number, pullRequestNumber: number): Promise<HistoryRow[]> {
+    const result = await this.db.prepare(
+      `SELECT e.repository_id, r.full_name, e.head_sha, e.pull_request_number, e.attention,
+              ${EVAL_TIME_SQL} AS evaluated_at, d.normalized_json, d.check_url,
+              COUNT(*) OVER () AS total_run_count
+       FROM evaluations e
+       JOIN repositories r ON r.id = e.repository_id
+       LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
+       WHERE e.repository_id = ? AND e.pull_request_number = ?
+       ORDER BY datetime(COALESCE(d.evaluated_at, e.updated_at)) DESC, e.head_sha DESC
+       LIMIT ?`,
+    ).bind(repositoryId, pullRequestNumber, MAX_HISTORY_RUNS).all<HistoryRow>();
+    return result.results ?? [];
+  }
+
+  async pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined> {
+    const rows = await this.pullRequestRows(repositoryId, pullRequestNumber);
+    if (!rows.length) return undefined;
+    const totalRunCount = Number(rows[0].total_run_count ?? rows.length);
+    return buildPullRequestDetail(rows.map(runInputFromRow), totalRunCount);
+  }
+
+  async pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined> {
+    const rows = await this.pullRequestRows(repositoryId, pullRequestNumber);
+    if (!rows.length) return undefined;
+    const runs = rows.map(summaryFromRow);
+    const latest = runs[0];
+    const totalRunCount = Number(rows[0].total_run_count ?? runs.length);
+    return {
+      version: 1,
+      repository: latest.repository,
+      pullRequest: latest.pullRequest,
+      totalRunCount,
+      runs,
+      truncated: totalRunCount > runs.length,
     };
   }
 

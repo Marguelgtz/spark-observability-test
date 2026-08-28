@@ -4,6 +4,8 @@ import type {
   EvaluationDetailResponseV1,
   EvaluationDetailV1,
   EvaluationSummaryV1,
+  PullRequestActivityV1,
+  PullRequestHistoryResponseV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
 import type { ActivityUrlState } from './state';
@@ -118,29 +120,129 @@ function activityHref(summary: EvaluationSummaryV1, state: ActivityUrlState): st
   return `/app/evaluations/${summary.repository.id}/${summary.headSha}${search ? `?${search}` : ''}`;
 }
 
-function evaluationRow(summary: EvaluationSummaryV1, state: ActivityUrlState): HTMLAnchorElement {
-  const row = node('a', 'evaluation-row') as HTMLAnchorElement;
-  row.href = activityHref(summary, state);
-  row.dataset.routerLink = 'true';
-  row.dataset.testid = `evaluation-${summary.repository.id}-${shortSha(summary.headSha)}`;
-  row.setAttribute('aria-label', `${summary.attention}: ${summary.pullRequest.title}, ${summary.repository.name} pull request ${summary.pullRequest.number}`);
+function historyMix(activity: PullRequestActivityV1): string {
+  const { HIGH, MEDIUM, LOW } = activity.history.attentionCounts;
+  const parts = [
+    HIGH ? `${HIGH} high` : '',
+    MEDIUM ? `${MEDIUM} medium` : '',
+    LOW ? `${LOW} low` : ''
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
 
-  const level = node('span', attentionClass(summary.attention), summary.attention);
+function historyRunState(summary: EvaluationSummaryV1): 'failed' | 'pending' | 'clear' | 'unknown' {
+  if (summary.evidenceSummary.failed > 0) return 'failed';
+  if (summary.evidenceSummary.pending > 0 || summary.evidenceSummary.missing > 0) return 'pending';
+  if (summary.evidenceSummary.unknown > 0 && summary.evidenceSummary.passed === 0) return 'unknown';
+  return 'clear';
+}
+
+function renderHistoryPanel(history: PullRequestHistoryResponseV1, latestHeadSha: string, state: ActivityUrlState): HTMLElement {
+  const panel = node('div', 'pr-history-panel');
+  panel.dataset.testid = `history-${history.repository.id}-${history.pullRequest.number}`;
+
+  const failed = history.runs.filter((run) => historyRunState(run) === 'failed').length;
+  const pending = history.runs.filter((run) => historyRunState(run) === 'pending').length;
+  const clear = history.runs.filter((run) => historyRunState(run) === 'clear').length;
+  const summary = node('div', 'pr-history-summary');
+  summary.append(
+    node('strong', undefined, `${history.totalRunCount} run${history.totalRunCount === 1 ? '' : 's'}`),
+    node('span', undefined, `${clear} clear · ${failed} failed evidence · ${pending} pending/missing${history.truncated ? ' · showing latest 100' : ''}`)
+  );
+  panel.append(summary);
+
+  const rail = node('div', 'history-rail');
+  rail.setAttribute('role', 'list');
+  for (const run of history.runs) {
+    const card = node('a', `history-card${run.headSha === latestHeadSha ? ' is-latest' : ''}`) as HTMLAnchorElement;
+    card.href = activityHref(run, state);
+    card.dataset.routerLink = 'true';
+    card.setAttribute('role', 'listitem');
+    card.setAttribute('aria-label', `${run.headSha === latestHeadSha ? 'Latest, ' : ''}${run.attention}, ${shortSha(run.headSha)}, ${evidenceLabel(run.evidenceSummary)}`);
+    const top = node('span', 'history-card-top');
+    top.append(node('span', attentionClass(run.attention), run.attention), node('code', undefined, shortSha(run.headSha)));
+    card.append(top, node('strong', 'history-evidence', evidenceLabel(run.evidenceSummary)), node('time', 'history-time', relativeTime(run.evaluatedAt)));
+    if (run.headSha === latestHeadSha) card.append(node('span', 'history-latest-label', 'Latest'));
+    rail.append(card);
+  }
+  panel.append(rail);
+  return panel;
+}
+
+function pullRequestRow(
+  activity: PullRequestActivityV1,
+  state: ActivityUrlState,
+  loadHistory: (repositoryId: number, pullRequestNumber: number) => Promise<PullRequestHistoryResponseV1>
+): HTMLElement {
+  const latest = activity.latest;
+  const wrapper = node('div', 'pull-request-activity');
+  wrapper.dataset.testid = `pull-request-${latest.repository.id}-${latest.pullRequest.number}`;
+
+  const row = node('div', 'evaluation-row');
+  const level = node('span', attentionClass(latest.attention), latest.attention);
+
+  const link = node('a', 'evaluation-main-link') as HTMLAnchorElement;
+  link.href = activityHref(latest, state);
+  link.dataset.routerLink = 'true';
+  link.dataset.testid = `evaluation-${latest.repository.id}-${shortSha(latest.headSha)}`;
+  link.setAttribute('aria-label', `${latest.attention}: ${latest.pullRequest.title}, ${latest.repository.name} pull request ${latest.pullRequest.number}`);
   const body = node('span', 'evaluation-body');
-  body.append(node('strong', 'evaluation-title', summary.pullRequest.title));
-
+  body.append(node('strong', 'evaluation-title', latest.pullRequest.title));
   const compact = node('span', 'evaluation-compact');
-  const contextParts = [summary.repository.name, `#${summary.pullRequest.number}`, changeLabel(summary.changeSummary.files, summary.changeSummary.additions, summary.changeSummary.deletions)];
-  compact.append(node('span', undefined, contextParts.join(' · ')));
-
-  const signal = summary.sensitiveSurfaces[0] ?? evidenceLabel(summary.evidenceSummary);
+  compact.append(node('span', undefined, [
+    latest.repository.name,
+    `#${latest.pullRequest.number}`,
+    changeLabel(latest.changeSummary.files, latest.changeSummary.additions, latest.changeSummary.deletions)
+  ].join(' · ')));
+  const signal = latest.sensitiveSurfaces[0] ?? evidenceLabel(latest.evidenceSummary);
   compact.append(node('span', 'evaluation-signal', signal));
   body.append(compact);
+  if (activity.history.runCount > 1) body.append(node('span', 'evaluation-history-mix', historyMix(activity)));
+  link.append(body);
 
-  const time = node('time', 'evaluation-time', relativeTime(summary.evaluatedAt));
-  time.dateTime = summary.evaluatedAt;
-  row.append(level, body, time);
-  return row;
+  const meta = node('div', 'evaluation-meta');
+  const time = node('time', 'evaluation-time', relativeTime(latest.evaluatedAt));
+  time.dateTime = latest.evaluatedAt;
+  const historyButton = node('button', 'history-toggle', `↻ ${activity.history.runCount}`) as HTMLButtonElement;
+  historyButton.type = 'button';
+  historyButton.dataset.testid = `history-toggle-${latest.repository.id}-${latest.pullRequest.number}`;
+  historyButton.setAttribute('aria-expanded', 'false');
+  historyButton.setAttribute('aria-label', `Show ${activity.history.runCount} evaluations for pull request ${latest.pullRequest.number}`);
+  meta.append(time, historyButton);
+  row.append(level, link, meta);
+  wrapper.append(row);
+
+  let panel: HTMLElement | undefined;
+  let loading = false;
+  historyButton.addEventListener('click', async () => {
+    if (panel) {
+      const opening = panel.hidden;
+      panel.hidden = !opening;
+      historyButton.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      return;
+    }
+    if (loading) return;
+    loading = true;
+    historyButton.disabled = true;
+    const original = historyButton.textContent;
+    historyButton.textContent = '…';
+    try {
+      const history = await loadHistory(latest.repository.id, latest.pullRequest.number);
+      panel = renderHistoryPanel(history, latest.headSha, state);
+      wrapper.append(panel);
+      historyButton.setAttribute('aria-expanded', 'true');
+    } catch {
+      panel = node('div', 'pr-history-panel history-error', 'Evaluation history could not be loaded.');
+      wrapper.append(panel);
+      historyButton.setAttribute('aria-expanded', 'true');
+    } finally {
+      historyButton.textContent = original;
+      historyButton.disabled = false;
+      loading = false;
+    }
+  });
+
+  return wrapper;
 }
 
 export interface ActivityHandlers {
@@ -148,6 +250,7 @@ export interface ActivityHandlers {
   setAttention(value: AttentionFilterV1): void;
   setRepository(value: number | null): void;
   showAllAttention(): void;
+  loadHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
 }
 
 export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, state: ActivityUrlState, handlers: ActivityHandlers): HTMLElement {
@@ -184,7 +287,7 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
   all.value = '';
   select.append(all);
   for (const repository of response.repositories) {
-    const option = node('option', undefined, `${repository.owner}/${repository.name} (${repository.evaluationCount})`) as HTMLOptionElement;
+    const option = node('option', undefined, `${repository.owner}/${repository.name} (${repository.pullRequestCount})`) as HTMLOptionElement;
     option.value = String(repository.id);
     option.selected = state.repositoryId === repository.id;
     select.append(option);
@@ -194,15 +297,15 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
   main.append(repositoryField);
 
   const section = node('section', 'activity-section');
-  section.append(node('div', 'section-label', 'Recent evaluations'));
+  section.append(node('div', 'section-label', 'Recent pull requests'));
 
-  if (response.evaluations.length === 0) {
+  if (response.pullRequests.length === 0) {
     const empty = node('div', 'empty-state');
     empty.dataset.testid = 'empty-result';
     if (response.repositories.length === 0) {
-      empty.append(node('h2', undefined, "Spark hasn't observed any evaluations yet."), node('p', 'state-copy', 'Evaluations will appear here after Spark observes pull requests.'));
+      empty.append(node('h2', undefined, "Spark hasn't observed any pull requests yet."), node('p', 'state-copy', 'Pull requests will appear here after Spark evaluates them.'));
     } else {
-      empty.append(node('h2', undefined, `No ${state.attention === 'ALL' ? '' : `${state.attention} `}evaluations in this view.`), node('p', 'state-copy', 'Try a broader time window, another repository, or all attention levels.'));
+      empty.append(node('h2', undefined, `No ${state.attention === 'ALL' ? '' : `${state.attention} `}pull requests in this view.`), node('p', 'state-copy', 'Try a broader time window, another repository, or all attention levels.'));
       if (state.attention !== 'ALL') {
         const reset = node('button', 'secondary-button', 'Show all attention');
         reset.type = 'button';
@@ -213,7 +316,7 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
     section.append(empty);
   } else {
     const list = node('div', 'evaluation-list');
-    for (const summary of response.evaluations) list.append(evaluationRow(summary, state));
+    for (const activity of response.pullRequests) list.append(pullRequestRow(activity, state, handlers.loadHistory));
     section.append(list);
   }
   main.append(section);

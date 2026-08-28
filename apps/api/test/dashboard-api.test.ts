@@ -1,10 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ActivityQueryV1, ActivityResponseV1, EvaluationDetailResponseV1, ViewerV1 } from '@spark/dashboard-contracts';
+import type {
+  ActivityQueryV1,
+  ActivityResponseV1,
+  EvaluationDetailResponseV1,
+  PullRequestDetailV1,
+  PullRequestHistoryResponseV1,
+  ViewerV1
+} from '@spark/dashboard-contracts';
 import { handleRequest, type Env, type WorkerExecutionContext } from '../src/app';
 import type { DashboardAuthorizer } from '../src/dashboard-access';
 import type { DashboardReader } from '../src/dashboard-reader';
 
 const viewer: ViewerV1 = { version: 1, id: 7, login: 'marguel', avatarUrl: 'https://avatars.githubusercontent.com/u/7' };
+
+const summary = {
+  repository: { id: 2, owner: 'acme', name: 'repo', url: 'https://github.com/acme/repo' },
+  pullRequest: { number: 3, title: 'PR #3', url: 'https://github.com/acme/repo/pull/3' },
+  headSha: 'sha',
+  attention: 'LOW' as const,
+  topReasons: [],
+  changeSummary: { files: 0, extensions: [] },
+  sensitiveSurfaces: [],
+  evidenceSummary: { passed: 0, pending: 0, failed: 0, missing: 0, unknown: 0 },
+  evaluatedAt: '2026-08-27T12:00:00.000Z',
+  githubCheckUrl: 'https://github.com/acme/repo/pull/3/checks',
+  detailAvailable: false,
+};
 
 const activity: ActivityResponseV1 = {
   version: 1,
@@ -12,28 +33,51 @@ const activity: ActivityResponseV1 = {
   selectedAttention: 'ALL',
   selectedRepositoryId: null,
   counts: { LOW: 1, MEDIUM: 0, HIGH: 0 },
-  repositories: [{ id: 2, owner: 'acme', name: 'repo', url: 'https://github.com/acme/repo', evaluationCount: 1 }],
-  evaluations: [],
+  repositories: [{ id: 2, owner: 'acme', name: 'repo', url: 'https://github.com/acme/repo', pullRequestCount: 1 }],
+  pullRequests: [{
+    repository: summary.repository,
+    pullRequest: summary.pullRequest,
+    latest: summary,
+    history: { runCount: 2, attentionCounts: { LOW: 1, MEDIUM: 1, HIGH: 0 } },
+  }],
   pagination: { nextCursor: null },
+};
+
+const history: PullRequestHistoryResponseV1 = {
+  version: 1,
+  repository: summary.repository,
+  pullRequest: summary.pullRequest,
+  totalRunCount: 2,
+  runs: [summary],
+  truncated: true,
+};
+
+const pullRequest: PullRequestDetailV1 = {
+  version: 1,
+  repository: summary.repository,
+  pullRequest: summary.pullRequest,
+  latest: summary,
+  history: {
+    totalRuns: 2,
+    evidenceCounts: { CLEAR: 1, FAILED: 0, PENDING_OR_MISSING: 0, UNKNOWN: 0 },
+    attentionCounts: { LOW: 1, MEDIUM: 0, HIGH: 0 },
+    firstEvaluatedAt: summary.evaluatedAt,
+    lastEvaluatedAt: summary.evaluatedAt,
+    currentClearStreak: 1,
+    currentFailureStreak: 0,
+  },
+  evidenceIssues: [],
+  transitions: [],
+  insights: [{ kind: 'CURRENTLY_CLEAR', headSha: summary.headSha }],
+  runs: [summary],
+  truncated: true,
 };
 
 const unavailable: EvaluationDetailResponseV1 = {
   version: 1,
   status: 'unavailable',
   reason: 'LEGACY_RECORD',
-  summary: {
-    repository: { id: 2, owner: 'acme', name: 'repo', url: 'https://github.com/acme/repo' },
-    pullRequest: { number: 3, title: 'PR #3', url: 'https://github.com/acme/repo/pull/3' },
-    headSha: 'sha',
-    attention: 'LOW',
-    topReasons: [],
-    changeSummary: { files: 0, extensions: [] },
-    sensitiveSurfaces: [],
-    evidenceSummary: { passed: 0, pending: 0, failed: 0, missing: 0, unknown: 0 },
-    evaluatedAt: '2026-08-27T12:00:00.000Z',
-    githubCheckUrl: 'https://github.com/acme/repo/pull/3/checks',
-    detailAvailable: false,
-  },
+  summary,
 };
 
 const env: Env = {
@@ -62,6 +106,8 @@ function authorizer(repositoryIds = [2]): DashboardAuthorizer {
 function reader() {
   return {
     activity: vi.fn(async (_query: ActivityQueryV1) => activity),
+    pullRequest: vi.fn(async () => pullRequest),
+    pullRequestHistory: vi.fn(async () => history),
     evaluation: vi.fn(async () => unavailable),
   } satisfies DashboardReader;
 }
@@ -125,6 +171,49 @@ describe('dashboard read API', () => {
       { dashboardAuthorizer: authorizer() },
     );
     expect(response.status).toBe(400);
+  });
+
+  it('returns pull request observability only inside the authorized repository scope', async () => {
+    const dashboardReader = reader();
+    const allowed = await handleRequest(
+      new Request('https://spark.test/api/repositories/2/pulls/3'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual(pullRequest);
+    expect(dashboardReader.pullRequest).toHaveBeenCalledWith(2, 3);
+
+    const denied = await handleRequest(
+      new Request('https://spark.test/api/repositories/3/pulls/3'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(denied.status).toBe(404);
+    expect(dashboardReader.pullRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns pull request history only inside the authorized repository scope', async () => {
+    const dashboardReader = reader();
+    const allowed = await handleRequest(
+      new Request('https://spark.test/api/repositories/2/pulls/3/evaluations'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual(history);
+    expect(dashboardReader.pullRequestHistory).toHaveBeenCalledWith(2, 3);
+
+    const denied = await handleRequest(
+      new Request('https://spark.test/api/repositories/3/pulls/3/evaluations'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(denied.status).toBe(404);
   });
 
   it('returns a stored evaluation only inside the authorized repository scope', async () => {

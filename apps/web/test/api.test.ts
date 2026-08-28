@@ -14,7 +14,7 @@ describe('HttpDashboardApi', () => {
       selectedRepositoryId: 2,
       counts: { LOW: 0, MEDIUM: 0, HIGH: 1 },
       repositories: [],
-      evaluations: [],
+      pullRequests: [],
       pagination: { nextCursor: null },
     }), { status: 200, headers: { 'content-type': 'application/json' } }));
     vi.stubGlobal('fetch', fetcher);
@@ -24,6 +24,50 @@ describe('HttpDashboardApi', () => {
 
     expect(fetcher).toHaveBeenCalledWith(
       'https://spark.test/api/activity?window=24h&attention=HIGH&repositoryId=2&cursor=cursor&limit=25',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('loads pull request observability from the scoped PR endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      version: 1,
+      repository: {},
+      pullRequest: {},
+      latest: {},
+      history: {},
+      evidenceIssues: [],
+      transitions: [],
+      insights: [],
+      runs: [],
+      truncated: false,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+
+    await api.getPullRequest(2, 13);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://spark.test/api/repositories/2/pulls/13',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('loads pull request history from the scoped history endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      version: 1,
+      repository: {},
+      pullRequest: {},
+      totalRunCount: 3,
+      runs: [],
+      truncated: false,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+
+    await api.getPullRequestHistory(2, 13);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://spark.test/api/repositories/2/pulls/13/evaluations',
       expect.objectContaining({ credentials: 'include' }),
     );
   });

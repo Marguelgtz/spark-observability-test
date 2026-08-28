@@ -89,6 +89,14 @@ function parseActivityQuery(url: URL): ActivityQueryV1 | undefined {
   };
 }
 
+function validPullRequestPath(repositoryId: number, pullRequestNumber: number, repositoryIds: number[]): boolean {
+  return Number.isSafeInteger(repositoryId)
+    && Number.isSafeInteger(pullRequestNumber)
+    && repositoryId > 0
+    && pullRequestNumber > 0
+    && repositoryIds.includes(repositoryId);
+}
+
 async function handleDashboardRequest(
   request: Request,
   env: Env,
@@ -111,6 +119,28 @@ async function handleDashboardRequest(
       return json({ error: 'not found' }, 404);
     }
     return json(await reader.activity(query, principal.repositoryIds));
+  }
+
+  const historyMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)\/evaluations$/);
+  if (historyMatch) {
+    const repositoryId = Number(historyMatch[1]);
+    const pullRequestNumber = Number(historyMatch[2]);
+    if (!validPullRequestPath(repositoryId, pullRequestNumber, principal.repositoryIds)) {
+      return json({ error: 'not found' }, 404);
+    }
+    const result = await reader.pullRequestHistory(repositoryId, pullRequestNumber);
+    return result ? json(result) : json({ error: 'not found' }, 404);
+  }
+
+  const pullRequestMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)$/);
+  if (pullRequestMatch) {
+    const repositoryId = Number(pullRequestMatch[1]);
+    const pullRequestNumber = Number(pullRequestMatch[2]);
+    if (!validPullRequestPath(repositoryId, pullRequestNumber, principal.repositoryIds)) {
+      return json({ error: 'not found' }, 404);
+    }
+    const result = await reader.pullRequest(repositoryId, pullRequestNumber);
+    return result ? json(result) : json({ error: 'not found' }, 404);
   }
 
   const detailMatch = url.pathname.match(/^\/api\/evaluations\/(\d+)\/([^/]+)$/);
