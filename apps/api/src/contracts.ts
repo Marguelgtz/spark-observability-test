@@ -1,3 +1,4 @@
+import type { AttentionLevelV1, EvidenceHealthV1 } from '@spark/dashboard-contracts';
 import type { GitHubEventRequest, GitHubRepository } from '@spark/github';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
 
@@ -24,6 +25,34 @@ export interface EvaluationDetailRecord {
   evaluatedAt: string;
   checkUrl?: string;
   normalized: StoredEvaluationDetailV1;
+  truncated: boolean;
+}
+
+export type EvaluationRunObservationSource = 'LIVE' | 'BACKFILL';
+
+export interface EvaluationRunTrigger {
+  event: string;
+  action: string;
+  deliveryId?: string;
+}
+
+export interface EvaluationRunRecord {
+  id: string;
+  idempotencyKey: string;
+  repositoryId: number;
+  installationId: number;
+  pullRequestNumber: number;
+  headSha: string;
+  baseSha?: string;
+  checkRunId: number;
+  trigger: EvaluationRunTrigger;
+  observationSource: EvaluationRunObservationSource;
+  schemaVersion?: number;
+  evaluatorVersion?: string;
+  evaluatedAt: string;
+  attention: AttentionLevelV1;
+  evidenceHealth: EvidenceHealthV1;
+  normalized?: StoredEvaluationDetailV1;
   truncated: boolean;
 }
 
