@@ -97,6 +97,10 @@ function validPullRequestPath(repositoryId: number, pullRequestNumber: number, r
     && repositoryIds.includes(repositoryId);
 }
 
+function validRepositoryPath(repositoryId: number, repositoryIds: number[]): boolean {
+  return Number.isSafeInteger(repositoryId) && repositoryId > 0 && repositoryIds.includes(repositoryId);
+}
+
 async function handleDashboardRequest(
   request: Request,
   env: Env,
@@ -132,6 +136,17 @@ async function handleDashboardRequest(
     return result ? json(result) : json({ error: 'not found' }, 404);
   }
 
+  const runMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/runs\/([^/]+)$/);
+  if (runMatch) {
+    const repositoryId = Number(runMatch[1]);
+    const runId = decodeURIComponent(runMatch[2]);
+    if (!validRepositoryPath(repositoryId, principal.repositoryIds) || !runId) {
+      return json({ error: 'not found' }, 404);
+    }
+    const result = await reader.run(repositoryId, runId);
+    return result ? json(result) : json({ error: 'not found' }, 404);
+  }
+
   const pullRequestMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)$/);
   if (pullRequestMatch) {
     const repositoryId = Number(pullRequestMatch[1]);
@@ -147,7 +162,7 @@ async function handleDashboardRequest(
   if (detailMatch) {
     const repositoryId = Number(detailMatch[1]);
     const headSha = decodeURIComponent(detailMatch[2]);
-    if (!Number.isSafeInteger(repositoryId) || !principal.repositoryIds.includes(repositoryId)) {
+    if (!validRepositoryPath(repositoryId, principal.repositoryIds)) {
       return json({ error: 'not found' }, 404);
     }
     const result = await reader.evaluation(repositoryId, headSha);
