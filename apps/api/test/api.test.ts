@@ -1,16 +1,24 @@
 import { describe, expect, it, vi } from 'vitest';
 import { routeGitHubEvent, type GitHubApiClient, type GitHubEventRequest, type GitHubRepository } from '@spark/github';
 import { handleRequest, type Env, type WorkerExecutionContext } from '../src/app';
-import type { EvaluationDetailRecord, EvaluationRecord, SparkStore, StoredEvaluation } from '../src/contracts';
+import type {
+  EvaluationDetailRecord,
+  EvaluationObservationRecord,
+  EvaluationRecord,
+  EvaluationRunRecord,
+  SparkStore,
+  StoredEvaluation,
+} from '../src/contracts';
 import { SparkOrchestrator } from '../src/orchestrator';
 
 class MemoryStore implements SparkStore {
   deliveries = new Set<string>();
   evaluations = new Map<string, StoredEvaluation>();
   details = new Map<string, EvaluationDetailRecord>();
+  runs = new Map<string, EvaluationRunRecord>();
   repositories: GitHubRepository[] = [];
   installationEvents: GitHubEventRequest[] = [];
-  failDetails = false;
+  failObservation = false;
 
   async claimDelivery(id: string): Promise<boolean> {
     if (this.deliveries.has(id)) return false;
@@ -22,9 +30,13 @@ class MemoryStore implements SparkStore {
   async saveRepository(_installationId: number, repository: GitHubRepository): Promise<void> { this.repositories.push(repository); }
   async findEvaluation(repositoryId: number, sha: string): Promise<StoredEvaluation | undefined> { return this.evaluations.get(`${repositoryId}:${sha}`); }
   async saveEvaluation(record: EvaluationRecord): Promise<void> { this.evaluations.set(`${record.repositoryId}:${record.headSha}`, record); }
-  async saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void> {
-    if (this.failDetails) throw new Error('synthetic detail persistence failure');
-    this.details.set(`${record.repositoryId}:${record.headSha}`, record);
+  async saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void> { this.details.set(`${record.repositoryId}:${record.headSha}`, record); }
+  async saveEvaluationObservation(record: EvaluationObservationRecord): Promise<void> {
+    if (this.failObservation) throw new Error('synthetic observation persistence failure');
+    const duplicate = [...this.runs.values()].some(run => run.idempotencyKey === record.run.idempotencyKey);
+    if (!duplicate) this.runs.set(record.run.id, record.run);
+    this.evaluations.set(`${record.evaluation.repositoryId}:${record.evaluation.headSha}`, record.evaluation);
+    this.details.set(`${record.detail.repositoryId}:${record.detail.headSha}`, record.detail);
   }
 }
 
@@ -79,6 +91,10 @@ function evaluationRequest(headSha: string, action = 'opened'): GitHubEventReque
   };
 }
 
+function trigger(deliveryId: string, event = 'pull_request', action = 'synchronize') {
+  return { deliveryId, event, action };
+}
+
 async function sign(body: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body)));
@@ -86,34 +102,21 @@ async function sign(body: string, secret: string): Promise<string> {
 }
 
 describe('Spark orchestration', () => {
-  it('creates history for new SHAs and updates detail for same-SHA reevaluation', async () => {
+  it('retains same-SHA reevaluations as immutable runs while updating the current projection', async () => {
     const store = new MemoryStore();
-    const clients = new Map<string, ReturnType<typeof fakeClient>>();
-    const make = (sha: string, status: 'queued' | 'completed') => {
-      const fake = fakeClient(sha, status); clients.set(sha, fake); return fake;
-    };
+    const make = (sha: string, status: 'queued' | 'completed') => fakeClient(sha, status);
     const first = make('sha-1', 'queued');
     let current = first;
     const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient: async () => current.client });
 
-    const opened = await orchestrator.handle(evaluationRequest('sha-1'));
+    const opened = await orchestrator.handle(evaluationRequest('sha-1'), trigger('delivery-1', 'pull_request', 'opened'));
     expect(opened.status).toBe('evaluated');
-    expect(opened.evaluation?.changeId).toBe('sha-1');
     expect(opened.evaluation?.evidence[0].status).toBe('PENDING');
     expect(first.created[0]).toMatchObject({ head_sha: 'sha-1', conclusion: 'neutral' });
-    expect(store.details.get('2:sha-1')).toMatchObject({
-      schemaVersion: 1,
-      baseSha: 'base',
-      pullRequestTitle: 'Change repository behavior',
-      evaluatorVersion: 'deterministic-v1',
-      normalized: { version: 1, headSha: 'sha-1', truncation: { truncated: false } },
-    });
 
     current = make('sha-2', 'queued');
-    await orchestrator.handle(evaluationRequest('sha-2', 'synchronize'));
+    await orchestrator.handle(evaluationRequest('sha-2', 'synchronize'), trigger('delivery-2'));
     expect(current.created).toHaveLength(1);
-    expect(store.evaluations.size).toBe(2);
-    expect(store.details.size).toBe(2);
 
     current = make('sha-2', 'completed');
     const completedPayload = {
@@ -121,28 +124,50 @@ describe('Spark orchestration', () => {
       check_run: { name: 'CI', head_sha: 'sha-2', app: { id: 99 }, pull_requests: [{ number: 3 }] },
     };
     const completed = routeGitHubEvent('check_run', completedPayload, 42);
-    const result = await orchestrator.handle(completed);
+    const result = await orchestrator.handle(completed, trigger('delivery-3', 'check_run', 'completed'));
+
     expect(result.evaluation?.evidence[0].status).toBe('PASSED');
     expect(current.updated).toHaveLength(1);
     expect(current.updated[0]).toMatchObject({ id: 100 });
+    expect(store.evaluations.size).toBe(2);
     expect(store.details.size).toBe(2);
     expect(store.details.get('2:sha-2')?.normalized.evaluation.evidence[0].status).toBe('PASSED');
+    expect(store.runs.size).toBe(3);
+    const sha2Runs = [...store.runs.values()].filter(run => run.headSha === 'sha-2');
+    expect(sha2Runs).toHaveLength(2);
+    expect(sha2Runs.map(run => run.normalized?.evaluation.evidence[0].status)).toEqual(['PENDING', 'PASSED']);
+    expect(sha2Runs.map(run => run.trigger.deliveryId)).toEqual(['delivery-2', 'delivery-3']);
   });
 
-  it('keeps dashboard detail persistence supplemental to the GitHub-native evaluation', async () => {
+  it('does not append a second run for the same durable idempotency key', async () => {
     const store = new MemoryStore();
-    store.failDetails = true;
+    const fake = fakeClient('sha');
+    const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient: async () => fake.client });
+    const request = evaluationRequest('sha');
+    const sourceTrigger = trigger('same-delivery', 'pull_request', 'opened');
+
+    await orchestrator.handle(request, sourceTrigger);
+    await orchestrator.handle(request, sourceTrigger);
+
+    expect(store.runs.size).toBe(1);
+    expect(store.evaluations.size).toBe(1);
+    expect(store.details.size).toBe(1);
+  });
+
+  it('surfaces observation persistence failure so webhook processing can retry', async () => {
+    const store = new MemoryStore();
+    store.failObservation = true;
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const fake = fakeClient('sha');
     const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient: async () => fake.client });
 
-    const result = await orchestrator.handle(evaluationRequest('sha'));
+    await expect(orchestrator.handle(evaluationRequest('sha'), trigger('delivery-fail'))).rejects.toThrow('synthetic observation persistence failure');
 
-    expect(result.status).toBe('evaluated');
-    expect(result.checkRunId).toBe(100);
-    expect(store.evaluations.has('2:sha')).toBe(true);
+    expect(fake.created).toHaveLength(1);
+    expect(store.evaluations.size).toBe(0);
     expect(store.details.size).toBe(0);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining('"stage":"persist_evaluation_detail"'));
+    expect(store.runs.size).toBe(0);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('"stage":"persist_observation"'));
     log.mockRestore();
   });
 
@@ -150,7 +175,7 @@ describe('Spark orchestration', () => {
     const store = new MemoryStore();
     const fake = fakeClient('sha');
     const orchestrator = new SparkOrchestrator({ store, sparkAppId: 42, createClient: async () => fake.client });
-    const result = await orchestrator.handle(evaluationRequest('sha'));
+    const result = await orchestrator.handle(evaluationRequest('sha'), trigger('delivery-unsupported'));
     expect(result.evaluation).toMatchObject({ attention: 'MEDIUM', directAreas: ['Repository root'] });
     expect(result.evaluation?.reasons).toContain('Structural uncertainty; repository topology could not be deeply analyzed');
     expect(fake.created[0]).toMatchObject({ conclusion: 'neutral' });
@@ -189,6 +214,9 @@ describe('HTTP webhook endpoint', () => {
     expect(secondContext.backgroundTasks).toHaveLength(0);
     await firstContext.drain();
     expect(orchestrator.handle).toHaveBeenCalledTimes(1);
+    expect(orchestrator.handle).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      deliveryId: 'same-delivery', event: 'ping', action: '',
+    }));
   });
 
   it('releases a failed delivery so GitHub can retry it', async () => {
