@@ -139,13 +139,39 @@ function fixtureTrajectory(): PullRequestTrajectoryV1 {
 }
 
 describe('change story derivation', () => {
-  it('keeps initial, material movement, latest target, and terminal outcome chronological while collapsing unchanged runs', () => {
+  it('keeps attention changes first-class and groups unchanged-attention evaluations', () => {
     const story = deriveChangeStory(fixtureTrajectory());
-    expect(story.nodes.map((item) => item.kind)).toEqual(['INITIAL', 'TRANSITION', 'TRANSITION', 'TERMINAL']);
+    expect(story.nodes.map((item) => item.kind)).toEqual(['INITIAL', 'STABLE', 'TRANSITION', 'TRANSITION', 'TERMINAL']);
     expect(story.collapsedEvaluations).toBe(1);
-    expect(story.nodes[1]).toMatchObject({ headline: 'Attention increased to HIGH', attention: 'HIGH' });
-    expect(story.nodes[2]).toMatchObject({ headline: 'Attention decreased to MEDIUM', attention: 'MEDIUM', latest: true });
-    expect(story.nodes[3]).toMatchObject({ headline: 'Merged with unresolved attention' });
+    expect(story.nodes[1]).toMatchObject({ headline: '1 evaluation stayed LOW', attention: 'LOW', latest: false });
+    if (story.nodes[1].kind !== 'STABLE') throw new Error('Expected stable attention group');
+    expect(story.nodes[1].evaluations.map((item) => item.run.runId)).toEqual(['run-2']);
+    expect(story.nodes[2]).toMatchObject({ headline: 'Attention increased to HIGH', attention: 'HIGH' });
+    expect(story.nodes[3]).toMatchObject({ headline: 'Attention decreased to MEDIUM', attention: 'MEDIUM', latest: true });
+    expect(story.nodes[4]).toMatchObject({ headline: 'Merged with unresolved attention' });
+  });
+
+  it('keeps attention-neutral notable transitions inside the stable evaluation group', () => {
+    const trajectory = fixtureTrajectory();
+    const initial = trajectory.runs.find((item) => item.runId === 'run-1')!;
+    const unchanged = trajectory.runs.find((item) => item.runId === 'run-2')!;
+    const neutral = transition(
+      'run-1:run-2',
+      initial,
+      unchanged,
+      ['EVIDENCE_BECAME_PENDING'],
+      'CLEAR',
+      'PENDING_OR_MISSING',
+    );
+    trajectory.notableTransitions = [neutral, ...trajectory.notableTransitions];
+    trajectory.summary.totalTransitions = 3;
+
+    const story = deriveChangeStory(trajectory);
+    const stable = story.nodes.find((item) => item.kind === 'STABLE');
+    expect(stable?.kind).toBe('STABLE');
+    if (!stable || stable.kind !== 'STABLE') throw new Error('Expected stable attention group');
+    expect(stable.evaluations[0].transitions).toHaveLength(1);
+    expect(stable.evaluations[0].transitions[0].headline).toBe('Evidence became pending or missing');
   });
 
   it('prioritizes attention changes over other causes for the transition headline', () => {
