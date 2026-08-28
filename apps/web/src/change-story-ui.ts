@@ -119,10 +119,10 @@ function healthLabel(health: ChangeStoryNode['evidenceHealth']): string | undefi
 }
 
 function storyKindLabel(item: ChangeStoryNode): string {
-  if (item.kind === 'INITIAL') return 'Initial';
-  if (item.kind === 'LATEST') return 'Latest';
+  if (item.kind === 'TERMINAL') return item.lifecycle.state === 'MERGED' ? 'Merge outcome' : 'Close outcome';
   if (item.kind === 'TRANSITION') return item.latest ? 'Notable transition · Latest' : 'Notable transition';
-  return item.lifecycle.state === 'MERGED' ? 'Merge outcome' : 'Close outcome';
+  if (item.kind === 'LATEST') return 'Latest';
+  return 'Initial';
 }
 
 function connector(item: ChangeStoryNode): HTMLElement | undefined {
