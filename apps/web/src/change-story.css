@@ -280,11 +280,13 @@
   flex-direction: column;
   width: min(420px, calc(100vw - 24px));
   height: 100%;
+  min-height: 0;
   padding: 20px;
   border-left: 1px solid #d8d8d2;
   background: #fff;
   box-shadow: -14px 0 38px rgb(0 0 0 / 10%);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .change-story-feedback-header {
@@ -393,11 +395,13 @@
 
 .change-story-feedback-footer {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: auto;
-  padding-top: 22px;
+  margin-top: 22px;
+  padding: 14px 0 4px;
+  background: #fff;
 }
 
 .change-story-feedback-status {
@@ -406,6 +410,8 @@
 }
 
 .change-story-feedback-save {
+  position: relative;
+  z-index: 1;
   min-height: 36px;
   padding: 0 14px;
   border: 1px solid #4b4b47;
@@ -520,5 +526,10 @@
 
   .change-story-feedback-options {
     grid-template-columns: 1fr;
+  }
+
+  .change-story-feedback-footer {
+    margin-top: 18px;
+    padding: 12px 0 max(16px, env(safe-area-inset-bottom));
   }
 }
