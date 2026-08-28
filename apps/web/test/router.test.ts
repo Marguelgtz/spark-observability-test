@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { parseRoute } from '../src/router';
 
 describe('dashboard router', () => {
+  it('parses overview drilldown routes', () => {
+    expect(parseRoute('/app/overview/pull-requests')).toEqual({ kind: 'overview', metric: 'pull-requests' });
+    expect(parseRoute('/app/overview/evaluations')).toEqual({ kind: 'overview', metric: 'evaluations' });
+    expect(parseRoute('/app/overview/attention')).toEqual({ kind: 'overview', metric: 'attention' });
+    expect(parseRoute('/app/overview/merged-unresolved')).toEqual({ kind: 'overview', metric: 'merged-unresolved' });
+  });
+
   it('parses pull request observability routes', () => {
     expect(parseRoute('/app/repositories/101/pulls/42')).toEqual({
       kind: 'pull-request',
