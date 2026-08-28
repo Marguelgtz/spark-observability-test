@@ -15,26 +15,34 @@ function sectionByHeading(page: HTMLElement, headingText: string): HTMLElement |
   return heading?.closest<HTMLElement>('.pr-section') ?? undefined;
 }
 
-function moveForensicsBelowTrajectory(page: HTMLElement, trajectorySection: HTMLElement): void {
-  if (page.querySelector('.pr-forensics')) return;
+function collectForensics(page: HTMLElement): HTMLElement | undefined {
+  const existing = page.querySelector<HTMLElement>('.pr-forensics');
+  if (existing) return existing;
 
   const sections = [
     sectionByHeading(page, 'Observations'),
     sectionByHeading(page, 'Evidence issues'),
     sectionByHeading(page, 'Evaluation history'),
   ].filter((item): item is HTMLElement => Boolean(item));
-  if (!sections.length) return;
+  if (!sections.length) return undefined;
 
-  const details = document.createElement('details');
-  details.className = 'pr-forensics';
-  details.dataset.testid = 'pr-forensics';
-  const summary = document.createElement('summary');
-  summary.textContent = 'Forensic details';
+  const forensics = document.createElement('section');
+  forensics.className = 'pr-forensics';
+  forensics.dataset.testid = 'pr-forensics';
+
+  const heading = document.createElement('div');
+  heading.className = 'pr-forensics-heading';
+  const title = document.createElement('h2');
+  title.textContent = 'Forensic details';
+  const description = document.createElement('p');
+  description.textContent = 'Underlying observations, evidence issues, and complete evaluation history.';
+  heading.append(title, description);
+
   const body = document.createElement('div');
   body.className = 'pr-forensics-body';
   body.append(...sections);
-  details.append(summary, body);
-  trajectorySection.insertAdjacentElement('afterend', details);
+  forensics.append(heading, body);
+  return forensics;
 }
 
 export function enhancePullRequestWithSeverityTimeline(
@@ -61,14 +69,15 @@ export function enhancePullRequestWithSeverityTimeline(
   }
 
   // Key moments own the compact lifecycle/transition sequence. Remove the old
-  // duplicate terminal and transition list while retaining all run-level
-  // evidence and observations under progressive disclosure.
+  // duplicate terminal and transition list while preserving the underlying
+  // observations, evidence, and run history as visible forensic detail.
   page.querySelector<HTMLElement>('.pr-terminal')?.remove();
   page.querySelector<HTMLElement>('.pr-transition-list')?.remove();
-  moveForensicsBelowTrajectory(page, trajectorySection);
+  const forensics = collectForensics(page);
 
-  // Change evolution is supporting context, not the primary PR reading path.
-  // Keep it at the bottom after the analytical trajectory and forensic detail.
+  // Change evolution is supporting synthesis after the analytical trajectory.
+  // Forensic detail follows it immediately so the user can continue directly
+  // from the compressed sequence into the complete retained evidence.
   let moments = root.querySelector<HTMLElement>('[data-testid="key-moments"]');
   if (!moments) {
     moments = renderChangeStory(detail, {
@@ -77,5 +86,6 @@ export function enhancePullRequestWithSeverityTimeline(
     });
   }
   page.append(moments);
+  if (forensics) page.append(forensics);
   return root;
 }
