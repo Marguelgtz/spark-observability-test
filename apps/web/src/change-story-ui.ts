@@ -1,4 +1,11 @@
-import type { EvaluationSummaryV1, NotableTransitionV1, PullRequestTrajectoryV1 } from '@spark/dashboard-contracts';
+import type {
+  EvaluationSummaryV1,
+  NotableTransitionV1,
+  PullRequestTrajectoryV1,
+  SaveTrajectoryFeedbackV1,
+  TrajectoryFeedbackClassificationV1,
+  TrajectoryFeedbackV1,
+} from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime, shortSha } from './format';
 import {
   deriveChangeStory,
@@ -16,9 +23,86 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
   return element;
 }
 
+export type SaveStoryFeedback = (
+  transitionId: string,
+  input: SaveTrajectoryFeedbackV1,
+) => Promise<TrajectoryFeedbackV1>;
+
 export interface ChangeStoryRenderOptions {
   observationHref(run: EvaluationSummaryV1): string;
-  renderFeedback?(transition: NotableTransitionV1): HTMLElement;
+  saveFeedback?: SaveStoryFeedback;
+}
+
+const FEEDBACK_OPTIONS: Array<{ value: TrajectoryFeedbackClassificationV1; label: string }> = [
+  { value: 'USEFUL', label: 'Useful' },
+  { value: 'EXPECTED', label: 'Expected' },
+  { value: 'FALSE_POSITIVE', label: 'False positive' },
+  { value: 'FIXED_BECAUSE_SPARK', label: 'Fixed because of Spark' },
+];
+
+function feedbackControls(
+  transition: NotableTransitionV1,
+  saved: TrajectoryFeedbackV1 | undefined,
+  saveFeedback: SaveStoryFeedback,
+): HTMLElement {
+  const controls = node('div', 'pr-feedback');
+  controls.dataset.testid = 'transition-feedback';
+  controls.append(node('span', 'pr-feedback-question', 'Was this useful?'));
+
+  const options = node('div', 'pr-feedback-options');
+  const buttons: HTMLButtonElement[] = [];
+  for (const option of FEEDBACK_OPTIONS) {
+    const button = node('button', 'pr-feedback-option', option.label) as HTMLButtonElement;
+    button.type = 'button';
+    button.dataset.classification = option.value;
+    button.setAttribute('aria-pressed', String(saved?.classification === option.value));
+    if (saved?.classification === option.value) button.classList.add('is-selected');
+    buttons.push(button);
+    options.append(button);
+  }
+  controls.append(options);
+
+  const context = node('details', 'pr-feedback-context');
+  context.append(node('summary', undefined, saved?.note ? 'Edit optional context' : 'Add optional context'));
+  const note = node('textarea') as HTMLTextAreaElement;
+  note.maxLength = 500;
+  note.rows = 2;
+  note.placeholder = 'What made this useful or inaccurate? (500 characters max)';
+  note.setAttribute('aria-label', 'Optional feedback context');
+  note.value = saved?.note ?? '';
+  context.append(note);
+  controls.append(context);
+
+  const status = node('span', 'pr-feedback-status', saved ? 'Feedback saved' : '');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  controls.append(status);
+
+  for (const button of buttons) {
+    button.addEventListener('click', () => {
+      const classification = button.dataset.classification as TrajectoryFeedbackClassificationV1;
+      const noteValue = note.value.trim();
+      for (const item of buttons) item.disabled = true;
+      status.textContent = 'Saving feedback…';
+      void saveFeedback(transition.id, {
+        classification,
+        ...(noteValue ? { note: noteValue } : {}),
+      }).then((result) => {
+        for (const item of buttons) {
+          const selected = item.dataset.classification === result.classification;
+          item.classList.toggle('is-selected', selected);
+          item.setAttribute('aria-pressed', String(selected));
+        }
+        note.value = result.note ?? '';
+        status.textContent = `Saved as ${FEEDBACK_OPTIONS.find(item => item.value === result.classification)?.label ?? 'feedback'}`;
+      }).catch(() => {
+        status.textContent = 'Feedback could not be saved. Try again.';
+      }).finally(() => {
+        for (const item of buttons) item.disabled = false;
+      });
+    });
+  }
+  return controls;
 }
 
 function attentionBadge(attention: string | undefined): HTMLElement | undefined {
@@ -56,7 +140,11 @@ function runLink(run: EvaluationSummaryV1, href: string): HTMLAnchorElement {
   return link;
 }
 
-function transitionCard(item: ChangeStoryTransitionNode, options: ChangeStoryRenderOptions): HTMLElement {
+function transitionCard(
+  item: ChangeStoryTransitionNode,
+  detail: PullRequestTrajectoryV1,
+  options: ChangeStoryRenderOptions,
+): HTMLElement {
   const card = node('article', `change-story-card change-story-transition change-story-${item.transition.severity.toLowerCase()}`);
   card.dataset.testid = 'notable-transition';
   card.dataset.transitionId = item.transition.id;
@@ -80,7 +168,13 @@ function transitionCard(item: ChangeStoryTransitionNode, options: ChangeStoryRen
   }
 
   if (item.run) card.append(runLink(item.run, options.observationHref(item.run)));
-  if (item.transition.severity === 'MATERIAL' && options.renderFeedback) card.append(options.renderFeedback(item.transition));
+  if (item.transition.severity === 'MATERIAL' && options.saveFeedback) {
+    card.append(feedbackControls(
+      item.transition,
+      detail.feedback?.find((feedback) => feedback.transitionId === item.transition.id),
+      options.saveFeedback,
+    ));
+  }
   return card;
 }
 
@@ -132,8 +226,8 @@ function terminalCard(item: ChangeStoryTerminalNode): HTMLElement {
   return card;
 }
 
-function storyCard(item: ChangeStoryNode, options: ChangeStoryRenderOptions): HTMLElement {
-  if (item.kind === 'TRANSITION') return transitionCard(item, options);
+function storyCard(item: ChangeStoryNode, detail: PullRequestTrajectoryV1, options: ChangeStoryRenderOptions): HTMLElement {
+  if (item.kind === 'TRANSITION') return transitionCard(item, detail, options);
   if (item.kind === 'TERMINAL') return terminalCard(item);
   return observationCard(item, options);
 }
@@ -167,7 +261,7 @@ export function renderChangeStory(detail: PullRequestTrajectoryV1, options: Chan
     listItem.dataset.storyKind = item.kind;
     const gap = connector(item);
     if (gap) listItem.append(gap);
-    listItem.append(storyCard(item, options));
+    listItem.append(storyCard(item, detail, options));
     list.append(listItem);
   }
   section.append(list);
