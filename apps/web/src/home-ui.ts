@@ -86,7 +86,10 @@ function renderNeedsAttention(response: ActivityResponseV1, state: ActivityUrlSt
     const link = node('a', 'needs-attention-row') as HTMLAnchorElement;
     link.href = attentionHref(activity, state);
     link.dataset.routerLink = 'true';
-    link.setAttribute('aria-label', `Open pull request ${activity.pullRequest.number}: ${activity.pullRequest.title}`);
+    link.setAttribute(
+      'aria-label',
+      `Review ${latest.attention} attention for pull request ${activity.pullRequest.number}: ${activity.pullRequest.title}`,
+    );
 
     const attention = node('span', `attention attention-${latest.attention.toLowerCase()}`, latest.attention);
     const body = node('span', 'needs-attention-body');
