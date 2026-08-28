@@ -1,0 +1,135 @@
+.change-story-stable-card {
+  margin: 0;
+  border: 1px solid #e1e1db;
+  border-radius: 9px;
+  background: #fafaf7;
+}
+
+.change-story-stable-summary {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px 10px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.change-story-stable-summary::-webkit-details-marker {
+  display: none;
+}
+
+.change-story-stable-summary-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.change-story-stable-headline {
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.change-story-stable-hint,
+.change-story-stable-toggle {
+  color: #777771;
+  font-size: 10px;
+}
+
+.change-story-stable-toggle {
+  align-self: center;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.change-story-stable-card[open] .change-story-stable-toggle {
+  font-size: 0;
+}
+
+.change-story-stable-card[open] .change-story-stable-toggle::after {
+  content: 'Hide evaluations';
+  font-size: 10px;
+}
+
+.change-story-stable-list {
+  display: grid;
+  gap: 0;
+  margin-left: 22px;
+  padding: 0 12px 10px 10px;
+  border-left: 1px solid #deded8;
+}
+
+.change-story-stable-evaluation {
+  padding: 10px 0;
+  border-top: 1px solid #e7e7e1;
+}
+
+.change-story-stable-evaluation:first-child {
+  border-top: 0;
+}
+
+.change-story-stable-evaluation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.change-story-stable-evaluation-header strong {
+  font-size: 11px;
+}
+
+.change-story-stable-evaluation-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.change-story-stable-transition {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 2px solid #d4d4ce;
+  background: #fff;
+}
+
+.change-story-stable-transition strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.change-story-item-stable + .change-story-item .change-story-connector {
+  margin-top: 2px;
+}
+
+@media (max-width: 700px) {
+  .change-story-stable-summary {
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 8px;
+    padding-right: 10px;
+  }
+
+  .change-story-stable-toggle {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .change-story-stable-list {
+    margin-left: 20px;
+    padding-right: 10px;
+  }
+
+  .change-story-stable-evaluation-header,
+  .change-story-stable-transition {
+    flex-direction: column;
+  }
+
+  .change-story-stable-evaluation-actions {
+    flex-wrap: wrap;
+  }
+}
