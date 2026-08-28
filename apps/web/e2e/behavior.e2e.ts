@@ -47,7 +47,7 @@ test('change outcomes exposes recurring behavior prevalence, outcomes, and concr
   await expect(section).toBeVisible();
   await expect(section.getByRole('heading', { name: 'Recurring behaviors', exact: true })).toBeVisible();
   await expect(section.getByText('Observed PRs', { exact: true })).toBeVisible();
-  await expect(section.getByText('Recurring motifs', { exact: true })).toBeVisible();
+  await expect(section.getByRole('heading', { name: 'Recurring motifs', exact: true })).toBeVisible();
   await expect(section.getByText('Evidence regression followed by recovery', { exact: true })).toBeVisible();
   await expect(section.getByText(/occurrences across \d+ PR/)).toBeVisible();
   await expect(section.getByText('Observed PR prevalence', { exact: true })).toBeVisible();
