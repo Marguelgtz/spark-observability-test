@@ -1,6 +1,7 @@
 import type {
   ActivityWindowV1,
   EvaluationSummaryV1,
+  NotableTransitionKindV1,
   PullRequestActivityV1,
   PullRequestLifecycleV1,
   RepositoryRefV1,
@@ -16,6 +17,24 @@ export interface ActivityTrendPointV1 {
   evaluations: number;
   attentionEvaluations: number;
   mergedUnresolved: number;
+}
+
+export interface NotableTransitionTrendPointV1 {
+  bucketStart: string;
+  total: number;
+  regressions: number;
+  recoveries: number;
+  attentionIncreases: number;
+  attentionDecreases: number;
+}
+
+export interface NotableTransitionInsightsV1 {
+  total: number;
+  material: number;
+  info: number;
+  affectedPRs: number;
+  byKind: Array<{ kind: NotableTransitionKindV1; count: number }>;
+  trend: NotableTransitionTrendPointV1[];
 }
 
 export type OverviewDrilldownItemV1 =
@@ -39,6 +58,17 @@ export interface OverviewDrilldownResponseV1 {
   items: OverviewDrilldownItemV1[];
   truncated: boolean;
 }
+
+const TRANSITION_KINDS: NotableTransitionKindV1[] = [
+  'ATTENTION_INCREASED',
+  'ATTENTION_DECREASED',
+  'EVIDENCE_REGRESSED',
+  'EVIDENCE_RECOVERED',
+  'EVIDENCE_BECAME_PENDING',
+  'EVIDENCE_RESOLVED',
+  'SENSITIVE_SURFACE_ADDED',
+  'CHANGE_SCOPE_EXPANDED',
+];
 
 function windowMs(window: ActivityWindowV1): number {
   if (window === '24h') return 24 * 60 * 60 * 1000;
@@ -144,15 +174,79 @@ async function fixtureOverview(metric: OverviewMetricV1, state: ActivityUrlState
   };
 }
 
-export async function getOverviewDrilldown(metric: OverviewMetricV1, state: ActivityUrlState): Promise<OverviewDrilldownResponseV1> {
-  if (__SPARK_FIXTURE_API__) return fixtureOverview(metric, state);
+async function fixtureTransitions(state: ActivityUrlState): Promise<NotableTransitionInsightsV1> {
+  const api = new FixtureDashboardApi(fixtureModeFromSearch(window.location.search));
+  const activity = await api.getActivity({ ...state, attention: 'ALL', cursor: null, limit: 50 });
+  const trajectories = await Promise.all(activity.pullRequests.map((item) => api.getTrajectory(item.repository.id, item.pullRequest.number)));
+  const now = new Date();
+  const start = now.getTime() - windowMs(state.window);
+  const notable = trajectories.flatMap((trajectory) => trajectory.notableTransitions.map((transition) => ({
+    transition,
+    prKey: `${trajectory.repository.id}:${trajectory.pullRequest.number}`,
+  }))).filter(({ transition }) => Date.parse(transition.occurredAt) >= start && Date.parse(transition.occurredAt) <= now.getTime());
+
+  const hourly = state.window === '24h';
+  const first = new Date(bucketStart(new Date(start), hourly));
+  const last = new Date(bucketStart(now, hourly));
+  const step = hourly ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+  const trend: NotableTransitionTrendPointV1[] = [];
+  for (let timestamp = first.getTime(); timestamp <= last.getTime(); timestamp += step) {
+    trend.push({ bucketStart: bucketStart(new Date(timestamp), hourly), total: 0, regressions: 0, recoveries: 0, attentionIncreases: 0, attentionDecreases: 0 });
+  }
+  const byBucket = new Map(trend.map((point) => [point.bucketStart, point]));
+  const counts = new Map<NotableTransitionKindV1, number>(TRANSITION_KINDS.map((kind) => [kind, 0]));
+  const affected = new Set<string>();
+  let material = 0;
+  let info = 0;
+
+  for (const { transition, prKey } of notable) {
+    affected.add(prKey);
+    if (transition.severity === 'MATERIAL') material += 1;
+    else info += 1;
+    for (const kind of transition.kinds) counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    const point = byBucket.get(bucketStart(new Date(transition.occurredAt), hourly));
+    if (!point) continue;
+    point.total += 1;
+    if (transition.kinds.includes('EVIDENCE_REGRESSED')) point.regressions += 1;
+    if (transition.kinds.includes('EVIDENCE_RECOVERED')) point.recoveries += 1;
+    if (transition.kinds.includes('ATTENTION_INCREASED')) point.attentionIncreases += 1;
+    if (transition.kinds.includes('ATTENTION_DECREASED')) point.attentionDecreases += 1;
+  }
+
+  return {
+    total: notable.length,
+    material,
+    info,
+    affectedPRs: affected.size,
+    byKind: TRANSITION_KINDS.map((kind) => ({ kind, count: counts.get(kind) ?? 0 })),
+    trend,
+  };
+}
+
+function overviewParams(state: ActivityUrlState): URLSearchParams {
   const params = new URLSearchParams({ window: state.window });
   if (state.repositoryId !== null) params.set('repositoryId', String(state.repositoryId));
-  const response = await fetch(`/api/overview/${metric}?${params.toString()}`, {
+  return params;
+}
+
+export async function getOverviewDrilldown(metric: OverviewMetricV1, state: ActivityUrlState): Promise<OverviewDrilldownResponseV1> {
+  if (__SPARK_FIXTURE_API__) return fixtureOverview(metric, state);
+  const response = await fetch(`/api/overview/${metric}?${overviewParams(state).toString()}`, {
     credentials: 'include',
     headers: { accept: 'application/json' },
   });
   if (response.status === 401) throw new UnauthorizedError();
   if (!response.ok) throw new Error(`Overview API request failed (${response.status})`);
   return response.json() as Promise<OverviewDrilldownResponseV1>;
+}
+
+export async function getNotableTransitionInsights(state: ActivityUrlState): Promise<NotableTransitionInsightsV1> {
+  if (__SPARK_FIXTURE_API__) return fixtureTransitions(state);
+  const response = await fetch(`/api/overview/transitions?${overviewParams(state).toString()}`, {
+    credentials: 'include',
+    headers: { accept: 'application/json' },
+  });
+  if (response.status === 401) throw new UnauthorizedError();
+  if (!response.ok) throw new Error(`Transition insights request failed (${response.status})`);
+  return response.json() as Promise<NotableTransitionInsightsV1>;
 }
