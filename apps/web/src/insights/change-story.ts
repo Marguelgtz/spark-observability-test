@@ -7,7 +7,7 @@ import type {
   PullRequestTrajectoryV1,
 } from '@spark/dashboard-contracts';
 
-export type ChangeStoryNodeKind = 'INITIAL' | 'TRANSITION' | 'LATEST' | 'TERMINAL';
+export type ChangeStoryNodeKind = 'INITIAL' | 'STABLE' | 'TRANSITION' | 'LATEST' | 'TERMINAL';
 
 interface ChangeStoryNodeBase {
   id: string;
@@ -34,6 +34,19 @@ export interface ChangeStoryTransitionNode extends ChangeStoryNodeBase {
   latest: boolean;
 }
 
+export interface ChangeStoryStableEvaluation {
+  run: EvaluationSummaryV1;
+  transitions: ChangeStoryTransitionNode[];
+}
+
+export interface ChangeStoryStableNode extends ChangeStoryNodeBase {
+  kind: 'STABLE';
+  attention: AttentionLevelV1;
+  evaluations: ChangeStoryStableEvaluation[];
+  headline: string;
+  latest: boolean;
+}
+
 export interface ChangeStoryTerminalNode extends ChangeStoryNodeBase {
   kind: 'TERMINAL';
   lifecycle: PullRequestLifecycleV1;
@@ -41,7 +54,7 @@ export interface ChangeStoryTerminalNode extends ChangeStoryNodeBase {
   detail: string;
 }
 
-export type ChangeStoryNode = ChangeStoryObservationNode | ChangeStoryTransitionNode | ChangeStoryTerminalNode;
+export type ChangeStoryNode = ChangeStoryObservationNode | ChangeStoryStableNode | ChangeStoryTransitionNode | ChangeStoryTerminalNode;
 
 export interface ChangeStory {
   nodes: ChangeStoryNode[];
@@ -157,6 +170,29 @@ export function formatStoryDuration(ms: number): string {
   return `${minutes}m`;
 }
 
+function transitionNode(
+  transition: NotableTransitionV1,
+  run: EvaluationSummaryV1 | undefined,
+  previousAt: string | undefined,
+  newest: EvaluationSummaryV1,
+): ChangeStoryTransitionNode {
+  const attention = transition.delta.attention?.to ?? run?.attention;
+  const health = transition.delta.evidenceHealth?.to ?? (run ? evidenceHealth(run) : undefined);
+  return {
+    id: `transition:${transition.id}`,
+    kind: 'TRANSITION',
+    at: transition.occurredAt,
+    elapsedMs: transition.delta.timeInPreviousStateMs || elapsedBetween(previousAt, transition.occurredAt),
+    ...(attention ? { attention } : {}),
+    ...(health ? { evidenceHealth: health } : {}),
+    transition,
+    ...(run ? { run } : {}),
+    headline: transitionHeadline(transition),
+    causes: transitionCauses(transition),
+    latest: Boolean(run && runIdentity(run) === runIdentity(newest)),
+  };
+}
+
 export function deriveChangeStory(detail: PullRequestTrajectoryV1): ChangeStory {
   const runs = [...detail.runs].sort((a, b) => {
     const byTime = Date.parse(a.evaluatedAt) - Date.parse(b.evaluatedAt);
@@ -169,6 +205,20 @@ export function deriveChangeStory(detail: PullRequestTrajectoryV1): ChangeStory 
   const newest = runs[runs.length - 1];
   const nodes: ChangeStoryNode[] = [];
   const representedRuns = new Set<string>();
+
+  const transitions = [...detail.notableTransitions].sort((a, b) => {
+    const byTime = Date.parse(a.occurredAt) - Date.parse(b.occurredAt);
+    return byTime !== 0 ? byTime : a.id.localeCompare(b.id);
+  });
+  const transitionsByRun = new Map<string, NotableTransitionV1[]>();
+  for (const transition of transitions) {
+    const run = transitionTargetRun(transition, runs);
+    if (!run) continue;
+    const key = runIdentity(run);
+    const existing = transitionsByRun.get(key) ?? [];
+    existing.push(transition);
+    transitionsByRun.set(key, existing);
+  }
 
   nodes.push({
     id: `initial:${runIdentity(oldest)}`,
@@ -183,33 +233,64 @@ export function deriveChangeStory(detail: PullRequestTrajectoryV1): ChangeStory 
   });
   representedRuns.add(runIdentity(oldest));
 
-  const transitions = [...detail.notableTransitions].sort((a, b) => {
-    const byTime = Date.parse(a.occurredAt) - Date.parse(b.occurredAt);
-    return byTime !== 0 ? byTime : a.id.localeCompare(b.id);
-  });
-
   let previousAt = oldest.evaluatedAt;
-  for (const transition of transitions) {
-    const run = transitionTargetRun(transition, runs);
-    const attention = transition.delta.attention?.to ?? run?.attention;
-    const health = transition.delta.evidenceHealth?.to ?? (run ? evidenceHealth(run) : undefined);
-    const node: ChangeStoryTransitionNode = {
-      id: `transition:${transition.id}`,
-      kind: 'TRANSITION',
-      at: transition.occurredAt,
-      elapsedMs: transition.delta.timeInPreviousStateMs || elapsedBetween(previousAt, transition.occurredAt),
-      ...(attention ? { attention } : {}),
-      ...(health ? { evidenceHealth: health } : {}),
-      transition,
-      ...(run ? { run } : {}),
-      headline: transitionHeadline(transition),
-      causes: transitionCauses(transition),
-      latest: Boolean(run && runIdentity(run) === runIdentity(newest)),
-    };
-    nodes.push(node);
-    if (run) representedRuns.add(runIdentity(run));
-    previousAt = transition.occurredAt;
+  let currentAttention = oldest.attention;
+  let stableRuns: EvaluationSummaryV1[] = [];
+
+  const flushStableRuns = () => {
+    if (!stableRuns.length) return;
+    const first = stableRuns[0];
+    const last = stableRuns[stableRuns.length - 1];
+    const evaluations: ChangeStoryStableEvaluation[] = stableRuns.map((run, index) => {
+      const previousRunAt = index === 0 ? previousAt : stableRuns[index - 1].evaluatedAt;
+      const nestedTransitions = (transitionsByRun.get(runIdentity(run)) ?? [])
+        .filter((transition) => !transition.delta.attention)
+        .map((transition) => transitionNode(transition, run, previousRunAt, newest));
+      return { run, transitions: nestedTransitions };
+    });
+    nodes.push({
+      id: `stable:${runIdentity(first)}:${runIdentity(last)}`,
+      kind: 'STABLE',
+      at: last.evaluatedAt,
+      elapsedMs: elapsedBetween(previousAt, first.evaluatedAt),
+      attention: last.attention,
+      evidenceHealth: evidenceHealth(last),
+      evaluations,
+      headline: `${stableRuns.length} evaluation${stableRuns.length === 1 ? '' : 's'} stayed ${last.attention}`,
+      latest: runIdentity(last) === runIdentity(newest),
+    });
+    for (const run of stableRuns) representedRuns.add(runIdentity(run));
+    previousAt = last.evaluatedAt;
+    stableRuns = [];
+  };
+
+  for (const run of runs.slice(1)) {
+    const runTransitions = transitionsByRun.get(runIdentity(run)) ?? [];
+    const attentionTransition = runTransitions.find((transition) => Boolean(transition.delta.attention));
+
+    if (attentionTransition) {
+      flushStableRuns();
+      const node = transitionNode(attentionTransition, run, previousAt, newest);
+      nodes.push(node);
+      representedRuns.add(runIdentity(run));
+      previousAt = attentionTransition.occurredAt;
+      currentAttention = run.attention;
+      continue;
+    }
+
+    if (run.attention === currentAttention) {
+      stableRuns.push(run);
+      continue;
+    }
+
+    // Partial/backfilled histories can contain an attention state change without
+    // a reconstructable transition boundary. Keep the current state truthful
+    // without inventing a transition; the newest observation is added below.
+    flushStableRuns();
+    currentAttention = run.attention;
   }
+
+  flushStableRuns();
 
   if (!representedRuns.has(runIdentity(newest))) {
     nodes.push({
@@ -243,10 +324,14 @@ export function deriveChangeStory(detail: PullRequestTrajectoryV1): ChangeStory 
     });
   }
 
+  const collapsedEvaluations = nodes
+    .filter((item): item is ChangeStoryStableNode => item.kind === 'STABLE')
+    .reduce((total, item) => total + item.evaluations.length, 0);
+
   return {
     nodes,
     retainedEvaluations: detail.runs.length,
-    collapsedEvaluations: Math.max(0, detail.runs.length - representedRuns.size),
+    collapsedEvaluations,
     partialHistory: detail.historyCompleteness === 'PARTIAL_BACKFILL',
     truncated: detail.truncated,
   };
