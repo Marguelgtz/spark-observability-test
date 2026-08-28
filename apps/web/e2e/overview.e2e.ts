@@ -42,7 +42,8 @@ for (const [metric, heading] of metrics) {
 test('drilldown graphs change form to match the metric context', async ({ page }) => {
   await page.goto('/app/overview/pull-requests?window=7d&attention=ALL');
   let charts = page.getByTestId('overview-charts');
-  await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toHaveCount(2);
+  await expect(charts.locator('[data-chart-kind="horizontal-bar"]').first()).toBeVisible();
   await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
 
