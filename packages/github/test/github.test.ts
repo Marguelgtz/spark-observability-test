@@ -39,6 +39,56 @@ describe('GitHub webhook security and routing', () => {
     expect(routed).toMatchObject({ kind: 'evaluate', action: 'synchronize', headSha: 'exact-sha', pullRequestNumber: 9 });
   });
 
+  it('routes merge lifecycle facts separately from evaluation requests', () => {
+    const routed = routeGitHubEvent('pull_request', {
+      action: 'closed',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      pull_request: {
+        number: 9,
+        head: { sha: 'exact-sha' },
+        merged: true,
+        created_at: '2026-08-28T09:00:00.000Z',
+        closed_at: '2026-08-28T10:00:00.000Z',
+        merged_at: '2026-08-28T10:00:00.000Z',
+        merge_commit_sha: 'merge-sha',
+      },
+    });
+
+    expect(routed).toMatchObject({
+      kind: 'pull_request_lifecycle',
+      action: 'closed',
+      repositoryId: 8,
+      pullRequestNumber: 9,
+      lifecycle: {
+        state: 'MERGED',
+        mergedAt: '2026-08-28T10:00:00.000Z',
+        mergeSha: 'merge-sha',
+        occurredAt: '2026-08-28T10:00:00.000Z',
+        evaluate: false,
+      },
+    });
+  });
+
+  it('persists opened and reopened lifecycle facts while retaining evaluation behavior', () => {
+    const routed = routeGitHubEvent('pull_request', {
+      action: 'reopened',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      pull_request: {
+        number: 9,
+        head: { sha: 'exact-sha' },
+        merged: false,
+        created_at: '2026-08-28T09:00:00.000Z',
+        updated_at: '2026-08-28T10:05:00.000Z',
+      },
+    });
+    expect(routed).toMatchObject({
+      kind: 'pull_request_lifecycle',
+      lifecycle: { state: 'OPEN', occurredAt: '2026-08-28T10:05:00.000Z', evaluate: true },
+    });
+  });
+
   it('routes external completed checks for reevaluation and ignores Spark itself', () => {
     const base = {
       installation: { id: 7 }, repository: { id: 8, full_name: 'acme/widgets' },

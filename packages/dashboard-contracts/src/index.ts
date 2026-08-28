@@ -179,6 +179,21 @@ export interface NotableTransitionV1 {
   delta: TransitionDeltaV1;
 }
 
+export type PullRequestLifecycleStateV1 = 'OPEN' | 'CLOSED' | 'MERGED';
+
+export interface PullRequestLifecycleV1 {
+  state: PullRequestLifecycleStateV1;
+  openedAt?: string;
+  closedAt?: string;
+  mergedAt?: string;
+  mergeSha?: string;
+  preMergeRunId?: string;
+  preMergeAttention?: AttentionLevelV1;
+  preMergeEvidenceHealth?: EvidenceHealthV1;
+  unresolvedAtMerge?: boolean;
+  lastEventAt: string;
+}
+
 export type PullRequestInsightKindV1 =
   | 'CURRENTLY_CLEAR'
   | 'CURRENTLY_FAILING'
@@ -250,6 +265,7 @@ export interface PullRequestTrajectoryV1 {
   insights: PullRequestInsightV1[];
   notableTransitions: NotableTransitionV1[];
   runs: EvaluationSummaryV1[];
+  lifecycle?: PullRequestLifecycleV1;
   historyCompleteness?: HistoryCompletenessV1;
   truncated: boolean;
 }

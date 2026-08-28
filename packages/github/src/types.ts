@@ -50,13 +50,22 @@ export interface GitHubEvaluationSource {
 }
 
 export interface GitHubEventRequest {
-  kind: 'installation' | 'installation_repositories' | 'evaluate' | 'ignore';
+  kind: 'installation' | 'installation_repositories' | 'pull_request_lifecycle' | 'evaluate' | 'ignore';
   action: string;
   installationId?: number;
   repositoryId?: number;
   repositoryFullName?: string;
   pullRequestNumber?: number;
   headSha?: string;
+  lifecycle?: {
+    state: 'OPEN' | 'CLOSED' | 'MERGED';
+    openedAt?: string;
+    closedAt?: string;
+    mergedAt?: string;
+    mergeSha?: string;
+    occurredAt: string;
+    evaluate: boolean;
+  };
   payload: Record<string, unknown>;
 }
 

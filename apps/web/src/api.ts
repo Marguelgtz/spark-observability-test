@@ -275,11 +275,13 @@ function fixturePullRequestTrajectory(history: PullRequestHistoryResponseV1): Pu
       },
     });
   }
+  const current = history.runs[0];
+  const mergedFixture = history.repository.id === 101 && history.pullRequest.number === 42;
   return {
     version: 1,
     repository: history.repository,
     pullRequest: history.pullRequest,
-    current: history.runs[0],
+    current,
     summary: {
       totalRuns: history.totalRunCount,
       analyzedRuns: history.runs.length,
@@ -296,6 +298,19 @@ function fixturePullRequestTrajectory(history: PullRequestHistoryResponseV1): Pu
     insights: detail.insights,
     notableTransitions,
     runs: history.runs,
+    ...(mergedFixture ? {
+      lifecycle: {
+        state: 'MERGED' as const,
+        openedAt: history.runs.at(-1)?.evaluatedAt,
+        mergedAt: new Date(Date.parse(current.evaluatedAt) + 5 * 60 * 1000).toISOString(),
+        mergeSha: 'f1938a2d53c2499fb08ea40f829c28d67fc66f90',
+        preMergeRunId: current.runId,
+        preMergeAttention: current.attention,
+        preMergeEvidenceHealth: fixtureEvidenceHealth(current),
+        unresolvedAtMerge: current.attention !== 'LOW' || fixtureEvidenceHealth(current) !== 'CLEAR',
+        lastEventAt: new Date(Date.parse(current.evaluatedAt) + 5 * 60 * 1000).toISOString(),
+      },
+    } : {}),
     historyCompleteness: history.historyCompleteness,
     truncated: history.truncated,
   };

@@ -14,6 +14,7 @@ import type {
   PullRequestActivityV1,
   PullRequestDetailV1,
   PullRequestHistoryResponseV1,
+  PullRequestLifecycleV1,
   PullRequestTrajectoryV1,
   RepositoryRefV1,
 } from '@spark/dashboard-contracts';
@@ -62,6 +63,19 @@ interface HistoryAggregateRow {
   first_evaluated_at: string;
   last_evaluated_at: string;
   backfill_count: number;
+}
+
+interface LifecycleRow {
+  state: PullRequestLifecycleV1['state'];
+  opened_at?: string | null;
+  closed_at?: string | null;
+  merged_at?: string | null;
+  merge_sha?: string | null;
+  pre_merge_run_id?: string | null;
+  pre_merge_attention?: PullRequestLifecycleV1['preMergeAttention'] | null;
+  pre_merge_evidence_health?: PullRequestLifecycleV1['preMergeEvidenceHealth'] | null;
+  unresolved_at_merge?: number | null;
+  last_event_at: string;
 }
 
 interface RepositoryRow {
@@ -441,6 +455,30 @@ export class D1DashboardReader implements DashboardReader {
     return aggregateFromRow(row);
   }
 
+  private async pullRequestLifecycle(repositoryId: number, pullRequestNumber: number): Promise<PullRequestLifecycleV1 | undefined> {
+    const row = await this.db.prepare(
+      `SELECT state, opened_at, closed_at, merged_at, merge_sha, pre_merge_run_id,
+              pre_merge_attention, pre_merge_evidence_health, unresolved_at_merge, last_event_at
+       FROM pull_request_lifecycle
+       WHERE repository_id = ? AND pull_request_number = ?`,
+    ).bind(repositoryId, pullRequestNumber).first<LifecycleRow>();
+    if (!row) return undefined;
+    return {
+      state: row.state,
+      ...(row.opened_at ? { openedAt: row.opened_at } : {}),
+      ...(row.closed_at ? { closedAt: row.closed_at } : {}),
+      ...(row.merged_at ? { mergedAt: row.merged_at } : {}),
+      ...(row.merge_sha ? { mergeSha: row.merge_sha } : {}),
+      ...(row.pre_merge_run_id ? { preMergeRunId: row.pre_merge_run_id } : {}),
+      ...(row.pre_merge_attention ? { preMergeAttention: row.pre_merge_attention } : {}),
+      ...(row.pre_merge_evidence_health ? { preMergeEvidenceHealth: row.pre_merge_evidence_health } : {}),
+      ...(row.unresolved_at_merge !== null && row.unresolved_at_merge !== undefined
+        ? { unresolvedAtMerge: row.unresolved_at_merge === 1 }
+        : {}),
+      lastEventAt: row.last_event_at,
+    };
+  }
+
   async pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined> {
     const [rows, aggregate] = await Promise.all([
       this.pullRequestRows(repositoryId, pullRequestNumber),
@@ -470,9 +508,10 @@ export class D1DashboardReader implements DashboardReader {
   }
 
   async trajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1 | undefined> {
-    const [rows, aggregate] = await Promise.all([
+    const [rows, aggregate, lifecycle] = await Promise.all([
       this.pullRequestRows(repositoryId, pullRequestNumber),
       this.pullRequestAggregate(repositoryId, pullRequestNumber),
+      this.pullRequestLifecycle(repositoryId, pullRequestNumber),
     ]);
     if (!rows.length || !aggregate) return undefined;
     const inputs = rows.map(runInputFromRow);
@@ -484,6 +523,7 @@ export class D1DashboardReader implements DashboardReader {
       historyCompleteness: aggregate.historyCompleteness,
       evidenceIssues: detail?.evidenceIssues,
       insights: detail?.insights,
+      lifecycle,
     });
   }
 

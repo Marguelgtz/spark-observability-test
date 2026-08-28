@@ -193,10 +193,11 @@ The implementation has progressed through several independently reviewed layers:
 - Run-identity API and browser navigation
 - Search and database-backed favorites
 - Deterministic Change Trajectory deltas and transition explanations
+- Race-safe pull-request lifecycle and pre-merge state reconstruction
 
 The accumulated trajectory stack has passed the permanent dashboard/Worker verification workflow. Earlier experimental PRs remain open as evaluation fixtures and are not part of the product landing sequence.
 
-The append-only Phase 1 foundation is on `main`. Phase 2 adds a deterministic Change Trajectory engine, a dedicated trajectory API, and an explanation-rich PR history view. The next bounded product phase is merge-lifecycle context and user feedback.
+The append-only Phase 1 foundation and deterministic Phase 2 trajectory engine are on `main`. Phase 3 is split into merge outcome and human feedback: Subphase 3A adds durable lifecycle context and pre-merge state reconstruction; Subphase 3B remains a separate feedback-measurement follow-on.
 
 ## Documentation
 
@@ -208,5 +209,6 @@ The append-only Phase 1 foundation is on `main`. Phase 2 adds a deterministic Ch
 - [`docs/ROADMAP.md`](./docs/ROADMAP.md) — directional roadmap and deferred ideas
 - [`docs/CHANGE_TRAJECTORY_PHASE1.md`](./docs/CHANGE_TRAJECTORY_PHASE1.md) — append-only run execution record and exit gates
 - [`docs/CHANGE_TRAJECTORY_PHASE2.md`](./docs/CHANGE_TRAJECTORY_PHASE2.md) — deterministic trajectory execution record and contracts
+- [`docs/CHANGE_TRAJECTORY_PHASE3.md`](./docs/CHANGE_TRAJECTORY_PHASE3.md) — two-subphase merge-outcome and feedback plan
 
 Some planning documents preserve the original V0 framing and should be read as project history where the implementation has moved ahead of them.

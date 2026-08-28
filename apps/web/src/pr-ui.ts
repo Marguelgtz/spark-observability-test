@@ -199,6 +199,38 @@ function historySection(detail: PullRequestTrajectoryV1): HTMLElement {
   return section;
 }
 
+function lifecycleTerminal(detail: PullRequestTrajectoryV1): HTMLElement | undefined {
+  const lifecycle = detail.lifecycle;
+  if (!lifecycle || lifecycle.state === 'OPEN') return undefined;
+  const section = node('section', `pr-terminal pr-terminal-${lifecycle.state.toLowerCase()}`);
+  section.dataset.testid = 'lifecycle-terminal';
+  const heading = node('div', 'pr-terminal-heading');
+  const label = lifecycle.state === 'MERGED'
+    ? `Merged${lifecycle.preMergeAttention ? ` · ${lifecycle.preMergeAttention}` : ''}`
+    : 'Closed without merge';
+  heading.append(node('strong', undefined, label));
+  const terminalAt = lifecycle.mergedAt ?? lifecycle.closedAt ?? lifecycle.lastEventAt;
+  const time = node('time', undefined, `${relativeTime(terminalAt)} ago`);
+  time.dateTime = terminalAt;
+  heading.append(time);
+  section.append(heading);
+
+  if (lifecycle.state === 'MERGED') {
+    const copy = lifecycle.preMergeRunId && lifecycle.preMergeEvidenceHealth
+      ? `At merge, Spark's selected pre-merge observation was ${lifecycle.preMergeAttention ?? 'unknown attention'} with ${healthLabel(lifecycle.preMergeEvidenceHealth).toLowerCase()}.`
+      : 'No Spark evaluation was available at or before merge.';
+    section.append(node('p', undefined, copy));
+    if (lifecycle.unresolvedAtMerge !== undefined) {
+      section.append(node(
+        'span',
+        lifecycle.unresolvedAtMerge ? 'pr-terminal-status is-unresolved' : 'pr-terminal-status is-resolved',
+        lifecycle.unresolvedAtMerge ? 'Unresolved at merge' : 'Clear at merge',
+      ));
+    }
+  }
+  return section;
+}
+
 function insightsSection(detail: Pick<PullRequestTrajectoryV1, 'insights'>): HTMLElement {
   const section = node('section', 'pr-section');
   section.append(node('h2', undefined, 'Observations'));
@@ -313,7 +345,10 @@ export function renderPullRequest(viewer: ViewerV1, detail: PullRequestTrajector
       `pull request #${detail.pullRequest.number}`,
     ),
   );
-  main.append(header, currentSection(detail, activitySearch), historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch, favorites));
+  const terminal = lifecycleTerminal(detail);
+  main.append(header, currentSection(detail, activitySearch));
+  if (terminal) main.append(terminal);
+  main.append(historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch, favorites));
   return root;
 }
 

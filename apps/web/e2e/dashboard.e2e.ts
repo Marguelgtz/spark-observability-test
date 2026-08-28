@@ -130,6 +130,16 @@ test('Change Trajectory combines and explains causes at each run boundary', asyn
   await expect(page.getByText('3 runs analyzed', { exact: true })).toBeVisible();
 });
 
+test('merged trajectory shows the selected pre-merge state as a terminal marker', async ({ page }) => {
+  await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
+
+  const terminal = page.getByTestId('lifecycle-terminal');
+  await expect(terminal).toBeVisible();
+  await expect(terminal.getByText('Merged · HIGH', { exact: true })).toBeVisible();
+  await expect(terminal.getByText(/selected pre-merge observation was HIGH with failed evidence/i)).toBeVisible();
+  await expect(terminal.getByText('Unresolved at merge', { exact: true })).toBeVisible();
+});
+
 test('pull request page drills into latest immutable run and keeps PR context', async ({ page }, testInfo) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
   await page.getByRole('link', { name: 'View latest evaluation' }).click();

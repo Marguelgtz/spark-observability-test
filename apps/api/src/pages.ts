@@ -46,12 +46,12 @@ export function landingPage(options: PublicPageOptions): Response {
 export function privacyPage(options: PublicPageOptions): Response {
   return page('Spark Privacy', `
     <h1>Privacy</h1>
-    <p><em>Last updated: 26 August 2026</em></p>
+    <p><em>Last updated: 28 August 2026</em></p>
     <p>Spark is an early-stage software-change observability service.</p>
     <h2>Information Spark processes</h2>
     <p>Spark processes GitHub repository metadata, pull-request and change information, changed file paths, relevant repository context, and GitHub Check information as needed to produce an evaluation. It may read limited repository files, such as workspace manifests, while resolving project relationships.</p>
     <h2>Information Spark stores</h2>
-    <p>Spark stores GitHub App installation and repository identifiers, webhook delivery identifiers, and evaluation metadata such as pull-request number, exact commit SHA, attention level, and Spark Check Run identifier.</p>
+    <p>Spark stores GitHub App installation and repository identifiers, webhook delivery identifiers, and evaluation metadata such as pull-request number, exact commit SHA, attention level, and Spark Check Run identifier. It also stores pull-request lifecycle timestamps, merge commit identifiers, and the selected pre-merge Spark observation used to reconstruct merge state.</p>
     <p>Spark does not intentionally persist GitHub installation access tokens. It does not persist full repository source code or complete diffs as part of the normal V0 evaluation record.</p>
     <h2>Removing access</h2>
     <p>You can remove the GitHub App installation or its access to repositories through GitHub. Removal stops future authorized access; limited operational metadata may remain where needed to operate or diagnose the early-stage service.</p>
