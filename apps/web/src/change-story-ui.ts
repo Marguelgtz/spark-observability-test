@@ -1,6 +1,5 @@
 import type {
   EvaluationSummaryV1,
-  NotableTransitionV1,
   PullRequestTrajectoryV1,
   SaveTrajectoryFeedbackV1,
   TrajectoryFeedbackClassificationV1,
@@ -11,10 +10,12 @@ import {
   deriveChangeStory,
   formatStoryDuration,
   type ChangeStoryNode,
+  type ChangeStoryStableNode,
   type ChangeStoryTerminalNode,
   type ChangeStoryTransitionNode,
 } from './insights/change-story';
 import './change-story.css';
+import './change-story-stable.css';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -56,6 +57,7 @@ function healthLabel(health: ChangeStoryNode['evidenceHealth']): string | undefi
 function momentKindLabel(item: ChangeStoryNode): string {
   if (item.kind === 'TERMINAL') return item.lifecycle.state === 'MERGED' ? 'Merge outcome' : 'Close outcome';
   if (item.kind === 'TRANSITION') return item.latest ? 'Latest change' : 'Change';
+  if (item.kind === 'STABLE') return item.latest ? 'Stable attention · Latest' : 'Stable attention';
   if (item.kind === 'LATEST') return 'Latest';
   return 'Initial';
 }
@@ -292,6 +294,82 @@ function transitionMoment(
   return row;
 }
 
+function stableEvaluationRow(
+  host: HTMLElement,
+  item: ChangeStoryStableNode['evaluations'][number],
+  detail: PullRequestTrajectoryV1,
+  options: ChangeStoryRenderOptions,
+): HTMLElement {
+  const row = node('article', 'change-story-stable-evaluation');
+  row.dataset.testid = 'stable-evaluation';
+
+  const header = node('div', 'change-story-stable-evaluation-header');
+  const copy = node('div');
+  copy.append(node('strong', undefined, `Evaluation ${shortSha(item.run.headSha)}`));
+  const evidence = evidenceLabel(item.run.evidenceSummary);
+  const detailCopy = [item.run.topReasons[0], evidence].filter(Boolean).join(' · ');
+  if (detailCopy) copy.append(node('p', 'change-story-copy', detailCopy));
+
+  const actions = node('div', 'change-story-stable-evaluation-actions');
+  const time = node('time', 'change-story-time', `${relativeTime(item.run.evaluatedAt)} ago`);
+  time.dateTime = item.run.evaluatedAt;
+  actions.append(time, runLink(item.run, options.observationHref(item.run)));
+  header.append(copy, actions);
+  row.append(header);
+
+  for (const transition of item.transitions) {
+    const transitionRow = node('div', 'change-story-stable-transition');
+    transitionRow.dataset.testid = 'stable-transition';
+    const transitionCopy = node('div');
+    transitionCopy.append(node('span', 'change-story-kind', 'NOTABLE WITHIN STABLE ATTENTION'));
+    transitionCopy.append(node('strong', undefined, transition.headline));
+    const causes = compactCauses(transition.causes);
+    if (causes) transitionCopy.append(causes);
+    transitionRow.append(transitionCopy);
+    if (transition.transition.severity === 'MATERIAL' && options.saveFeedback) {
+      transitionRow.append(feedbackTrigger(host, transition, detail, options.saveFeedback));
+    }
+    row.append(transitionRow);
+  }
+
+  return row;
+}
+
+function stableMoment(
+  host: HTMLElement,
+  item: ChangeStoryStableNode,
+  detail: PullRequestTrajectoryV1,
+  options: ChangeStoryRenderOptions,
+): HTMLElement {
+  const details = node('details', 'change-story-stable-card');
+  details.dataset.testid = 'stable-evaluations';
+
+  const summary = node('summary', 'change-story-stable-summary');
+  const marker = node('span', 'change-story-marker');
+  marker.setAttribute('aria-hidden', 'true');
+  const body = node('div', 'change-story-stable-summary-body');
+  const meta = node('div', 'change-story-moment-meta');
+  meta.append(node('span', 'change-story-kind', momentKindLabel(item)));
+  const attention = attentionBadge(item.attention);
+  if (attention) meta.append(attention);
+  const health = healthLabel(item.evidenceHealth);
+  if (health) meta.append(node('span', 'change-story-health', health));
+  body.append(meta, node('strong', 'change-story-stable-headline', item.headline));
+  body.append(node(
+    'span',
+    'change-story-stable-hint',
+    `${item.evaluations.length} evaluation${item.evaluations.length === 1 ? '' : 's'} · expand to inspect${item.latest ? ' · includes latest' : ''}`,
+  ));
+  summary.append(marker, body, node('span', 'change-story-stable-toggle', 'Show evaluations'));
+
+  const expanded = node('div', 'change-story-stable-list');
+  for (const evaluation of item.evaluations) {
+    expanded.append(stableEvaluationRow(host, evaluation, detail, options));
+  }
+  details.append(summary, expanded);
+  return details;
+}
+
 function observationMoment(
   item: Extract<ChangeStoryNode, { kind: 'INITIAL' | 'LATEST' }>,
   options: ChangeStoryRenderOptions,
@@ -332,6 +410,7 @@ function renderMoment(
   detail: PullRequestTrajectoryV1,
   options: ChangeStoryRenderOptions,
 ): HTMLElement {
+  if (item.kind === 'STABLE') return stableMoment(host, item, detail, options);
   if (item.kind === 'TRANSITION') return transitionMoment(host, item, detail, options);
   if (item.kind === 'TERMINAL') return terminalMoment(item);
   return observationMoment(item, options);
@@ -347,11 +426,11 @@ export function renderChangeStory(detail: PullRequestTrajectoryV1, options: Chan
   copy.append(
     node('p', 'pr-section-kicker', 'CHANGE EVOLUTION'),
     node('h2', undefined, 'Key moments'),
-    node('p', 'change-story-intro', 'Material changes Spark observed while this pull request evolved.'),
+    node('p', 'change-story-intro', 'Attention changes stay visible; evaluations at the same attention level are grouped for inspection.'),
   );
   const summary = node('p', 'change-story-summary');
   summary.append(document.createTextNode(`${story.retainedEvaluations} evaluation${story.retainedEvaluations === 1 ? '' : 's'} · ${detail.summary.totalTransitions} notable transition${detail.summary.totalTransitions === 1 ? '' : 's'}`));
-  if (story.collapsedEvaluations > 0) summary.append(document.createTextNode(` · ${story.collapsedEvaluations} unchanged collapsed`));
+  if (story.collapsedEvaluations > 0) summary.append(document.createTextNode(` · ${story.collapsedEvaluations} grouped by unchanged attention`));
   copy.append(summary);
   heading.append(copy);
 
