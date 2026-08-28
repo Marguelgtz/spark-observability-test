@@ -4,7 +4,7 @@ const metrics = [
   ['pull-requests', 'Observed pull requests'],
   ['evaluations', 'Evaluations'],
   ['attention', 'Needs attention'],
-  ['merged-unresolved', 'Merged unresolved'],
+  ['merged-unresolved', 'Change outcomes'],
 ] as const;
 
 test('home metrics are clickable, render composable insights, and flag unresolved merges in recent activity', async ({ page }) => {
@@ -39,7 +39,7 @@ for (const [metric, heading] of metrics) {
     await page.goto(`/app/overview/${metric}?window=7d&attention=ALL`);
     await expect(page.getByTestId(`overview-${metric}`)).toBeVisible();
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
-    await expect(page.getByTestId('overview-charts')).toBeVisible();
+    await expect(page.getByTestId(metric === 'merged-unresolved' ? 'outcome-charts' : 'overview-charts')).toBeVisible();
     await expect(page.getByRole('link', { name: '← Change overview' })).toBeVisible();
   });
 }
@@ -74,12 +74,17 @@ test('drilldown canvases pair graph forms to the metric context', async ({ page 
   await expect(page.getByTestId('attention-transition-chart')).toBeVisible();
 
   await page.goto('/app/overview/merged-unresolved?window=7d&attention=ALL');
-  charts = page.getByTestId('overview-charts');
-  await expect(page.getByTestId('insight-canvas-merge-quality')).toBeVisible();
-  await expect(page.getByTestId('insight-canvas-merge-evidence')).toBeVisible();
-  await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
-  await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
-  await expect(charts.locator('[data-chart-kind="bar"]')).toBeVisible();
+  charts = page.getByTestId('outcome-charts');
+  await expect(page.getByTestId('insight-canvas-outcome-merge-quality')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-outcome-pre-merge-state')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-outcome-stabilization')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-outcome-feedback')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="stacked-bar"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="line"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="donut"]')).toHaveCount(3);
+  await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toHaveCount(3);
+  await expect(page.getByRole('heading', { name: 'Unresolved merges', exact: true })).toBeVisible();
+  await expect(page.getByText(/Full resolved and unavailable merge denominators/)).toBeVisible();
 });
 
 test('overview drilldowns retain time-window navigation', async ({ page }) => {
