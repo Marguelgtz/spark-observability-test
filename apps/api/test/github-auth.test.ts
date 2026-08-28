@@ -1,0 +1,245 @@
+import { createPrivateKey } from 'node:crypto';
+import { describe, expect, it, vi } from 'vitest';
+import type { GitHubAppRepositoryCandidate } from '@spark/github';
+import type { D1AllResult, D1Database, D1PreparedStatement, D1Result } from '../src/d1';
+import { GitHubDashboardAuth } from '../src/github-auth';
+
+interface UserRow { github_user_id: number; login: string; avatar_url: string }
+interface SessionRow {
+  session_hash: string;
+  github_user_id: number;
+  repository_ids_json: string;
+  installation_ids_json: string;
+  expires_at: string;
+}
+
+class MemoryStatement implements D1PreparedStatement {
+  private values: unknown[] = [];
+  constructor(private readonly database: MemoryDatabase, private readonly query: string) {}
+  bind(...values: unknown[]): D1PreparedStatement { this.values = values; return this; }
+  async run(): Promise<D1Result> {
+    if (this.query.includes('INSERT INTO dashboard_users')) {
+      const [id, login, avatar] = this.values as [number, string, string];
+      this.database.users.set(id, { github_user_id: id, login, avatar_url: avatar });
+      return { meta: { changes: 1 } };
+    }
+    if (this.query.includes('INSERT INTO dashboard_sessions')) {
+      const [hash, userId, repositories, installations, expiresAt] = this.values as [string, number, string, string, string];
+      this.database.sessions.set(hash, {
+        session_hash: hash,
+        github_user_id: userId,
+        repository_ids_json: repositories,
+        installation_ids_json: installations,
+        expires_at: expiresAt,
+      });
+      return { meta: { changes: 1 } };
+    }
+    if (this.query.includes('DELETE FROM dashboard_sessions WHERE session_hash')) {
+      this.database.sessions.delete(String(this.values[0]));
+      return { meta: { changes: 1 } };
+    }
+    if (this.query.includes('DELETE FROM dashboard_sessions WHERE expires_at')) {
+      const cutoff = String(this.values[0]);
+      for (const [hash, session] of this.database.sessions) {
+        if (session.expires_at <= cutoff) this.database.sessions.delete(hash);
+      }
+      return { meta: { changes: 0 } };
+    }
+    return { meta: { changes: 0 } };
+  }
+  async first<T>(): Promise<T | null> {
+    if (!this.query.includes('FROM dashboard_sessions s')) return null;
+    const [hash, now] = this.values as [string, string];
+    const session = this.database.sessions.get(hash);
+    if (!session || session.expires_at <= now) return null;
+    const user = this.database.users.get(session.github_user_id);
+    if (!user) return null;
+    return {
+      github_user_id: user.github_user_id,
+      login: user.login,
+      avatar_url: user.avatar_url,
+      repository_ids_json: session.repository_ids_json,
+      installation_ids_json: session.installation_ids_json,
+      expires_at: session.expires_at,
+    } as T;
+  }
+  async all<T>(): Promise<D1AllResult<T>> {
+    if (this.query.includes('FROM repositories r')) {
+      return { results: this.database.candidates as T[] };
+    }
+    return { results: [] };
+  }
+}
+
+class MemoryDatabase implements D1Database {
+  users = new Map<number, UserRow>();
+  sessions = new Map<string, SessionRow>();
+  candidates: GitHubAppRepositoryCandidate[] = [];
+  prepare(query: string): D1PreparedStatement { return new MemoryStatement(this, query); }
+  async batch(): Promise<D1Result[]> { return []; }
+}
+
+async function privateKeyPem(): Promise<string> {
+  const keys = await crypto.subtle.generateKey(
+    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+    true,
+    ['sign', 'verify'],
+  );
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey('pkcs8', keys.privateKey));
+  return createPrivateKey({ key: Buffer.from(pkcs8), format: 'der', type: 'pkcs8' })
+    .export({ format: 'pem', type: 'pkcs1' }).toString();
+}
+
+function responseCookie(response: Response, name: string): string {
+  const header = response.headers.get('set-cookie') ?? '';
+  const match = header.match(new RegExp(`${name}=([^;,]+)`));
+  if (!match) throw new Error(`Missing ${name} cookie in ${header}`);
+  return match[1];
+}
+
+describe('GitHub dashboard authentication', () => {
+  it('uses OAuth for identity, the GitHub App for repository authorization, and stores only a Spark session', async () => {
+    const db = new MemoryDatabase();
+    db.candidates = [
+      { id: 101, installationId: 11, fullName: 'acme/one', accountId: 99, accountLogin: 'acme' },
+      { id: 102, installationId: 11, fullName: 'acme/two', accountId: 99, accountLogin: 'acme' },
+    ];
+    const pem = await privateKeyPem();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.origin === 'https://github.com' && url.pathname === '/login/oauth/access_token') {
+        const body = new URLSearchParams(String(init?.body));
+        expect(body.get('client_id')).toBe('Ov.test');
+        return new Response(JSON.stringify({ access_token: 'gho_identity', expires_in: 28_800 }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.pathname === '/applications/Ov.test/token') {
+        return new Response(JSON.stringify({
+          app: { name: 'spark-auth', client_id: 'Ov.test' },
+          scopes: [],
+          expires_at: '2026-08-28T06:00:00Z',
+        }));
+      }
+      if (url.pathname === '/user') {
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer gho_identity');
+        return new Response(JSON.stringify({ id: 7, login: 'marguel', avatar_url: 'https://avatars.example/7' }));
+      }
+      if (url.pathname === '/app/installations/11/access_tokens') {
+        expect(init?.method).toBe('POST');
+        expect(new Headers(init?.headers).get('authorization')).toMatch(/^Bearer [^.]+\.[^.]+\.[^.]+$/);
+        return new Response(JSON.stringify({ token: 'installation-11' }));
+      }
+      if (url.pathname === '/repos/acme/one/collaborators/marguel/permission') {
+        expect(new Headers(init?.headers).get('authorization')).toBe('Bearer installation-11');
+        return new Response(JSON.stringify({ permission: 'read', role_name: 'read' }));
+      }
+      if (url.pathname === '/repos/acme/two/collaborators/marguel/permission') {
+        return new Response('not found', { status: 404 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    const auth = new GitHubDashboardAuth({
+      DB: db,
+      GITHUB_AUTH_CLIENT_ID: 'Ov.test',
+      GITHUB_AUTH_CLIENT_SECRET: 'oauth-secret',
+      GITHUB_APP_ID: '123',
+      GITHUB_PRIVATE_KEY: pem,
+      GITHUB_APP_SLUG: 'spark-observability',
+    }, fetcher as typeof fetch, () => new Date('2026-08-27T20:00:00.000Z'));
+
+    const started = await auth.start(new Request('https://spark.test/auth/github?return_to=%2Fapp%2Faccount'));
+    expect(started.status).toBe(302);
+    const location = new URL(started.headers.get('location')!);
+    expect(location.origin + location.pathname).toBe('https://github.com/login/oauth/authorize');
+    expect(location.searchParams.get('client_id')).toBe('Ov.test');
+    expect(location.searchParams.get('code_challenge_method')).toBe('S256');
+
+    const state = decodeURIComponent(responseCookie(started, 'spark_oauth_state'));
+    const verifier = decodeURIComponent(responseCookie(started, 'spark_oauth_verifier'));
+    const returnTo = responseCookie(started, 'spark_oauth_return');
+    const callback = await auth.callback(new Request(`https://spark.test/auth/github/callback?code=code&state=${encodeURIComponent(state)}`, {
+      headers: { cookie: `spark_oauth_state=${state}; spark_oauth_verifier=${verifier}; spark_oauth_return=${returnTo}` },
+    }));
+
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get('location')).toBe('/app/account');
+    expect(db.users.get(7)?.login).toBe('marguel');
+    expect(db.sessions.size).toBe(1);
+    const persisted = [...db.sessions.values()][0];
+    expect(persisted.repository_ids_json).toBe('[101]');
+    expect(persisted.installation_ids_json).toBe('[11]');
+    expect(JSON.stringify(persisted)).not.toContain('gho_identity');
+    expect(JSON.stringify(persisted)).not.toContain('installation-11');
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('"identityProvider":"github-oauth-app"'));
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('"resourceProvider":"github-app"'));
+
+    const sessionToken = decodeURIComponent(responseCookie(callback, 'spark_session'));
+    const principal = await auth.authorize(new Request('https://spark.test/api/me', {
+      headers: { cookie: `spark_session=${sessionToken}` },
+    }));
+    expect(principal).toMatchObject({
+      viewer: { id: 7, login: 'marguel' },
+      repositoryIds: [101],
+      installationIds: [11],
+    });
+
+    const loggedOut = await auth.logout(new Request('https://spark.test/auth/logout', {
+      method: 'POST',
+      headers: { cookie: `spark_session=${sessionToken}` },
+    }));
+    expect(loggedOut.status).toBe(204);
+    expect(db.sessions.size).toBe(0);
+    info.mockRestore();
+  });
+
+  it('rejects a callback when state does not match the HttpOnly OAuth cookie', async () => {
+    const auth = new GitHubDashboardAuth({
+      DB: new MemoryDatabase(),
+      GITHUB_AUTH_CLIENT_ID: 'Ov.test',
+      GITHUB_AUTH_CLIENT_SECRET: 'secret',
+      GITHUB_APP_ID: '123',
+      GITHUB_PRIVATE_KEY: 'unused-for-invalid-state',
+    });
+    const response = await auth.callback(new Request('https://spark.test/auth/github/callback?code=code&state=attacker', {
+      headers: { cookie: 'spark_oauth_state=expected; spark_oauth_verifier=verifier' },
+    }));
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 502 and clears OAuth cookies when callback internals fail', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.origin === 'https://github.com' && url.pathname === '/login/oauth/access_token') {
+        return new Response('upstream failure', { status: 500 });
+      }
+      return new Response('not found', { status: 404 });
+    });
+    const auth = new GitHubDashboardAuth({
+      DB: new MemoryDatabase(),
+      GITHUB_AUTH_CLIENT_ID: 'Ov.test',
+      GITHUB_AUTH_CLIENT_SECRET: 'secret',
+      GITHUB_APP_ID: '123',
+      GITHUB_PRIVATE_KEY: 'unused-before-exchange-failure',
+    }, fetcher as typeof fetch);
+
+    const started = await auth.start(new Request('https://spark.test/auth/github?return_to=%2Fapp'));
+    const state = decodeURIComponent(responseCookie(started, 'spark_oauth_state'));
+    const verifier = decodeURIComponent(responseCookie(started, 'spark_oauth_verifier'));
+    const returnTo = responseCookie(started, 'spark_oauth_return');
+    const response = await auth.callback(new Request(`https://spark.test/auth/github/callback?code=code&state=${encodeURIComponent(state)}`, {
+      headers: { cookie: `spark_oauth_state=${state}; spark_oauth_verifier=${verifier}; spark_oauth_return=${returnTo}` },
+    }));
+
+    expect(response.status).toBe(502);
+    expect(await response.text()).toBe('GitHub authentication failed');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('set-cookie')).toContain('spark_oauth_state=');
+    expect(response.headers.get('set-cookie')).toContain('Max-Age=0');
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('"event":"github_dashboard_auth"'));
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('GitHub OAuth token exchange failed (500)'));
+    error.mockRestore();
+  });
+});

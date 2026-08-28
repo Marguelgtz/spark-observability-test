@@ -1,0 +1,45 @@
+.evaluation-signal::before {
+  content: "Latest · ";
+  font-weight: 760;
+  color: #555550;
+}
+
+.evaluation-history-mix::before {
+  content: "History · ";
+  font-weight: 700;
+  color: #666660;
+}
+
+.history-toggle {
+  min-width: 92px !important;
+  min-height: 32px !important;
+  padding: 5px 10px !important;
+  border-radius: 6px !important;
+  background: #fbfbf9;
+  font-size: 12px !important;
+  white-space: nowrap;
+}
+
+.history-toggle::after {
+  content: " runs ▾";
+  margin-left: 2px;
+}
+
+.history-toggle[aria-expanded="true"]::after {
+  content: " runs ▴";
+}
+
+@media (max-width: 700px) {
+  .evaluation-row {
+    grid-template-columns: 64px minmax(0, 1fr) 92px !important;
+  }
+
+  .evaluation-history-mix {
+    display: block !important;
+  }
+
+  .history-toggle {
+    min-width: 86px !important;
+    padding-inline: 7px !important;
+  }
+}

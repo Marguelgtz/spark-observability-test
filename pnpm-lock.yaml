@@ -32,6 +32,9 @@ importers:
       '@spark/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@spark/dashboard-contracts':
+        specifier: workspace:*
+        version: link:../../packages/dashboard-contracts
       '@spark/github':
         specifier: workspace:*
         version: link:../../packages/github

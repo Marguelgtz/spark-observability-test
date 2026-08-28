@@ -4,6 +4,8 @@ import type {
   EvaluationDetailResponseV1,
   EvaluationDetailV1,
   EvaluationSummaryV1,
+  PullRequestActivityV1,
+  PullRequestHistoryResponseV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
 
@@ -133,6 +135,28 @@ export const fixtureEvaluations = [
   }
 ] satisfies EvaluationSummaryV1[];
 
+const older42Medium: EvaluationSummaryV1 = {
+  ...fixtureEvaluations[0],
+  headSha: 'a42c11e7b8f2d61f963831db8200deaffeed0031',
+  attention: 'MEDIUM',
+  topReasons: ['Integration evidence pending'],
+  evidenceSummary: { passed: 1, pending: 1, failed: 0, missing: 0, unknown: 0 },
+  evaluatedAt: ago(26 * minute),
+  githubCheckUrl: 'https://github.com/acme/spark/runs/420000'
+};
+
+const older42Low: EvaluationSummaryV1 = {
+  ...fixtureEvaluations[0],
+  headSha: 'a42c11e7b8f2d61f963831db8200deaffeed0020',
+  attention: 'LOW',
+  topReasons: ['Routine change with passing evidence'],
+  evidenceSummary: { passed: 2, pending: 0, failed: 0, missing: 0, unknown: 0 },
+  evaluatedAt: ago(48 * minute),
+  githubCheckUrl: 'https://github.com/acme/spark/runs/419999'
+};
+
+const fixtureAllRuns: EvaluationSummaryV1[] = [...fixtureEvaluations, older42Medium, older42Low];
+
 const detail42 = {
   version: 1,
   repository: repos.spark,
@@ -168,39 +192,6 @@ const detail42 = {
   githubCheckUrl: fixtureEvaluations[0].githubCheckUrl
 } satisfies EvaluationDetailV1;
 
-const detail120 = {
-  version: 1,
-  repository: repos.checkout,
-  pullRequest: fixtureEvaluations[1].pullRequest,
-  headSha: fixtureEvaluations[1].headSha,
-  baseSha: '120basec04fa40000000000000000000000000000',
-  evaluatedAt: fixtureEvaluations[1].evaluatedAt,
-  evaluatorVersion: 'spark-v0.1-fixture',
-  attention: 'MEDIUM',
-  reasons: ['Expected verification evidence is missing'],
-  changeSummary: fixtureEvaluations[1].changeSummary,
-  changedFiles: [
-    { path: 'payments/charge.ts', status: 'modified', additions: 39, deletions: 8 },
-    { path: 'payments/types.ts', status: 'modified', additions: 7, deletions: 0 }
-  ],
-  directAreas: ['payments'],
-  affectedAreas: [],
-  unmappedPaths: [],
-  sensitiveSurfaces: [],
-  evidence: [
-    { name: 'unit-test', status: 'PASSED', coverage: 'UNKNOWN', url: 'https://github.com/acme/checkout/actions/runs/120001' },
-    { name: 'payment-integration-tests', status: 'MISSING', coverage: ['payments'] }
-  ],
-  profile: {
-    state: 'ACTIVE',
-    sourceSha: 'profile120abc0000000000000000000000000000000',
-    version: 1,
-    matchedAreas: [{ id: 'payments', criticality: 'medium', owners: ['@team-payments'], expectedEvidence: ['payment-integration-tests'] }]
-  },
-  analysisNotes: [],
-  githubCheckUrl: fixtureEvaluations[1].githubCheckUrl
-} satisfies EvaluationDetailV1;
-
 const genericDetail = (summary: EvaluationSummaryV1): EvaluationDetailV1 => ({
   version: 1,
   repository: summary.repository,
@@ -217,17 +208,21 @@ const genericDetail = (summary: EvaluationSummaryV1): EvaluationDetailV1 => ({
   affectedAreas: [],
   unmappedPaths: summary.repository.name === 'web' ? ['experiments/copy.ts'] : [],
   sensitiveSurfaces: summary.sensitiveSurfaces,
-  evidence: [{ name: 'test', status: summary.evidenceSummary.pending ? 'PENDING' : 'PASSED', coverage: 'UNKNOWN' }],
+  evidence: [{
+    name: summary.evidenceSummary.failed ? 'integration-test' : 'test',
+    status: summary.evidenceSummary.failed ? 'FAILED' : summary.evidenceSummary.missing ? 'MISSING' : summary.evidenceSummary.pending ? 'PENDING' : 'PASSED',
+    coverage: 'UNKNOWN'
+  }],
   profile: { state: 'ABSENT', matchedAreas: [] },
   analysisNotes: summary.repository.name === 'web' ? ['Repository topology is partially unknown'] : [],
   githubCheckUrl: summary.githubCheckUrl
 });
 
-const detailByKey = new Map<string, EvaluationDetailV1>([
-  [`101:${fixtureEvaluations[0].headSha}`, detail42],
-  [`202:${fixtureEvaluations[1].headSha}`, detail120],
-  ...fixtureEvaluations.filter((item) => item.detailAvailable && item !== fixtureEvaluations[0] && item !== fixtureEvaluations[1]).map((item) => [`${item.repository.id}:${item.headSha}`, genericDetail(item)] as const)
-]);
+const detailByKey = new Map<string, EvaluationDetailV1>();
+for (const summary of fixtureAllRuns) {
+  if (!summary.detailAvailable) continue;
+  detailByKey.set(`${summary.repository.id}:${summary.headSha}`, summary === fixtureEvaluations[0] ? detail42 : genericDetail(summary));
+}
 
 function windowMs(window: ActivityQueryV1['window']): number {
   if (window === '24h') return day;
@@ -235,12 +230,42 @@ function windowMs(window: ActivityQueryV1['window']): number {
   return 30 * day;
 }
 
+function pullRequestKey(summary: EvaluationSummaryV1): string {
+  return `${summary.repository.id}:${summary.pullRequest.number}`;
+}
+
+function latestPullRequests(): EvaluationSummaryV1[] {
+  const latest = new Map<string, EvaluationSummaryV1>();
+  for (const run of [...fixtureAllRuns].sort((a, b) => Date.parse(b.evaluatedAt) - Date.parse(a.evaluatedAt))) {
+    if (!latest.has(pullRequestKey(run))) latest.set(pullRequestKey(run), run);
+  }
+  return [...latest.values()];
+}
+
+function activityFromLatest(latest: EvaluationSummaryV1): PullRequestActivityV1 {
+  const history = fixtureAllRuns.filter((run) => pullRequestKey(run) === pullRequestKey(latest));
+  return {
+    repository: latest.repository,
+    pullRequest: latest.pullRequest,
+    latest,
+    history: {
+      runCount: history.length,
+      attentionCounts: {
+        LOW: history.filter((run) => run.attention === 'LOW').length,
+        MEDIUM: history.filter((run) => run.attention === 'MEDIUM').length,
+        HIGH: history.filter((run) => run.attention === 'HIGH').length
+      }
+    }
+  };
+}
+
 export function buildFixtureActivity(query: ActivityQueryV1, now = FIXTURE_NOW): ActivityResponseV1 {
-  const inWindow = fixtureEvaluations.filter((item) => now - Date.parse(item.evaluatedAt) <= windowMs(query.window));
-  const observedRepositoryIds = new Set(fixtureEvaluations.map((item) => item.repository.id));
+  const latest = latestPullRequests();
+  const inWindow = latest.filter((item) => now - Date.parse(item.evaluatedAt) <= windowMs(query.window));
+  const observedRepositoryIds = new Set(latest.map((item) => item.repository.id));
   const repositories = Array.from(observedRepositoryIds).map((id) => {
-    const ref = fixtureEvaluations.find((item) => item.repository.id === id)!.repository;
-    return { ...ref, evaluationCount: inWindow.filter((item) => item.repository.id === id).length };
+    const ref = latest.find((item) => item.repository.id === id)!.repository;
+    return { ...ref, pullRequestCount: inWindow.filter((item) => item.repository.id === id).length };
   });
 
   const repositoryScoped = query.repositoryId === null ? inWindow : inWindow.filter((item) => item.repository.id === query.repositoryId);
@@ -254,8 +279,8 @@ export function buildFixtureActivity(query: ActivityQueryV1, now = FIXTURE_NOW):
   const cursorScoped = query.cursor ? attentionScoped.filter((item) => item.evaluatedAt < query.cursor!) : attentionScoped;
   const sorted = [...cursorScoped].sort((a, b) => Date.parse(b.evaluatedAt) - Date.parse(a.evaluatedAt));
   const limit = Math.max(1, Math.min(query.limit ?? 25, 50));
-  const evaluations = sorted.slice(0, limit);
-  const nextCursor = sorted.length > limit ? evaluations[evaluations.length - 1].evaluatedAt : null;
+  const page = sorted.slice(0, limit);
+  const nextCursor = sorted.length > limit ? page[page.length - 1].evaluatedAt : null;
 
   return {
     version: 1,
@@ -264,13 +289,28 @@ export function buildFixtureActivity(query: ActivityQueryV1, now = FIXTURE_NOW):
     selectedRepositoryId: query.repositoryId,
     counts,
     repositories,
-    evaluations,
+    pullRequests: page.map(activityFromLatest),
     pagination: { nextCursor }
   };
 }
 
+export function getFixturePullRequestHistory(repositoryId: number, pullRequestNumber: number): PullRequestHistoryResponseV1 {
+  const runs = fixtureAllRuns
+    .filter((item) => item.repository.id === repositoryId && item.pullRequest.number === pullRequestNumber)
+    .sort((a, b) => Date.parse(b.evaluatedAt) - Date.parse(a.evaluatedAt));
+  if (!runs.length) throw new Error('Pull request history not found');
+  return {
+    version: 1,
+    repository: runs[0].repository,
+    pullRequest: runs[0].pullRequest,
+    totalRunCount: runs.length,
+    runs,
+    truncated: false
+  };
+}
+
 export function getFixtureEvaluation(repositoryId: number, headSha: string): EvaluationDetailResponseV1 {
-  const summary = fixtureEvaluations.find((item) => item.repository.id === repositoryId && item.headSha === headSha);
+  const summary = fixtureAllRuns.find((item) => item.repository.id === repositoryId && item.headSha === headSha);
   if (!summary) throw new Error('Evaluation not found');
   if (!summary.detailAvailable) return { version: 1, status: 'unavailable', reason: 'LEGACY_RECORD', summary };
   const detail = detailByKey.get(`${repositoryId}:${headSha}`);

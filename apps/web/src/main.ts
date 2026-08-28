@@ -1,5 +1,10 @@
 import './styles.css';
+import './account.css';
+import './pr.css';
+import type { ActivityResponseV1 } from '@spark/dashboard-contracts';
+import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
+import { enhanceEvaluationWithPullRequestContext, pullRequestHref, renderPullRequest } from './pr-ui';
 import { navigate, parseRoute } from './router';
 import { parseActivityState, serializeActivityState, withActivityState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderLoading, renderNotFound, renderSignedOut } from './ui';
@@ -7,12 +12,54 @@ import { renderActivity, renderError, renderEvaluation, renderLoading, renderNot
 const mount = document.querySelector<HTMLElement>('#app')!;
 if (!mount) throw new Error('Missing #app mount');
 
+function wireViewerAccount(): void {
+  const identity = mount.querySelector<HTMLElement>('.viewer');
+  if (!identity || identity instanceof HTMLAnchorElement) return;
+  identity.classList.add('viewer-link');
+  identity.tabIndex = 0;
+  identity.setAttribute('role', 'link');
+  identity.setAttribute('aria-label', 'Open account settings');
+  const open = () => navigate('/app/account');
+  identity.addEventListener('click', open);
+  identity.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      open();
+    }
+  });
+}
+
 function replace(view: HTMLElement): void {
   mount.replaceChildren(view);
+  wireViewerAccount();
 }
 
 function currentActivitySearch(): string {
   return serializeActivityState(parseActivityState(window.location.search));
+}
+
+function showSignedOut(): void {
+  replace(renderSignedOut());
+  const note = mount.querySelector<HTMLElement>('.phase-note');
+  if (note) note.textContent = 'Sign in with GitHub to view Spark activity for repositories your account can access.';
+  const button = mount.querySelector<HTMLButtonElement>('[data-testid="sign-in"]');
+  button?.addEventListener('click', () => {
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/auth/github?return_to=${encodeURIComponent(returnTo)}`);
+  });
+}
+
+function routeActivityRowsToPullRequests(view: HTMLElement, activity: ActivityResponseV1, activitySearch: string): void {
+  for (const item of activity.pullRequests) {
+    const wrapper = view.querySelector<HTMLElement>(`[data-testid="pull-request-${item.repository.id}-${item.pullRequest.number}"]`);
+    const link = wrapper?.querySelector<HTMLAnchorElement>('.evaluation-main-link');
+    if (link) {
+      link.href = pullRequestHref(item.repository.id, item.pullRequest.number, activitySearch);
+      link.setAttribute('aria-label', `Open pull request ${item.pullRequest.number}: ${item.pullRequest.title}`);
+    }
+    const toggle = wrapper?.querySelector<HTMLButtonElement>('.history-toggle');
+    if (toggle) toggle.textContent = `${item.history.runCount} run${item.history.runCount === 1 ? '' : 's'} ▾`;
+  }
 }
 
 async function render(): Promise<void> {
@@ -27,7 +74,8 @@ async function render(): Promise<void> {
     if (route.kind === 'activity') {
       const state = parseActivityState(window.location.search);
       const activity = await api.getActivity(state);
-      replace(renderActivity(viewer, activity, state, {
+      const activitySearch = serializeActivityState(state);
+      const view = renderActivity(viewer, activity, state, {
         setWindow(value) {
           const next = withActivityState(state, { window: value });
           navigate(`/app?${serializeActivityState(next)}`);
@@ -43,21 +91,50 @@ async function render(): Promise<void> {
         showAllAttention() {
           const next = withActivityState(state, { attention: 'ALL' });
           navigate(`/app?${serializeActivityState(next)}`);
+        },
+        loadHistory(repositoryId, pullRequestNumber) {
+          return api.getPullRequestHistory(repositoryId, pullRequestNumber);
         }
+      });
+      routeActivityRowsToPullRequests(view, activity, activitySearch);
+      replace(view);
+      return;
+    }
+
+    if (route.kind === 'account') {
+      const account = await api.getAccount();
+      replace(renderAccountPage(account, () => {
+        void api.logout().then(() => {
+          window.location.assign('/app');
+        });
       }));
       return;
     }
 
+    if (route.kind === 'pull-request') {
+      const detail = await api.getPullRequest(route.repositoryId, route.pullRequestNumber);
+      replace(renderPullRequest(viewer, detail, currentActivitySearch()));
+      return;
+    }
+
     if (route.kind === 'evaluation') {
-      const detail = await api.getEvaluation(route.repositoryId, route.headSha);
-      replace(renderEvaluation(viewer, detail, currentActivitySearch()));
+      const response = await api.getEvaluation(route.repositoryId, route.headSha);
+      const view = renderEvaluation(viewer, response, currentActivitySearch());
+      replace(view);
+      const summary = response.status === 'available' ? response.detail : response.summary;
+      try {
+        const pullRequest = await api.getPullRequest(route.repositoryId, summary.pullRequest.number);
+        enhanceEvaluationWithPullRequestContext(view, pullRequest, route.headSha, currentActivitySearch());
+      } catch {
+        // Evaluation detail remains independently useful if PR-level history is unavailable.
+      }
       return;
     }
 
     replace(renderNotFound(viewer));
   } catch (error) {
     if (error instanceof UnauthorizedError) {
-      replace(renderSignedOut());
+      showSignedOut();
       return;
     }
     replace(renderError(undefined, () => void render()));

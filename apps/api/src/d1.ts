@@ -1,14 +1,19 @@
 import type { GitHubEventRequest, GitHubRepository } from '@spark/github';
-import type { EvaluationRecord, SparkStore, StoredEvaluation } from './contracts';
+import type { EvaluationDetailRecord, EvaluationRecord, SparkStore, StoredEvaluation } from './contracts';
 
 export interface D1Result {
   meta?: { changes?: number };
+}
+
+export interface D1AllResult<T> {
+  results?: T[];
 }
 
 export interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   run(): Promise<D1Result>;
   first<T>(): Promise<T | null>;
+  all<T>(): Promise<D1AllResult<T>>;
 }
 
 export interface D1Database {
@@ -111,6 +116,38 @@ export class D1SparkStore implements SparkStore {
     ).bind(
       record.repositoryId, record.headSha, record.installationId, record.pullRequestNumber,
       record.checkRunId, record.attention,
+    ).run();
+  }
+
+  async saveEvaluationDetail(record: EvaluationDetailRecord): Promise<void> {
+    await this.db.prepare(
+      `INSERT INTO evaluation_details
+       (repository_id, head_sha, schema_version, base_sha, pull_request_title, pull_request_url,
+        evaluator_version, evaluated_at, check_url, normalized_json, truncated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(repository_id, head_sha) DO UPDATE SET
+         schema_version = excluded.schema_version,
+         base_sha = excluded.base_sha,
+         pull_request_title = excluded.pull_request_title,
+         pull_request_url = excluded.pull_request_url,
+         evaluator_version = excluded.evaluator_version,
+         evaluated_at = excluded.evaluated_at,
+         check_url = excluded.check_url,
+         normalized_json = excluded.normalized_json,
+         truncated = excluded.truncated,
+         updated_at = CURRENT_TIMESTAMP`,
+    ).bind(
+      record.repositoryId,
+      record.headSha,
+      record.schemaVersion,
+      record.baseSha,
+      record.pullRequestTitle,
+      record.pullRequestUrl,
+      record.evaluatorVersion,
+      record.evaluatedAt,
+      record.checkUrl ?? null,
+      JSON.stringify(record.normalized),
+      record.truncated ? 1 : 0,
     ).run();
   }
 }
