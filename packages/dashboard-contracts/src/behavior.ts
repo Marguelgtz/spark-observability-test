@@ -1,4 +1,5 @@
 import type {
+  ActivityWindowV1,
   AttentionLevelV1,
   HistoryCompletenessV1,
   NotableTransitionKindV1,
@@ -90,4 +91,58 @@ export interface ChangeBehaviorV1 {
   lifecycle?: PullRequestLifecycleV1;
   historyCompleteness?: HistoryCompletenessV1;
   truncated: boolean;
+}
+
+export type BehaviorOutcomeKindV1 =
+  | 'RESOLVED_BEFORE_MERGE'
+  | 'MERGED_UNRESOLVED'
+  | 'OUTCOME_UNAVAILABLE'
+  | 'CLOSED_WITHOUT_MERGE'
+  | 'OPEN';
+
+export interface BehaviorOutcomeCountsV1 {
+  resolvedBeforeMerge: number;
+  mergedUnresolved: number;
+  outcomeUnavailable: number;
+  closedWithoutMerge: number;
+  open: number;
+}
+
+export interface BehaviorPatternExampleV1 {
+  repository: RepositoryRefV1;
+  pullRequest: PullRequestRefV1;
+  latestAt: string;
+  outcome: BehaviorOutcomeKindV1;
+  occurrences: number;
+  truncated: boolean;
+}
+
+export interface BehaviorPatternRepositoryCountV1 {
+  repository: RepositoryRefV1;
+  occurrences: number;
+  affectedPRs: number;
+}
+
+export type BehaviorPatternKindV1 = 'MOTIF' | 'SIGNATURE';
+
+export interface BehaviorPatternV1 {
+  kind: BehaviorPatternKindV1;
+  key: string;
+  label: string;
+  motifKind?: BehaviorMotifKindV1;
+  signature?: string;
+  occurrences: number;
+  affectedPRs: number;
+  outcomes: BehaviorOutcomeCountsV1;
+  repositories: BehaviorPatternRepositoryCountV1[];
+  examples: BehaviorPatternExampleV1[];
+}
+
+export interface BehaviorPatternsResponseV1 {
+  version: 1;
+  behaviorSchemaVersion: 1;
+  selectedWindow: ActivityWindowV1;
+  selectedRepositoryId: number | null;
+  observedPRs: number;
+  patterns: BehaviorPatternV1[];
 }
