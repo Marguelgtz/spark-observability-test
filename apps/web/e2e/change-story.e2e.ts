@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('pull request page leads with compact key moments and keeps analysis plus forensics available', async ({ page }) => {
+test('pull request page keeps analysis first and change evolution at the bottom', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
   const moments = page.getByTestId('key-moments');
@@ -21,11 +21,18 @@ test('pull request page leads with compact key moments and keeps analysis plus f
   await expect(moments.getByTestId('transition-feedback-trigger')).toHaveCount(2);
   await expect(page.getByTestId('transition-feedback-drawer')).toHaveCount(0);
 
-  await expect(page.getByTestId('insight-canvas-pr-trajectory')).toBeVisible();
+  const trajectory = page.getByTestId('insight-canvas-pr-trajectory');
+  await expect(trajectory).toBeVisible();
 
   const forensics = page.getByTestId('pr-forensics');
   await expect(forensics).toBeVisible();
   await expect(forensics).not.toHaveAttribute('open', '');
+
+  const prPage = page.getByTestId('pull-request-detail');
+  await expect(prPage.evaluate((element) => element.lastElementChild?.getAttribute('data-testid'))).resolves.toBe('key-moments');
+  await expect(trajectory.evaluate((element, momentsElement) => Boolean(element.compareDocumentPosition(momentsElement as Node) & Node.DOCUMENT_POSITION_FOLLOWING), await moments.elementHandle())).resolves.toBe(true);
+  await expect(forensics.evaluate((element, momentsElement) => Boolean(element.compareDocumentPosition(momentsElement as Node) & Node.DOCUMENT_POSITION_FOLLOWING), await moments.elementHandle())).resolves.toBe(true);
+
   await expect(page.getByRole('heading', { name: 'Observations', exact: true })).not.toBeVisible();
   await forensics.getByText('Forensic details', { exact: true }).click();
   await expect(forensics).toHaveAttribute('open', '');
