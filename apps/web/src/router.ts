@@ -2,6 +2,7 @@ export type DashboardRoute =
   | { kind: 'activity' }
   | { kind: 'account' }
   | { kind: 'pull-request'; repositoryId: number; pullRequestNumber: number }
+  | { kind: 'run'; repositoryId: number; runId: string }
   | { kind: 'evaluation'; repositoryId: number; headSha: string }
   | { kind: 'not-found' };
 
@@ -14,6 +15,14 @@ export function parseRoute(pathname: string): DashboardRoute {
       kind: 'pull-request',
       repositoryId: Number(pullRequestMatch[1]),
       pullRequestNumber: Number(pullRequestMatch[2]),
+    };
+  }
+  const runMatch = pathname.match(/^\/app\/repositories\/(\d+)\/runs\/([^/]+)\/?$/i);
+  if (runMatch) {
+    return {
+      kind: 'run',
+      repositoryId: Number(runMatch[1]),
+      runId: decodeURIComponent(runMatch[2]),
     };
   }
   const evaluationMatch = pathname.match(/^\/app\/evaluations\/(\d+)\/([a-f0-9]{7,64})\/?$/i);

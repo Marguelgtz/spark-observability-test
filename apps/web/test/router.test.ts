@@ -10,7 +10,15 @@ describe('dashboard router', () => {
     });
   });
 
-  it('keeps evaluation routes distinct from pull request routes', () => {
+  it('parses encoded immutable run identities independently from SHA routes', () => {
+    expect(parseRoute('/app/repositories/101/runs/run%3A42%3A1')).toEqual({
+      kind: 'run',
+      repositoryId: 101,
+      runId: 'run:42:1',
+    });
+  });
+
+  it('keeps evaluation routes distinct from pull request and run routes', () => {
     expect(parseRoute('/app/evaluations/101/a42c11e7')).toEqual({
       kind: 'evaluation',
       repositoryId: 101,

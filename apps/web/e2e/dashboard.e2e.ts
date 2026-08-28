@@ -33,7 +33,7 @@ test('pull request history expands into a horizontal evaluation rail', async ({ 
   await expect(history).toBeVisible();
   await expect(history.locator('.history-card')).toHaveCount(3);
   await expect(history.getByText('3 runs')).toBeVisible();
-  await expect(history.getByText('Latest')).toBeVisible();
+  await expect(history.getByText('Latest')).toHaveCount(1);
   await page.screenshot({ path: `${screenshotDir}/history-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
@@ -79,10 +79,11 @@ test('activity opens a pull request observability page', async ({ page }, testIn
   await page.screenshot({ path: `${screenshotDir}/pull-request-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
-test('pull request page drills into latest evaluation and keeps PR context', async ({ page }, testInfo) => {
+test('pull request page drills into latest immutable run and keeps PR context', async ({ page }, testInfo) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
   await page.getByRole('link', { name: 'View latest evaluation' }).click();
   await expect(page.getByTestId('evaluation-detail')).toBeVisible();
+  await expect(page).toHaveURL(/\/app\/repositories\/101\/runs\/fixture%3A101%3A42%3A0/);
   await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
   await expect(page.getByText('integration-test', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: '← PR #42' })).toBeVisible();
@@ -92,16 +93,36 @@ test('pull request page drills into latest evaluation and keeps PR context', asy
   await page.screenshot({ path: `${screenshotDir}/detail-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
-test('history cards navigate to a specific evaluation SHA with previous and next context', async ({ page }) => {
+test('same SHA observations remain individually inspectable by run ID', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
   await page.getByTestId('history-toggle-101-42').click();
   const history = page.getByTestId('history-101-42');
-  const older = history.locator('.history-card').nth(1);
-  await older.click();
+  const cards = history.locator('.history-card');
+  await expect(cards).toHaveCount(3);
+
+  const shaLabels = await cards.locator('code').allTextContents();
+  expect(new Set(shaLabels).size).toBe(1);
+
+  await cards.nth(1).click();
   await expect(page.getByTestId('evaluation-detail')).toBeVisible();
-  await expect(page).toHaveURL(/\/app\/evaluations\/101\//);
+  await expect(page).toHaveURL(/\/app\/repositories\/101\/runs\/fixture%3A101%3A42%3A1/);
+  await expect(page.locator('.evidence-status').first()).toHaveText('PENDING');
   await expect(page.getByRole('link', { name: '← Previous' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Next →' })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Next →' }).click();
+  await expect(page).toHaveURL(/\/app\/repositories\/101\/runs\/fixture%3A101%3A42%3A0/);
+  await expect(page.getByText('integration-test', { exact: true })).toBeVisible();
+  await expect(page.locator('.evidence-status.evidence-failed')).toHaveCount(2);
+});
+
+test('legacy SHA route remains latest-by-SHA compatibility', async ({ page }) => {
+  const sha = 'a42c11e7b8f2d61f963831db8200deaffeed0042';
+  await page.goto(`/app/evaluations/101/${sha}?window=7d&attention=ALL`);
+  await expect(page.getByTestId('evaluation-detail')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/app/evaluations/101/${sha}`));
+  await expect(page.getByText('integration-test', { exact: true })).toBeVisible();
+  await expect(page.getByText('FAILED', { exact: true })).toBeVisible();
 });
 
 test('legacy evaluation has a truthful unavailable state through the PR page', async ({ page }) => {
@@ -111,6 +132,7 @@ test('legacy evaluation has a truthful unavailable state through the PR page', a
   await page.getByRole('link', { name: 'View latest evaluation' }).click();
   await expect(page.getByTestId('detail-unavailable')).toBeVisible();
   await expect(page.getByText('Historical detail unavailable')).toBeVisible();
+  await expect(page.getByText(/reconstructed from Spark's previously retained latest-per-SHA history/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'Open GitHub PR' })).toBeVisible();
 });
 
