@@ -28,6 +28,7 @@ test('pull request history expands into a horizontal evaluation rail', async ({ 
   await page.goto('/app?window=7d&attention=ALL');
   const toggle = page.getByTestId('history-toggle-101-42');
   await expect(toggle).toContainText('3');
+  await expect(page.getByTestId('history-toggle-202-120')).toHaveClass(/is-singular/);
   await toggle.click();
   const history = page.getByTestId('history-101-42');
   await expect(history).toBeVisible();
@@ -50,6 +51,44 @@ test('attention, time, and repository filters are URL-owned', async ({ page }) =
   await page.getByTestId('repository-select').selectOption('303');
   await expect(page).toHaveURL(/repositoryId=303/);
   await expect(page.locator('.evaluation-row')).toHaveCount(1);
+});
+
+test('search and favorites filter the activity view and survive reload', async ({ page }) => {
+  await page.goto('/app?window=7d&attention=ALL');
+  const search = page.getByTestId('activity-search');
+  await search.fill('checkout');
+  await expect(page).toHaveURL(/q=checkout/);
+  await expect(page.locator('.evaluation-row')).toHaveCount(2);
+  await page.getByRole('link', { name: 'Open pull request 120: Checkout integration' }).click();
+  await expect(page).toHaveURL(/q=checkout/);
+  await page.goBack();
+  await expect(page.getByTestId('activity-search')).toHaveValue('checkout');
+
+  await page.getByTestId('activity-search').fill('');
+  await page.getByRole('button', { name: 'Favorite pull request #42' }).click();
+  await page.getByTestId('favorites-only').click();
+  await expect(page).toHaveURL(/favorites=1/);
+  await expect(page.locator('.evaluation-row')).toHaveCount(1);
+  await expect(page.getByRole('link', { name: 'Open pull request 42: API authentication changes' })).toBeVisible();
+
+  await page.reload();
+  await expect(page.locator('.evaluation-row')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Remove pull request #42 from favorites' })).toBeVisible();
+});
+
+test('same-SHA evaluations can be favorited independently by run ID', async ({ page }) => {
+  await page.goto('/app?window=7d&attention=ALL');
+  await page.getByTestId('history-toggle-101-42').click();
+  const history = page.getByTestId('history-101-42');
+  const favorites = history.locator('.favorite-button');
+  await expect(favorites).toHaveCount(3);
+  await favorites.nth(1).click();
+  await expect(favorites.nth(1)).toHaveAttribute('aria-pressed', 'true');
+  await expect(favorites.nth(0)).toHaveAttribute('aria-pressed', 'false');
+
+  await page.reload();
+  await page.getByTestId('history-toggle-101-42').click();
+  await expect(page.getByTestId('history-101-42').locator('.favorite-button').nth(1)).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('filtered empty state can reset attention', async ({ page }) => {

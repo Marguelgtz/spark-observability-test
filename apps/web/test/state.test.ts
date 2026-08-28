@@ -12,18 +12,20 @@ describe('activity URL state', () => {
   });
 
   it('parses valid filters', () => {
-    expect(parseActivityState('?window=24h&attention=HIGH&repositoryId=202&fixture=normal')).toMatchObject({
+    expect(parseActivityState('?window=24h&attention=HIGH&repositoryId=202&fixture=normal&q=checkout&favorites=1')).toMatchObject({
       window: '24h',
       attention: 'HIGH',
       repositoryId: 202,
-      fixture: 'normal'
+      fixture: 'normal',
+      query: 'checkout',
+      favoritesOnly: true,
     });
   });
 
   it('serializes refresh-safe filter state', () => {
-    const value = serializeActivityState({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error' });
+    const value = serializeActivityState({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error', query: 'deploy', favoritesOnly: true });
     const parsed = parseActivityState(`?${value}`);
-    expect(parsed).toMatchObject({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error' });
+    expect(parsed).toMatchObject({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error', query: 'deploy', favoritesOnly: true });
   });
 
   it('clears pagination when filters change', () => {

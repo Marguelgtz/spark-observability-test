@@ -5,6 +5,8 @@ const ATTENTION = new Set<AttentionFilterV1>(['ALL', 'LOW', 'MEDIUM', 'HIGH']);
 
 export interface ActivityUrlState extends ActivityQueryV1 {
   fixture?: string;
+  query?: string;
+  favoritesOnly?: boolean;
 }
 
 export function parseActivityState(search: string): ActivityUrlState {
@@ -22,7 +24,9 @@ export function parseActivityState(search: string): ActivityUrlState {
     repositoryId,
     cursor: params.get('cursor'),
     limit: parsedLimit && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 25,
-    fixture: params.get('fixture') ?? undefined
+    fixture: params.get('fixture') ?? undefined,
+    query: params.get('q')?.trim().slice(0, 100) || undefined,
+    favoritesOnly: params.get('favorites') === '1'
   };
 }
 
@@ -32,6 +36,8 @@ export function serializeActivityState(state: ActivityUrlState): string {
   params.set('attention', state.attention);
   if (state.repositoryId !== null) params.set('repositoryId', String(state.repositoryId));
   if (state.fixture) params.set('fixture', state.fixture);
+  if (state.query) params.set('q', state.query);
+  if (state.favoritesOnly) params.set('favorites', '1');
   return params.toString();
 }
 

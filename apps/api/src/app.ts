@@ -1,8 +1,9 @@
-import type { AccountV1, ActivityQueryV1, ActivityWindowV1, AttentionFilterV1 } from '@spark/dashboard-contracts';
+import type { AccountV1, ActivityQueryV1, ActivityWindowV1, AttentionFilterV1, DashboardFavoriteV1 } from '@spark/dashboard-contracts';
 import { createInstallationToken, GitHubApiClient, routeGitHubEvent, verifyWebhookSignature } from '@spark/github';
 import type { DashboardAuthorizer, DashboardPrincipal } from './dashboard-access';
 import { D1DashboardReader, type DashboardReader } from './dashboard-reader';
 import { D1SparkStore, type D1Database } from './d1';
+import { D1DashboardFavoriteStore, type DashboardFavoriteStore } from './dashboard-favorites';
 import { GitHubDashboardAuth } from './github-auth';
 import { SparkOrchestrator } from './orchestrator';
 import type { SparkStore } from './contracts';
@@ -27,6 +28,7 @@ export interface WebhookDependencies {
   dashboardReader?: DashboardReader;
   dashboardAuthorizer?: DashboardAuthorizer;
   dashboardAuth?: GitHubDashboardAuth;
+  dashboardFavoriteStore?: DashboardFavoriteStore;
 }
 
 export interface WorkerExecutionContext {
@@ -101,6 +103,37 @@ function validRepositoryPath(repositoryId: number, repositoryIds: number[]): boo
   return Number.isSafeInteger(repositoryId) && repositoryId > 0 && repositoryIds.includes(repositoryId);
 }
 
+async function parseFavorite(request: Request): Promise<DashboardFavoriteV1 | undefined> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    return undefined;
+  }
+  if (!value || typeof value !== 'object') return undefined;
+  const input = value as Record<string, unknown>;
+  const repositoryId = input.repositoryId;
+  const pullRequestNumber = input.pullRequestNumber;
+  if (!Number.isSafeInteger(repositoryId) || Number(repositoryId) <= 0
+    || !Number.isSafeInteger(pullRequestNumber) || Number(pullRequestNumber) <= 0) return undefined;
+  if (input.kind === 'pull-request') {
+    return { kind: 'pull-request', repositoryId: Number(repositoryId), pullRequestNumber: Number(pullRequestNumber) };
+  }
+  if (input.kind !== 'evaluation' || typeof input.headSha !== 'string' || !input.headSha || input.headSha.length > 128) {
+    return undefined;
+  }
+  if (input.runId !== undefined && (typeof input.runId !== 'string' || !input.runId || input.runId.length > 256)) {
+    return undefined;
+  }
+  return {
+    kind: 'evaluation',
+    repositoryId: Number(repositoryId),
+    pullRequestNumber: Number(pullRequestNumber),
+    ...(typeof input.runId === 'string' ? { runId: input.runId } : {}),
+    headSha: input.headSha,
+  };
+}
+
 async function handleDashboardRequest(
   request: Request,
   env: Env,
@@ -112,11 +145,28 @@ async function handleDashboardRequest(
   const principal = await authorizer.authorize(request);
   if (!principal) return json({ error: 'unauthorized' }, 401);
 
-  if (url.pathname === '/api/me') return json(principal.viewer);
-  if (url.pathname === '/api/account') return json(account(principal, env));
+  if (request.method === 'GET' && url.pathname === '/api/me') return json(principal.viewer);
+  if (request.method === 'GET' && url.pathname === '/api/account') return json(account(principal, env));
+
+  const favoriteStore = dependencies.dashboardFavoriteStore ?? new D1DashboardFavoriteStore(env.DB);
+  if (request.method === 'GET' && url.pathname === '/api/favorites') {
+    return json(await favoriteStore.list(principal.viewer.id, principal.repositoryIds));
+  }
+  if ((request.method === 'PUT' || request.method === 'DELETE') && url.pathname === '/api/favorites') {
+    if (request.headers.get('origin') !== url.origin) return json({ error: 'forbidden' }, 403);
+    const favorite = await parseFavorite(request);
+    if (!favorite) return json({ error: 'invalid favorite' }, 400);
+    if (!principal.repositoryIds.includes(favorite.repositoryId)) return json({ error: 'not found' }, 404);
+    if (request.method === 'DELETE') {
+      await favoriteStore.remove(principal.viewer.id, favorite);
+      return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } });
+    }
+    const saved = await favoriteStore.add(principal.viewer.id, favorite);
+    return saved ? json({ saved: true }) : json({ error: 'not found' }, 404);
+  }
 
   const reader = dependencies.dashboardReader ?? new D1DashboardReader(env.DB);
-  if (url.pathname === '/api/activity') {
+  if (request.method === 'GET' && url.pathname === '/api/activity') {
     const query = parseActivityQuery(url);
     if (!query) return json({ error: 'invalid activity query' }, 400);
     if (query.repositoryId !== null && !principal.repositoryIds.includes(query.repositoryId)) {
@@ -126,7 +176,7 @@ async function handleDashboardRequest(
   }
 
   const historyMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)\/evaluations$/);
-  if (historyMatch) {
+  if (request.method === 'GET' && historyMatch) {
     const repositoryId = Number(historyMatch[1]);
     const pullRequestNumber = Number(historyMatch[2]);
     if (!validPullRequestPath(repositoryId, pullRequestNumber, principal.repositoryIds)) {
@@ -137,7 +187,7 @@ async function handleDashboardRequest(
   }
 
   const runMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/runs\/([^/]+)$/);
-  if (runMatch) {
+  if (request.method === 'GET' && runMatch) {
     const repositoryId = Number(runMatch[1]);
     const runId = decodeURIComponent(runMatch[2]);
     if (!validRepositoryPath(repositoryId, principal.repositoryIds) || !runId) {
@@ -148,7 +198,7 @@ async function handleDashboardRequest(
   }
 
   const pullRequestMatch = url.pathname.match(/^\/api\/repositories\/(\d+)\/pulls\/(\d+)$/);
-  if (pullRequestMatch) {
+  if (request.method === 'GET' && pullRequestMatch) {
     const repositoryId = Number(pullRequestMatch[1]);
     const pullRequestNumber = Number(pullRequestMatch[2]);
     if (!validPullRequestPath(repositoryId, pullRequestNumber, principal.repositoryIds)) {
@@ -159,7 +209,7 @@ async function handleDashboardRequest(
   }
 
   const detailMatch = url.pathname.match(/^\/api\/evaluations\/(\d+)\/([^/]+)$/);
-  if (detailMatch) {
+  if (request.method === 'GET' && detailMatch) {
     const repositoryId = Number(detailMatch[1]);
     const headSha = decodeURIComponent(detailMatch[2]);
     if (!validRepositoryPath(repositoryId, principal.repositoryIds)) {
@@ -222,7 +272,7 @@ export async function handleRequest(
     return dashboardAuth.logout(request);
   }
 
-  if (request.method === 'GET' && url.pathname.startsWith('/api/')) {
+  if (url.pathname.startsWith('/api/')) {
     return handleDashboardRequest(request, env, { ...dependencies, dashboardAuth });
   }
   if (request.method !== 'POST' || url.pathname !== '/webhooks/github') return json({ error: 'not found' }, 404);

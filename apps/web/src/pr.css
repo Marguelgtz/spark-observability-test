@@ -1,5 +1,6 @@
 .pr-page { max-width: 980px; }
-.pr-header { margin-bottom: 26px; }
+.pr-header { margin-bottom: 26px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.pr-header > div { min-width: 0; }
 .pr-repo { margin: 0 0 8px; color: #6e6e68; font-size: 13px; }
 .pr-header h1 { margin: 0; font-size: 32px; line-height: 1.1; letter-spacing: -0.04em; }
 
@@ -41,7 +42,9 @@
 .pr-issue-title span, .pr-issue-counts { color: #6d6d67; font-size: 11px; }
 
 .pr-timeline { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 2px 2px 10px; scrollbar-width: thin; }
-.pr-run { position: relative; flex: 0 0 165px; min-height: 118px; border: 1px solid #d9d9d3; border-radius: 7px; background: #fbfbf9; padding: 11px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; }
+.pr-run-shell { position: relative; flex: 0 0 165px; }
+.pr-run { position: relative; width: 100%; min-height: 118px; border: 1px solid #d9d9d3; border-radius: 7px; background: #fbfbf9; padding: 11px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; }
+.pr-run-top { padding-right: 24px; }
 .pr-run:hover { background: white; border-color: #b8b8b1; }
 .pr-run.is-latest { border-color: #8b8b84; box-shadow: inset 0 0 0 1px #8b8b84; }
 .pr-run-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

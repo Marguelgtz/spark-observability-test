@@ -1,10 +1,10 @@
 import './styles.css';
 import './account.css';
 import './pr.css';
-import type { ActivityResponseV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
-import { enhanceEvaluationWithPullRequestContext, pullRequestHref, renderPullRequest } from './pr-ui';
+import { FavoriteStore } from './favorites';
+import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
 import { navigate, parseRoute } from './router';
 import { parseActivityState, serializeActivityState, withActivityState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderLoading, renderNotFound, renderSignedOut } from './ui';
@@ -49,19 +49,6 @@ function showSignedOut(): void {
   });
 }
 
-function routeActivityRowsToPullRequests(view: HTMLElement, activity: ActivityResponseV1, activitySearch: string): void {
-  for (const item of activity.pullRequests) {
-    const wrapper = view.querySelector<HTMLElement>(`[data-testid="pull-request-${item.repository.id}-${item.pullRequest.number}"]`);
-    const link = wrapper?.querySelector<HTMLAnchorElement>('.evaluation-main-link');
-    if (link) {
-      link.href = pullRequestHref(item.repository.id, item.pullRequest.number, activitySearch);
-      link.setAttribute('aria-label', `Open pull request ${item.pullRequest.number}: ${item.pullRequest.title}`);
-    }
-    const toggle = wrapper?.querySelector<HTMLButtonElement>('.history-toggle');
-    if (toggle) toggle.textContent = `${item.history.runCount} run${item.history.runCount === 1 ? '' : 's'} ▾`;
-  }
-}
-
 async function render(): Promise<void> {
   const api = createDashboardApi(window.location.search);
   const route = parseRoute(window.location.pathname);
@@ -70,11 +57,15 @@ async function render(): Promise<void> {
   try {
     const viewer = await api.getViewer();
     replace(renderLoading(viewer));
+    const savedFavorites = await api.getFavorites();
+    const favorites = new FavoriteStore(savedFavorites.favorites, {
+      add: (favorite) => api.addFavorite(favorite),
+      remove: (favorite) => api.removeFavorite(favorite),
+    });
 
     if (route.kind === 'activity') {
       const state = parseActivityState(window.location.search);
       const activity = await api.getActivity(state);
-      const activitySearch = serializeActivityState(state);
       const view = renderActivity(viewer, activity, state, {
         setWindow(value) {
           const next = withActivityState(state, { window: value });
@@ -92,11 +83,16 @@ async function render(): Promise<void> {
           const next = withActivityState(state, { attention: 'ALL' });
           navigate(`/app?${serializeActivityState(next)}`);
         },
+        setClientFilters(query, favoritesOnly) {
+          const next = withActivityState(state, { query: query.trim() || undefined, favoritesOnly });
+          const search = serializeActivityState(next);
+          window.history.replaceState(null, '', `/app${search ? `?${search}` : ''}`);
+        },
         loadHistory(repositoryId, pullRequestNumber) {
           return api.getPullRequestHistory(repositoryId, pullRequestNumber);
-        }
+        },
+        favorites,
       });
-      routeActivityRowsToPullRequests(view, activity, activitySearch);
       replace(view);
       return;
     }
@@ -113,13 +109,13 @@ async function render(): Promise<void> {
 
     if (route.kind === 'pull-request') {
       const detail = await api.getPullRequest(route.repositoryId, route.pullRequestNumber);
-      replace(renderPullRequest(viewer, detail, currentActivitySearch()));
+      replace(renderPullRequest(viewer, detail, currentActivitySearch(), favorites));
       return;
     }
 
     if (route.kind === 'run') {
       const response = await api.getRun(route.repositoryId, route.runId);
-      const view = renderEvaluation(viewer, response, currentActivitySearch());
+      const view = renderEvaluation(viewer, response, currentActivitySearch(), favorites);
       replace(view);
       const summary = response.status === 'available' ? response.detail : response.summary;
       try {
@@ -133,7 +129,7 @@ async function render(): Promise<void> {
 
     if (route.kind === 'evaluation') {
       const response = await api.getEvaluation(route.repositoryId, route.headSha);
-      const view = renderEvaluation(viewer, response, currentActivitySearch());
+      const view = renderEvaluation(viewer, response, currentActivitySearch(), favorites);
       replace(view);
       const summary = response.status === 'available' ? response.detail : response.summary;
       try {
