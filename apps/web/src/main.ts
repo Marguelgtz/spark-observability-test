@@ -1,6 +1,7 @@
 import './styles.css';
 import './account.css';
 import './pr.css';
+import type { ActivityResponseV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
 import { enhanceEvaluationWithPullRequestContext, pullRequestHref, renderPullRequest } from './pr-ui';
@@ -48,13 +49,16 @@ function showSignedOut(): void {
   });
 }
 
-function routeActivityRowsToPullRequests(view: HTMLElement, activity: Awaited<ReturnType<ReturnType<typeof createDashboardApi>['getActivity']>>, activitySearch: string): void {
+function routeActivityRowsToPullRequests(view: HTMLElement, activity: ActivityResponseV1, activitySearch: string): void {
   for (const item of activity.pullRequests) {
     const wrapper = view.querySelector<HTMLElement>(`[data-testid="pull-request-${item.repository.id}-${item.pullRequest.number}"]`);
     const link = wrapper?.querySelector<HTMLAnchorElement>('.evaluation-main-link');
-    if (!link) continue;
-    link.href = pullRequestHref(item.repository.id, item.pullRequest.number, activitySearch);
-    link.setAttribute('aria-label', `Open pull request ${item.pullRequest.number}: ${item.pullRequest.title}`);
+    if (link) {
+      link.href = pullRequestHref(item.repository.id, item.pullRequest.number, activitySearch);
+      link.setAttribute('aria-label', `Open pull request ${item.pullRequest.number}: ${item.pullRequest.title}`);
+    }
+    const toggle = wrapper?.querySelector<HTMLButtonElement>('.history-toggle');
+    if (toggle) toggle.textContent = `${item.history.runCount} run${item.history.runCount === 1 ? '' : 's'} ▾`;
   }
 }
 
