@@ -1,7 +1,9 @@
 import './styles.css';
 import './account.css';
+import './pr.css';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
+import { enhanceEvaluationWithPullRequestContext, pullRequestHref, renderPullRequest } from './pr-ui';
 import { navigate, parseRoute } from './router';
 import { parseActivityState, serializeActivityState, withActivityState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderLoading, renderNotFound, renderSignedOut } from './ui';
@@ -46,6 +48,16 @@ function showSignedOut(): void {
   });
 }
 
+function routeActivityRowsToPullRequests(view: HTMLElement, activity: Awaited<ReturnType<ReturnType<typeof createDashboardApi>['getActivity']>>, activitySearch: string): void {
+  for (const item of activity.pullRequests) {
+    const wrapper = view.querySelector<HTMLElement>(`[data-testid="pull-request-${item.repository.id}-${item.pullRequest.number}"]`);
+    const link = wrapper?.querySelector<HTMLAnchorElement>('.evaluation-main-link');
+    if (!link) continue;
+    link.href = pullRequestHref(item.repository.id, item.pullRequest.number, activitySearch);
+    link.setAttribute('aria-label', `Open pull request ${item.pullRequest.number}: ${item.pullRequest.title}`);
+  }
+}
+
 async function render(): Promise<void> {
   const api = createDashboardApi(window.location.search);
   const route = parseRoute(window.location.pathname);
@@ -58,7 +70,8 @@ async function render(): Promise<void> {
     if (route.kind === 'activity') {
       const state = parseActivityState(window.location.search);
       const activity = await api.getActivity(state);
-      replace(renderActivity(viewer, activity, state, {
+      const activitySearch = serializeActivityState(state);
+      const view = renderActivity(viewer, activity, state, {
         setWindow(value) {
           const next = withActivityState(state, { window: value });
           navigate(`/app?${serializeActivityState(next)}`);
@@ -78,7 +91,9 @@ async function render(): Promise<void> {
         loadHistory(repositoryId, pullRequestNumber) {
           return api.getPullRequestHistory(repositoryId, pullRequestNumber);
         }
-      }));
+      });
+      routeActivityRowsToPullRequests(view, activity, activitySearch);
+      replace(view);
       return;
     }
 
@@ -92,9 +107,23 @@ async function render(): Promise<void> {
       return;
     }
 
+    if (route.kind === 'pull-request') {
+      const detail = await api.getPullRequest(route.repositoryId, route.pullRequestNumber);
+      replace(renderPullRequest(viewer, detail, currentActivitySearch()));
+      return;
+    }
+
     if (route.kind === 'evaluation') {
-      const detail = await api.getEvaluation(route.repositoryId, route.headSha);
-      replace(renderEvaluation(viewer, detail, currentActivitySearch()));
+      const response = await api.getEvaluation(route.repositoryId, route.headSha);
+      const view = renderEvaluation(viewer, response, currentActivitySearch());
+      replace(view);
+      const summary = response.status === 'available' ? response.detail : response.summary;
+      try {
+        const pullRequest = await api.getPullRequest(route.repositoryId, summary.pullRequest.number);
+        enhanceEvaluationWithPullRequestContext(view, pullRequest, route.headSha, currentActivitySearch());
+      } catch {
+        // Evaluation detail remains independently useful if PR-level history is unavailable.
+      }
       return;
     }
 
