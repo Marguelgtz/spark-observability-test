@@ -165,7 +165,7 @@ async function processWebhook(
   event: string,
 ): Promise<void> {
   try {
-    const result = await orchestrator.handle(routed);
+    const result = await orchestrator.handle(routed, { deliveryId, event, action: routed.action });
     console.info(JSON.stringify({ deliveryId, event, action: routed.action, result: result.status }));
   } catch (error) {
     let deliveryReleased = false;
