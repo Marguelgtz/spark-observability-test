@@ -1,4 +1,5 @@
 import type {
+  EvaluationSummaryV1,
   EvidenceHealthV1,
   PullRequestDetailV1,
   PullRequestInsightV1,
@@ -45,6 +46,17 @@ export function pullRequestHref(repositoryId: number, pullRequestNumber: number,
 function evaluationHref(repositoryId: number, headSha: string, activitySearch: string): string {
   const base = `/app/evaluations/${repositoryId}/${headSha}`;
   return activitySearch ? `${base}?${activitySearch}` : base;
+}
+
+export function runHref(repositoryId: number, runId: string, activitySearch: string): string {
+  const base = `/app/repositories/${repositoryId}/runs/${encodeURIComponent(runId)}`;
+  return activitySearch ? `${base}?${activitySearch}` : base;
+}
+
+function observationHref(summary: EvaluationSummaryV1, activitySearch: string): string {
+  return summary.runId
+    ? runHref(summary.repository.id, summary.runId, activitySearch)
+    : evaluationHref(summary.repository.id, summary.headSha, activitySearch);
 }
 
 function healthLabel(health: EvidenceHealthV1): string {
@@ -124,7 +136,7 @@ function currentSection(detail: PullRequestDetailV1, activitySearch: string): HT
 
   const actions = node('div', 'pr-actions');
   const latest = node('a', 'primary-link', 'View latest evaluation') as HTMLAnchorElement;
-  latest.href = evaluationHref(detail.repository.id, detail.latest.headSha, activitySearch);
+  latest.href = observationHref(detail.latest, activitySearch);
   latest.dataset.routerLink = 'true';
   actions.append(latest, externalLink('Open GitHub PR', detail.pullRequest.url));
   section.append(actions);
@@ -136,9 +148,16 @@ function historySection(detail: PullRequestDetailV1): HTMLElement {
   section.append(node('h2', undefined, 'Trajectory'));
   const evidence = detail.history.evidenceCounts;
   const attention = detail.history.attentionCounts;
+  const historyNote = detail.historyCompleteness === 'PARTIAL_BACKFILL'
+    ? detail.truncated
+      ? `Partial history · showing latest ${detail.runs.length}`
+      : 'Includes reconstructed pre-trajectory history'
+    : detail.truncated
+      ? `Showing latest ${detail.runs.length}`
+      : 'Complete observed history';
   const metrics = node('div', 'pr-metrics');
   metrics.append(
-    metric('Evaluations', String(detail.history.totalRuns), detail.truncated ? `Showing latest ${detail.runs.length}` : 'Complete observed history'),
+    metric('Evaluations', String(detail.history.totalRuns), historyNote),
     metric('Clear', String(evidence.CLEAR), detail.history.currentClearStreak ? `${detail.history.currentClearStreak} current streak` : undefined),
     metric('Failed evidence', String(evidence.FAILED), detail.history.currentFailureStreak ? `${detail.history.currentFailureStreak} current streak` : undefined),
     metric('Pending / missing', String(evidence.PENDING_OR_MISSING)),
@@ -206,13 +225,15 @@ function timelineSection(detail: PullRequestDetailV1, activitySearch: string): H
   rail.setAttribute('role', 'list');
   for (const [index, run] of detail.runs.entries()) {
     const link = node('a', `pr-run${index === 0 ? ' is-latest' : ''}`) as HTMLAnchorElement;
-    link.href = evaluationHref(detail.repository.id, run.headSha, activitySearch);
+    link.href = observationHref(run, activitySearch);
     link.dataset.routerLink = 'true';
     link.setAttribute('role', 'listitem');
+    if (run.runId) link.dataset.runId = run.runId;
     const top = node('span', 'pr-run-top');
     top.append(node('span', attentionClass(run.attention), run.attention), node('code', undefined, shortSha(run.headSha)));
     link.append(top, node('strong', undefined, evidenceLabel(run.evidenceSummary)), node('time', undefined, `${relativeTime(run.evaluatedAt)} ago`));
-    if (index === 0) link.append(node('span', 'pr-run-latest', 'Latest'));
+    if (run.observationSource === 'BACKFILL') link.append(node('span', 'pr-run-latest', 'Backfilled'));
+    else if (index === 0) link.append(node('span', 'pr-run-latest', 'Latest'));
     rail.append(link);
   }
   section.append(rail);
@@ -248,10 +269,15 @@ function transitionForRun(detail: PullRequestDetailV1, headSha: string): PullReq
   return detail.transitions.filter(item => item.toHeadSha === headSha);
 }
 
+export interface EvaluationObservationIdentity {
+  headSha: string;
+  runId?: string;
+}
+
 export function enhanceEvaluationWithPullRequestContext(
   root: HTMLElement,
   detail: PullRequestDetailV1,
-  headSha: string,
+  identity: EvaluationObservationIdentity,
   activitySearch: string,
 ): void {
   const main = root.querySelector<HTMLElement>('main[data-testid="evaluation-detail"]');
@@ -262,30 +288,34 @@ export function enhanceEvaluationWithPullRequestContext(
     existingBack.href = pullRequestHref(detail.repository.id, detail.pullRequest.number, activitySearch);
   }
 
-  const index = detail.runs.findIndex(run => run.headSha === headSha);
+  const index = identity.runId
+    ? detail.runs.findIndex(run => run.runId === identity.runId)
+    : detail.runs.findIndex(run => run.headSha === identity.headSha);
   if (index < 0) return;
+  const current = detail.runs[index];
   const previous = detail.runs[index + 1];
   const next = index > 0 ? detail.runs[index - 1] : undefined;
   const context = node('section', 'evaluation-pr-context');
   const position = node('div', 'evaluation-pr-position');
-  position.append(node('strong', undefined, `Evaluation ${detail.runs.length - index} of ${detail.history.totalRuns}`), node('span', undefined, `Head ${shortSha(headSha)}`));
+  position.append(node('strong', undefined, `Evaluation ${detail.runs.length - index} of ${detail.history.totalRuns}`), node('span', undefined, `Head ${shortSha(current.headSha)}`));
   const nav = node('div', 'evaluation-run-nav');
   if (previous) {
     const link = node('a', 'secondary-link', '← Previous') as HTMLAnchorElement;
-    link.href = evaluationHref(detail.repository.id, previous.headSha, activitySearch);
+    link.href = observationHref(previous, activitySearch);
     link.dataset.routerLink = 'true';
     nav.append(link);
   }
   if (next) {
     const link = node('a', 'secondary-link', 'Next →') as HTMLAnchorElement;
-    link.href = evaluationHref(detail.repository.id, next.headSha, activitySearch);
+    link.href = observationHref(next, activitySearch);
     link.dataset.routerLink = 'true';
     nav.append(link);
   }
   position.append(nav);
   context.append(position);
 
-  const changes = transitionForRun(detail, headSha);
+  const sameShaCount = detail.runs.filter(run => run.headSha === current.headSha).length;
+  const changes = identity.runId && sameShaCount > 1 ? [] : transitionForRun(detail, current.headSha);
   if (changes.length) {
     const since = node('div', 'evaluation-since');
     since.append(node('span', 'pr-section-kicker', 'Since previous evaluation'));
