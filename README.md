@@ -4,7 +4,7 @@ Spark is an experimental GitHub App for **software-change observability**. It tu
 
 [Open the live dashboard](https://spark-api.marguel-gtz.workers.dev/app)
 
-> **Project status:** active alpha. Spark is deployed for evaluation and has been exercised against public test pull requests, but it is not yet a generally available or SLA-backed service. Development is currently being consolidated from a validated stacked-PR series; not every capability described here has landed on `main` yet.
+> **Project status:** active alpha. Spark is deployed for evaluation and has been exercised against public test pull requests, but it is not yet a generally available or SLA-backed service. The validated dashboard and change-trajectory stack has now been consolidated into `main`.
 
 ## Why Spark
 
