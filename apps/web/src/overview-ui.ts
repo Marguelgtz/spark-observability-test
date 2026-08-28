@@ -1,8 +1,19 @@
-import type { ActivityWindowV1, EvaluationSummaryV1, PullRequestActivityV1, ViewerV1 } from '@spark/dashboard-contracts';
+import './insight-charts.css';
+import type { ActivityWindowV1, AttentionLevelV1, EvaluationSummaryV1, PullRequestActivityV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { evidenceLabel, relativeTime, shortSha } from './format';
+import {
+  attentionTransitionChart,
+  donutChart,
+  horizontalBarChart,
+  lineChart,
+  regressionRecoveryChart,
+  timeBarChart,
+  transitionMixChart,
+  type NamedValue,
+} from './insight-charts';
 import type { ActivityUrlState } from './state';
 import { serializeActivityState } from './state';
-import type { ActivityTrendPointV1, OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
+import { getNotableTransitionInsights, type OverviewDrilldownResponseV1, type OverviewMetricV1 } from './overview-api';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -11,35 +22,22 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
   return element;
 }
 
-const metricConfig: Record<OverviewMetricV1, {
-  title: string;
-  description: string;
-  chartLabel: string;
-  value: (point: ActivityTrendPointV1) => number;
-}> = {
+const metricConfig: Record<OverviewMetricV1, { title: string; description: string }> = {
   'pull-requests': {
     title: 'Observed pull requests',
     description: 'Pull requests with at least one Spark evaluation in the selected window.',
-    chartLabel: 'PRs observed',
-    value: (point) => point.observedPRs,
   },
   evaluations: {
     title: 'Evaluations',
     description: 'Immutable Spark evaluation runs recorded in the selected window.',
-    chartLabel: 'Evaluations',
-    value: (point) => point.evaluations,
   },
   attention: {
     title: 'Needs attention',
     description: 'Open pull requests whose latest Spark state is HIGH or MEDIUM attention.',
-    chartLabel: 'Attention evaluations',
-    value: (point) => point.attentionEvaluations,
   },
   'merged-unresolved': {
     title: 'Merged unresolved',
     description: 'Pull requests merged while Spark still had unresolved attention or evidence.',
-    chartLabel: 'Unresolved merges',
-    value: (point) => point.mergedUnresolved,
   },
 };
 
@@ -59,49 +57,6 @@ function windowControls(state: ActivityUrlState, onWindow: (window: ActivityWind
     group.append(button);
   }
   return group;
-}
-
-function bucketLabel(value: string, hourly: boolean): string {
-  const date = new Date(value);
-  if (hourly) return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function barChart(
-  points: ActivityTrendPointV1[],
-  label: string,
-  read: (point: ActivityTrendPointV1) => number,
-  window: ActivityWindowV1,
-): HTMLElement {
-  const figure = node('figure', 'overview-chart');
-  const caption = node('figcaption', 'overview-chart-caption');
-  caption.append(node('strong', undefined, label), node('span', undefined, window === '24h' ? 'Hourly' : 'Daily'));
-  figure.append(caption);
-
-  const values = points.map(read);
-  const max = Math.max(1, ...values);
-  const bars = node('div', 'overview-chart-bars');
-  bars.setAttribute('role', 'img');
-  bars.setAttribute('aria-label', `${label} over the selected ${window} window`);
-  const labelEvery = points.length > 16 ? Math.ceil(points.length / 8) : 1;
-
-  points.forEach((point, index) => {
-    const value = values[index];
-    const cell = node('div', 'overview-chart-cell');
-    const barWrap = node('div', 'overview-chart-bar-wrap');
-    const bar = node('div', 'overview-chart-bar');
-    bar.style.height = `${Math.max(value > 0 ? 6 : 1, (value / max) * 100)}%`;
-    const formattedBucket = bucketLabel(point.bucketStart, window === '24h');
-    cell.title = `${formattedBucket}: ${value}`;
-    cell.setAttribute('aria-label', `${formattedBucket}: ${value}`);
-    barWrap.append(bar);
-    cell.append(barWrap);
-    if (index % labelEvery === 0 || index === points.length - 1) cell.append(node('span', 'overview-chart-axis', formattedBucket));
-    else cell.append(node('span', 'overview-chart-axis overview-chart-axis-empty', ''));
-    bars.append(cell);
-  });
-  figure.append(bars);
-  return figure;
 }
 
 function attentionBadge(attention: string): HTMLElement {
@@ -154,6 +109,112 @@ function evaluationItem(evaluation: EvaluationSummaryV1, state: ActivityUrlState
   return link;
 }
 
+function repositoryDistribution(response: OverviewDrilldownResponseV1): NamedValue[] {
+  const counts = new Map<string, number>();
+  for (const item of response.items) {
+    const repository = item.kind === 'pull-request'
+      ? item.activity.repository
+      : item.kind === 'evaluation'
+        ? item.evaluation.repository
+        : item.repository;
+    const label = `${repository.owner}/${repository.name}`;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 8);
+}
+
+function attentionMix(response: OverviewDrilldownResponseV1, preMerge = false): NamedValue[] {
+  const counts: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 0, HIGH: 0 };
+  for (const item of response.items) {
+    let attention: AttentionLevelV1 | undefined;
+    if (preMerge && item.kind === 'merge') attention = item.lifecycle.preMergeAttention;
+    else if (item.kind === 'pull-request') attention = item.activity.latest.attention;
+    else if (item.kind === 'evaluation') attention = item.evaluation.attention;
+    else attention = item.latest?.attention;
+    if (attention) counts[attention] += 1;
+  }
+  return [
+    { label: 'HIGH', value: counts.HIGH, tone: 'high' as const },
+    { label: 'MEDIUM', value: counts.MEDIUM, tone: 'medium' as const },
+    { label: 'LOW', value: counts.LOW, tone: 'low' as const },
+  ].filter((item) => item.value > 0);
+}
+
+function mergeEvidenceMix(response: OverviewDrilldownResponseV1): NamedValue[] {
+  const counts = new Map<string, number>();
+  for (const item of response.items) {
+    if (item.kind !== 'merge') continue;
+    const health = item.lifecycle.preMergeEvidenceHealth ?? 'UNKNOWN';
+    counts.set(health, (counts.get(health) ?? 0) + 1);
+  }
+  const tone = (label: string): NamedValue['tone'] => {
+    if (label === 'FAILED') return 'failed';
+    if (label === 'PENDING_OR_MISSING') return 'waiting';
+    if (label === 'CLEAR') return 'clear';
+    return 'unknown';
+  };
+  return [...counts.entries()].map(([label, value]) => ({ label: label.replaceAll('_', ' '), value, tone: tone(label) }));
+}
+
+function immediateCharts(response: OverviewDrilldownResponseV1, state: ActivityUrlState): HTMLElement[] {
+  if (response.metric === 'pull-requests') {
+    return [
+      horizontalBarChart('PRs by repository', 'Where observed changes are concentrated', repositoryDistribution(response)),
+      donutChart('Latest attention mix', 'Current state of observed PRs', attentionMix(response)),
+    ];
+  }
+
+  if (response.metric === 'evaluations') {
+    return [
+      lineChart(
+        response.trend,
+        'Evaluation flow',
+        [
+          { label: 'Evaluations', read: (point) => point.evaluations },
+          { label: 'PRs observed', read: (point) => point.observedPRs },
+        ],
+        state.window,
+      ),
+      donutChart('Evaluation attention mix', 'Attention at evaluation time', attentionMix(response)),
+    ];
+  }
+
+  if (response.metric === 'attention') {
+    return [
+      donutChart('Current attention queue', 'HIGH vs MEDIUM open PRs', attentionMix(response)),
+      horizontalBarChart('Attention by repository', 'Where current attention is concentrated', repositoryDistribution(response)),
+    ];
+  }
+
+  return [
+    donutChart('Pre-merge attention', 'Attention immediately before merge', attentionMix(response, true)),
+    horizontalBarChart('Pre-merge evidence', 'Evidence health at merge', mergeEvidenceMix(response)),
+    timeBarChart(response.trend, 'Unresolved merge timing', (point) => point.mergedUnresolved, state.window),
+  ];
+}
+
+function appendTransitionInsight(charts: HTMLElement, metric: OverviewMetricV1, state: ActivityUrlState): void {
+  if (metric === 'merged-unresolved') return;
+  const slot = node('div', 'overview-transition-slot', 'Loading notable transition insight…');
+  slot.dataset.testid = 'transition-chart-loading';
+  charts.append(slot);
+  void getNotableTransitionInsights(state)
+    .then((insights) => {
+      if (!slot.isConnected) return;
+      if (metric === 'attention') {
+        slot.replaceWith(
+          regressionRecoveryChart(insights, state.window),
+          attentionTransitionChart(insights, state.window),
+        );
+        return;
+      }
+      slot.replaceWith(transitionMixChart(insights));
+    })
+    .catch(() => {
+      if (slot.isConnected) slot.remove();
+    });
+}
+
 export function renderOverviewDrilldown(
   viewer: ViewerV1,
   response: OverviewDrilldownResponseV1,
@@ -179,13 +240,12 @@ export function renderOverviewDrilldown(
 
   const charts = node('section', 'overview-chart-grid');
   charts.dataset.testid = 'overview-charts';
-  charts.append(barChart(response.trend, config.chartLabel, config.value, state.window));
-  if (response.metric !== 'evaluations') charts.append(barChart(response.trend, 'Evaluation volume', (point) => point.evaluations, state.window));
-  else charts.append(barChart(response.trend, 'PRs observed', (point) => point.observedPRs, state.window));
+  charts.append(...immediateCharts(response, state));
+  appendTransitionInsight(charts, response.metric, state);
   main.append(charts);
 
   if (response.metric === 'attention') {
-    main.append(node('p', 'overview-chart-note', 'The headline count is the current active queue. The chart shows HIGH/MEDIUM evaluation events over time, so it is event volume rather than a historical queue snapshot.'));
+    main.append(node('p', 'overview-chart-note', 'The headline count is the current active queue. Transition charts show notable changes observed during the selected window, not historical queue snapshots.'));
   }
 
   const section = node('section', 'overview-list-section');
