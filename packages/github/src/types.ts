@@ -10,6 +10,8 @@ export interface GitHubRepository {
 
 export interface GitHubPullRequest {
   number: number;
+  title: string;
+  html_url: string;
   state: string;
   changed_files: number;
   head: { sha: string };

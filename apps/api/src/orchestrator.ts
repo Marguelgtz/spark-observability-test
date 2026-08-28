@@ -6,6 +6,7 @@ import {
   type GitHubEventRequest,
 } from '@spark/github';
 import type { SparkStore } from './contracts';
+import { buildStoredEvaluationDetail } from './evaluation-detail';
 
 export interface OrchestratorDependencies {
   store: SparkStore;
@@ -27,7 +28,8 @@ type EvaluationStage =
   | 'lookup_evaluation'
   | 'create_check'
   | 'update_check'
-  | 'persist_evaluation';
+  | 'persist_evaluation'
+  | 'persist_evaluation_detail';
 
 interface EvaluationLogContext {
   installationId: number;
@@ -105,6 +107,26 @@ export class SparkOrchestrator {
       checkRunId: checkRun.id,
       attention: evaluation.attention,
     }));
+
+    const detail = buildStoredEvaluationDetail(source, evaluation, { id: checkRun.id, url: checkRun.html_url });
+    try {
+      await this.runStage('persist_evaluation_detail', logContext, () => this.dependencies.store.saveEvaluationDetail({
+        repositoryId: source.repository.id,
+        headSha,
+        schemaVersion: detail.version,
+        baseSha: detail.baseSha,
+        pullRequestTitle: detail.pullRequest.title,
+        pullRequestUrl: detail.pullRequest.url,
+        evaluatorVersion: detail.evaluatorVersion,
+        evaluatedAt: detail.evaluatedAt,
+        checkUrl: detail.check.url,
+        normalized: detail,
+        truncated: detail.truncation.truncated,
+      }));
+    } catch {
+      // Dashboard history is supplemental. The GitHub-native Check remains authoritative.
+    }
+
     return { status: 'evaluated', evaluation, checkRunId: checkRun.id };
   }
 }
