@@ -7,12 +7,17 @@ const metrics = [
   ['merged-unresolved', 'Merged unresolved'],
 ] as const;
 
-test('home metrics are clickable, render varied insights, and flag unresolved merges in recent activity', async ({ page }) => {
+test('home metrics are clickable, render composable insights, and flag unresolved merges in recent activity', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
 
   const homeCharts = page.getByTestId('home-charts');
   await expect(homeCharts).toBeVisible();
-  await expect(homeCharts.locator('[data-chart-kind="line"]')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-throughput-iteration')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-attention-health')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-notable-behavior')).toBeVisible();
+  await expect(homeCharts.locator('[data-chart-kind="bar"]')).toBeVisible();
+  await expect(homeCharts.locator('[data-chart-kind="histogram"]')).toBeVisible();
+  await expect(homeCharts.locator('[data-chart-kind="stacked-bar"]')).toBeVisible();
   await expect(homeCharts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
   await expect(page.getByTestId('overview-card-pull-requests')).toHaveAttribute('href', /\/app\/overview\/pull-requests/);
@@ -39,22 +44,30 @@ for (const [metric, heading] of metrics) {
   });
 }
 
-test('drilldown graphs change form to match the metric context', async ({ page }) => {
+test('drilldown canvases pair graph forms to the metric context', async ({ page }) => {
   await page.goto('/app/overview/pull-requests?window=7d&attention=ALL');
   let charts = page.getByTestId('overview-charts');
+  await expect(page.getByTestId('insight-canvas-portfolio-shape')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toHaveCount(2);
-  await expect(charts.locator('[data-chart-kind="horizontal-bar"]').first()).toBeVisible();
   await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
 
   await page.goto('/app/overview/evaluations?window=7d&attention=ALL');
   charts = page.getByTestId('overview-charts');
+  await expect(page.getByTestId('insight-canvas-evaluation-flow')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-iteration-density')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-evaluation-attention')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="line"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="bar"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="histogram"]')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="stacked-bar"]')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
 
   await page.goto('/app/overview/attention?window=7d&attention=ALL');
   charts = page.getByTestId('overview-charts');
+  await expect(page.getByTestId('insight-canvas-current-attention')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-recovery-behavior')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
   await expect(page.getByTestId('regression-recovery-chart')).toBeVisible();
@@ -62,6 +75,8 @@ test('drilldown graphs change form to match the metric context', async ({ page }
 
   await page.goto('/app/overview/merged-unresolved?window=7d&attention=ALL');
   charts = page.getByTestId('overview-charts');
+  await expect(page.getByTestId('insight-canvas-merge-quality')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-merge-evidence')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="bar"]')).toBeVisible();
