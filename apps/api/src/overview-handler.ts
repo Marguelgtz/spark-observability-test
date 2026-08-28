@@ -1,6 +1,7 @@
 import type { ActivityWindowV1 } from '@spark/dashboard-contracts';
 import type { Env } from './app';
 import { readActivityDrilldown, type OverviewMetricV1 } from './activity-drilldown';
+import { readNotableTransitionInsights } from './activity-transitions';
 import { GitHubDashboardAuth } from './github-auth';
 
 const WINDOWS: ActivityWindowV1[] = ['24h', '7d', '30d'];
@@ -24,13 +25,13 @@ function windowStart(window: ActivityWindowV1, now: Date): string {
 
 export function isOverviewRequest(request: Request): boolean {
   if (request.method !== 'GET') return false;
-  return /^\/api\/overview\/(pull-requests|evaluations|attention|merged-unresolved)$/.test(new URL(request.url).pathname);
+  return /^\/api\/overview\/(pull-requests|evaluations|attention|merged-unresolved|transitions)$/.test(new URL(request.url).pathname);
 }
 
 export async function handleOverviewRequest(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const match = url.pathname.match(/^\/api\/overview\/(pull-requests|evaluations|attention|merged-unresolved)$/);
-  if (!match || !METRICS.includes(match[1] as OverviewMetricV1)) return json({ error: 'not found' }, 404);
+  const match = url.pathname.match(/^\/api\/overview\/(pull-requests|evaluations|attention|merged-unresolved|transitions)$/);
+  if (!match) return json({ error: 'not found' }, 404);
 
   const auth = new GitHubDashboardAuth(env);
   const principal = await auth.authorize(request);
@@ -49,12 +50,21 @@ export async function handleOverviewRequest(request: Request, env: Env): Promise
   }
 
   const now = new Date();
-  return json(await readActivityDrilldown(env.DB, {
-    metric: match[1] as OverviewMetricV1,
+  const input = {
     window,
     repositoryIds: principal.repositoryIds,
     repositoryId,
     start: windowStart(window, now),
     now,
+  };
+
+  if (match[1] === 'transitions') {
+    return json(await readNotableTransitionInsights(env.DB, input));
+  }
+
+  if (!METRICS.includes(match[1] as OverviewMetricV1)) return json({ error: 'not found' }, 404);
+  return json(await readActivityDrilldown(env.DB, {
+    ...input,
+    metric: match[1] as OverviewMetricV1,
   }));
 }
