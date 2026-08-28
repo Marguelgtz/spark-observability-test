@@ -22,27 +22,26 @@ function collectForensics(page: HTMLElement): HTMLElement | undefined {
   const sections = [
     sectionByHeading(page, 'Observations'),
     sectionByHeading(page, 'Evidence issues'),
-    sectionByHeading(page, 'Evaluation history'),
   ].filter((item): item is HTMLElement => Boolean(item));
   if (!sections.length) return undefined;
 
-  const forensics = document.createElement('section');
-  forensics.className = 'pr-forensics';
-  forensics.dataset.testid = 'pr-forensics';
+  const details = document.createElement('details');
+  details.className = 'pr-forensics';
+  details.dataset.testid = 'pr-forensics';
 
-  const heading = document.createElement('div');
-  heading.className = 'pr-forensics-heading';
+  const summary = document.createElement('summary');
+  summary.className = 'pr-forensics-heading';
   const title = document.createElement('h2');
   title.textContent = 'Forensic details';
   const description = document.createElement('p');
-  description.textContent = 'Underlying observations, evidence issues, and complete evaluation history.';
-  heading.append(title, description);
+  description.textContent = 'Underlying observations and evidence issues.';
+  summary.append(title, description);
 
   const body = document.createElement('div');
   body.className = 'pr-forensics-body';
   body.append(...sections);
-  forensics.append(heading, body);
-  return forensics;
+  details.append(summary, body);
+  return details;
 }
 
 export function enhancePullRequestWithSeverityTimeline(
@@ -70,6 +69,7 @@ export function enhancePullRequestWithSeverityTimeline(
 
   page.querySelector<HTMLElement>('.pr-terminal')?.remove();
   page.querySelector<HTMLElement>('.pr-transition-list')?.remove();
+  const evaluationHistory = sectionByHeading(page, 'Evaluation history');
   const forensics = collectForensics(page);
 
   let moments = root.querySelector<HTMLElement>('[data-testid="key-moments"]');
@@ -79,6 +79,7 @@ export function enhancePullRequestWithSeverityTimeline(
       ...(saveFeedback ? { saveFeedback } : {}),
     });
   }
+  if (evaluationHistory) page.append(evaluationHistory);
   page.append(moments);
   if (forensics) page.append(forensics);
   return root;
