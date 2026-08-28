@@ -117,7 +117,10 @@ function attentionClass(attention: string): string {
 
 function activityHref(summary: EvaluationSummaryV1, state: ActivityUrlState): string {
   const search = serializeActivityState(state);
-  return `/app/evaluations/${summary.repository.id}/${summary.headSha}${search ? `?${search}` : ''}`;
+  const base = summary.runId
+    ? `/app/repositories/${summary.repository.id}/runs/${encodeURIComponent(summary.runId)}`
+    : `/app/evaluations/${summary.repository.id}/${summary.headSha}`;
+  return `${base}${search ? `?${search}` : ''}`;
 }
 
 function historyMix(activity: PullRequestActivityV1): string {
@@ -137,32 +140,40 @@ function historyRunState(summary: EvaluationSummaryV1): 'failed' | 'pending' | '
   return 'clear';
 }
 
-function renderHistoryPanel(history: PullRequestHistoryResponseV1, latestHeadSha: string, state: ActivityUrlState): HTMLElement {
+function sameObservation(run: EvaluationSummaryV1, latest: EvaluationSummaryV1): boolean {
+  return latest.runId ? run.runId === latest.runId : run.headSha === latest.headSha;
+}
+
+function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: EvaluationSummaryV1, state: ActivityUrlState): HTMLElement {
   const panel = node('div', 'pr-history-panel');
   panel.dataset.testid = `history-${history.repository.id}-${history.pullRequest.number}`;
 
   const failed = history.runs.filter((run) => historyRunState(run) === 'failed').length;
   const pending = history.runs.filter((run) => historyRunState(run) === 'pending').length;
   const clear = history.runs.filter((run) => historyRunState(run) === 'clear').length;
+  const provenance = history.historyCompleteness === 'PARTIAL_BACKFILL' ? ' · includes reconstructed history' : '';
   const summary = node('div', 'pr-history-summary');
   summary.append(
     node('strong', undefined, `${history.totalRunCount} run${history.totalRunCount === 1 ? '' : 's'}`),
-    node('span', undefined, `${clear} clear · ${failed} failed evidence · ${pending} pending/missing${history.truncated ? ' · showing latest 100' : ''}`)
+    node('span', undefined, `${clear} clear · ${failed} failed evidence · ${pending} pending/missing${history.truncated ? ' · showing latest 100' : ''}${provenance}`)
   );
   panel.append(summary);
 
   const rail = node('div', 'history-rail');
   rail.setAttribute('role', 'list');
   for (const run of history.runs) {
-    const card = node('a', `history-card${run.headSha === latestHeadSha ? ' is-latest' : ''}`) as HTMLAnchorElement;
+    const isLatest = sameObservation(run, latest);
+    const card = node('a', `history-card${isLatest ? ' is-latest' : ''}`) as HTMLAnchorElement;
     card.href = activityHref(run, state);
     card.dataset.routerLink = 'true';
+    if (run.runId) card.dataset.runId = run.runId;
     card.setAttribute('role', 'listitem');
-    card.setAttribute('aria-label', `${run.headSha === latestHeadSha ? 'Latest, ' : ''}${run.attention}, ${shortSha(run.headSha)}, ${evidenceLabel(run.evidenceSummary)}`);
+    card.setAttribute('aria-label', `${isLatest ? 'Latest, ' : ''}${run.attention}, ${shortSha(run.headSha)}, ${evidenceLabel(run.evidenceSummary)}`);
     const top = node('span', 'history-card-top');
     top.append(node('span', attentionClass(run.attention), run.attention), node('code', undefined, shortSha(run.headSha)));
     card.append(top, node('strong', 'history-evidence', evidenceLabel(run.evidenceSummary)), node('time', 'history-time', relativeTime(run.evaluatedAt)));
-    if (run.headSha === latestHeadSha) card.append(node('span', 'history-latest-label', 'Latest'));
+    if (run.observationSource === 'BACKFILL') card.append(node('span', 'history-latest-label', 'Backfilled'));
+    else if (isLatest) card.append(node('span', 'history-latest-label', 'Latest'));
     rail.append(card);
   }
   panel.append(rail);
@@ -228,7 +239,8 @@ function pullRequestRow(
     historyButton.textContent = '…';
     try {
       const history = await loadHistory(latest.repository.id, latest.pullRequest.number);
-      panel = renderHistoryPanel(history, latest.headSha, state);
+      const newest = history.runs[0] ?? latest;
+      panel = renderHistoryPanel(history, newest, state);
       wrapper.append(panel);
       historyButton.setAttribute('aria-expanded', 'true');
     } catch {
@@ -399,6 +411,7 @@ function availableDetail(detail: EvaluationDetailV1, activitySearch: string): HT
   evaluated.append(node('h2', undefined, 'Evaluated'));
   evaluated.append(node('p', undefined, `Head ${shortSha(detail.headSha)} · Base ${shortSha(detail.baseSha)} · ${relativeTime(detail.evaluatedAt)}`));
   evaluated.append(node('p', 'muted', `Evaluator ${detail.evaluatorVersion}${detail.profile.sourceSha ? ` · Profile ${shortSha(detail.profile.sourceSha)}` : ''}`));
+  if (detail.observationSource === 'BACKFILL') evaluated.append(node('p', 'muted', 'Historical observation reconstructed from Spark\'s previously retained latest-per-SHA record.'));
   fragment.append(evaluated);
 
   const actions = node('div', 'detail-actions');
@@ -421,7 +434,10 @@ export function renderEvaluation(viewer: ViewerV1, response: EvaluationDetailRes
   back.dataset.routerLink = 'true';
   const unavailable = node('section', 'status-state unavailable-state');
   unavailable.dataset.testid = 'detail-unavailable';
-  unavailable.append(node('span', attentionClass(response.summary.attention), response.summary.attention), node('h1', undefined, 'Historical detail unavailable'), node('p', 'state-copy', "This evaluation predates Spark's detailed dashboard history. Attention and PR identity were retained, but the full normalized evaluation was not stored."), node('p', 'muted', `${response.summary.repository.owner}/${response.summary.repository.name} · PR #${response.summary.pullRequest.number} · ${shortSha(response.summary.headSha)}`), safeExternalLink('Open GitHub PR', response.summary.pullRequest.url, 'primary-link'));
+  const sourceNote = response.summary.observationSource === 'BACKFILL'
+    ? ' This record was reconstructed from Spark\'s previously retained latest-per-SHA history.'
+    : '';
+  unavailable.append(node('span', attentionClass(response.summary.attention), response.summary.attention), node('h1', undefined, 'Historical detail unavailable'), node('p', 'state-copy', `This evaluation predates Spark's detailed dashboard history. Attention and PR identity were retained, but the full normalized evaluation was not stored.${sourceNote}`), node('p', 'muted', `${response.summary.repository.owner}/${response.summary.repository.name} · PR #${response.summary.pullRequest.number} · ${shortSha(response.summary.headSha)}`), safeExternalLink('Open GitHub PR', response.summary.pullRequest.url, 'primary-link'));
   main.append(back, unavailable);
   return root;
 }
