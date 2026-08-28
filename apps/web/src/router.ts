@@ -1,5 +1,8 @@
+import type { OverviewMetricV1 } from './overview-api';
+
 export type DashboardRoute =
   | { kind: 'activity' }
+  | { kind: 'overview'; metric: OverviewMetricV1 }
   | { kind: 'account' }
   | { kind: 'pull-request'; repositoryId: number; pullRequestNumber: number }
   | { kind: 'run'; repositoryId: number; runId: string }
@@ -9,6 +12,8 @@ export type DashboardRoute =
 export function parseRoute(pathname: string): DashboardRoute {
   if (pathname === '/app' || pathname === '/app/') return { kind: 'activity' };
   if (pathname === '/app/account' || pathname === '/app/account/') return { kind: 'account' };
+  const overviewMatch = pathname.match(/^\/app\/overview\/(pull-requests|evaluations|attention|merged-unresolved)\/?$/i);
+  if (overviewMatch) return { kind: 'overview', metric: overviewMatch[1].toLowerCase() as OverviewMetricV1 };
   const pullRequestMatch = pathname.match(/^\/app\/repositories\/(\d+)\/pulls\/(\d+)\/?$/i);
   if (pullRequestMatch) {
     return {
