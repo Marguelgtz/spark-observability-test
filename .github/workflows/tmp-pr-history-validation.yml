@@ -1,0 +1,38 @@
+name: Temporary PR History Validation
+
+on:
+  push:
+    branches:
+      - dashboard/pr-history-ui
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck workspace
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: Build production dashboard
+        run: pnpm web:build
+      - name: Apply D1 migrations locally
+        run: pnpm db:migrate:local
+      - name: Validate Worker and static assets bundle
+        run: pnpm --filter @spark/api exec wrangler deploy --dry-run --outdir /tmp/spark-worker
+      - name: Install Playwright Chromium
+        run: pnpm --filter @spark/web exec playwright install --with-deps chromium
+      - name: Browser acceptance
+        run: pnpm web:e2e
