@@ -192,10 +192,11 @@ The implementation has progressed through several independently reviewed layers:
 - Historical backfill and immutable history reads
 - Run-identity API and browser navigation
 - Search and database-backed favorites
+- Deterministic Change Trajectory deltas and transition explanations
 
 The accumulated trajectory stack has passed the permanent dashboard/Worker verification workflow. Earlier experimental PRs remain open as evaluation fixtures and are not part of the product landing sequence.
 
-The validated stack is now on `main`, and the append-only Phase 1 foundation gates are complete. The next engineering focus is the deterministic Change Trajectory delta engine.
+The append-only Phase 1 foundation is on `main`. Phase 2 adds a deterministic Change Trajectory engine, a dedicated trajectory API, and an explanation-rich PR history view. The next bounded product phase is merge-lifecycle context and user feedback.
 
 ## Documentation
 
@@ -206,5 +207,6 @@ The validated stack is now on `main`, and the append-only Phase 1 foundation gat
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — decision history
 - [`docs/ROADMAP.md`](./docs/ROADMAP.md) — directional roadmap and deferred ideas
 - [`docs/CHANGE_TRAJECTORY_PHASE1.md`](./docs/CHANGE_TRAJECTORY_PHASE1.md) — append-only run execution record and exit gates
+- [`docs/CHANGE_TRAJECTORY_PHASE2.md`](./docs/CHANGE_TRAJECTORY_PHASE2.md) — deterministic trajectory execution record and contracts
 
 Some planning documents preserve the original V0 framing and should be read as project history where the implementation has moved ahead of them.

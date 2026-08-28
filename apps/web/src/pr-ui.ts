@@ -1,8 +1,10 @@
 import type {
   EvaluationSummaryV1,
   EvidenceHealthV1,
+  NotableTransitionV1,
   PullRequestDetailV1,
   PullRequestInsightV1,
+  PullRequestTrajectoryV1,
   PullRequestTransitionV1,
   ViewerV1,
 } from '@spark/dashboard-contracts';
@@ -68,8 +70,8 @@ function healthLabel(health: EvidenceHealthV1): string {
   return 'Unknown';
 }
 
-function latestHealth(detail: PullRequestDetailV1): EvidenceHealthV1 {
-  const evidence = detail.latest.evidenceSummary;
+function summaryHealth(summary: EvaluationSummaryV1): EvidenceHealthV1 {
+  const evidence = summary.evidenceSummary;
   if (evidence.failed > 0) return 'FAILED';
   if (evidence.pending > 0 || evidence.missing > 0) return 'PENDING_OR_MISSING';
   if (evidence.unknown > 0 && evidence.passed === 0) return 'UNKNOWN';
@@ -115,41 +117,64 @@ function transitionText(transition: PullRequestTransitionV1): string {
   return `${transition.fromAttention} → ${transition.toAttention} attention`;
 }
 
-function currentSection(detail: PullRequestDetailV1, activitySearch: string): HTMLElement {
+function notableTransitionTitle(transition: NotableTransitionV1): string {
+  const { delta } = transition;
+  if (delta.attention) return `${delta.attention.from} → ${delta.attention.to}`;
+  if (delta.evidenceHealth) return `${healthLabel(delta.evidenceHealth.from)} → ${healthLabel(delta.evidenceHealth.to)}`;
+  if (transition.kinds.includes('SENSITIVE_SURFACE_ADDED')) return 'Sensitive surface added';
+  return 'Change scope expanded';
+}
+
+function evidenceStatusLabel(status: string | undefined): string {
+  return status ? status.toLowerCase().replaceAll('_', ' ') : 'not present';
+}
+
+function notableTransitionCauses(transition: NotableTransitionV1): string[] {
+  const { delta } = transition;
+  const causes = delta.evidence.map(item => `${item.name}: ${evidenceStatusLabel(item.from)} → ${evidenceStatusLabel(item.to)}`);
+  if (delta.sensitiveSurfaces.added.length) causes.push(`Sensitive surface added: ${delta.sensitiveSurfaces.added.join(', ')}`);
+  if (delta.areas.directAdded.length) causes.push(`Direct area added: ${delta.areas.directAdded.join(', ')}`);
+  if (delta.areas.affectedAdded.length) causes.push(`Affected area added: ${delta.areas.affectedAdded.join(', ')}`);
+  if (delta.changedFiles.added.length) causes.push(`Change scope added ${delta.changedFiles.added.length} file${delta.changedFiles.added.length === 1 ? '' : 's'}`);
+  for (const reason of delta.reasons.added.slice(0, 2)) causes.push(reason);
+  if (delta.detailCompleteness === 'PARTIAL') causes.push('Structured detail is incomplete for this boundary');
+  return [...new Set(causes)];
+}
+
+function currentSection(detail: PullRequestTrajectoryV1, activitySearch: string): HTMLElement {
   const section = node('section', 'pr-current');
   const top = node('div', 'pr-current-top');
   const state = node('div', 'pr-current-state');
-  state.append(node('span', attentionClass(detail.latest.attention), detail.latest.attention));
-  const evidenceState = node('strong', `pr-health pr-health-${latestHealth(detail).toLowerCase().replaceAll('_', '-')}`, healthLabel(latestHealth(detail)));
-  state.append(evidenceState, node('span', 'pr-current-evidence', evidenceLabel(detail.latest.evidenceSummary)));
-  const time = node('time', 'pr-current-time', `Latest ${relativeTime(detail.latest.evaluatedAt)} ago`);
-  time.dateTime = detail.latest.evaluatedAt;
+  state.append(node('span', attentionClass(detail.current.attention), detail.current.attention));
+  const currentHealth = summaryHealth(detail.current);
+  const evidenceState = node('strong', `pr-health pr-health-${currentHealth.toLowerCase().replaceAll('_', '-')}`, healthLabel(currentHealth));
+  state.append(evidenceState, node('span', 'pr-current-evidence', evidenceLabel(detail.current.evidenceSummary)));
+  const time = node('time', 'pr-current-time', `Latest ${relativeTime(detail.current.evaluatedAt)} ago`);
+  time.dateTime = detail.current.evaluatedAt;
   top.append(state, time);
   section.append(top);
 
-  if (detail.latest.topReasons.length) {
+  if (detail.current.topReasons.length) {
     const why = node('div', 'pr-why');
     why.append(node('span', 'pr-section-kicker', 'Why this state'));
     const list = node('ul', 'pr-why-list');
-    for (const reason of detail.latest.topReasons) list.append(node('li', undefined, reason));
+    for (const reason of detail.current.topReasons) list.append(node('li', undefined, reason));
     why.append(list);
     section.append(why);
   }
 
   const actions = node('div', 'pr-actions');
   const latest = node('a', 'primary-link', 'View latest evaluation') as HTMLAnchorElement;
-  latest.href = observationHref(detail.latest, activitySearch);
+  latest.href = observationHref(detail.current, activitySearch);
   latest.dataset.routerLink = 'true';
   actions.append(latest, externalLink('Open GitHub PR', detail.pullRequest.url));
   section.append(actions);
   return section;
 }
 
-function historySection(detail: PullRequestDetailV1): HTMLElement {
+function historySection(detail: PullRequestTrajectoryV1): HTMLElement {
   const section = node('section', 'pr-section');
   section.append(node('h2', undefined, 'Trajectory'));
-  const evidence = detail.history.evidenceCounts;
-  const attention = detail.history.attentionCounts;
   const historyNote = detail.historyCompleteness === 'PARTIAL_BACKFILL'
     ? detail.truncated
       ? `Partial history · showing latest ${detail.runs.length}`
@@ -159,22 +184,22 @@ function historySection(detail: PullRequestDetailV1): HTMLElement {
       : 'Complete observed history';
   const metrics = node('div', 'pr-metrics');
   metrics.append(
-    metric('Evaluations', String(detail.history.totalRuns), historyNote),
-    metric('Clear', String(evidence.CLEAR), detail.history.currentClearStreak ? `${detail.history.currentClearStreak} current streak` : undefined),
-    metric('Failed evidence', String(evidence.FAILED), detail.history.currentFailureStreak ? `${detail.history.currentFailureStreak} current streak` : undefined),
-    metric('Pending / missing', String(evidence.PENDING_OR_MISSING)),
+    metric('Evaluations', String(detail.summary.totalRuns), historyNote),
+    metric('Notable transitions', String(detail.summary.totalTransitions), `${detail.summary.analyzedRuns} runs analyzed`),
+    metric('Regressions', String(detail.summary.regressions)),
+    metric('Recoveries', String(detail.summary.recoveries), detail.summary.currentClearStreak ? `${detail.summary.currentClearStreak} current clear streak` : undefined),
   );
   section.append(metrics);
   const attentionLine = node('div', 'pr-attention-summary');
   attentionLine.append(
-    node('span', undefined, 'Attention history'),
-    node('strong', undefined, `${attention.HIGH} high · ${attention.MEDIUM} medium · ${attention.LOW} low`),
+    node('span', undefined, 'Attention movement'),
+    node('strong', undefined, `${detail.summary.attentionIncreases} increased · ${detail.summary.attentionDecreases} decreased`),
   );
   section.append(attentionLine);
   return section;
 }
 
-function insightsSection(detail: PullRequestDetailV1): HTMLElement {
+function insightsSection(detail: Pick<PullRequestTrajectoryV1, 'insights'>): HTMLElement {
   const section = node('section', 'pr-section');
   section.append(node('h2', undefined, 'Observations'));
   if (!detail.insights.length) {
@@ -192,7 +217,7 @@ function insightsSection(detail: PullRequestDetailV1): HTMLElement {
   return section;
 }
 
-function evidenceIssuesSection(detail: PullRequestDetailV1): HTMLElement {
+function evidenceIssuesSection(detail: Pick<PullRequestTrajectoryV1, 'evidenceIssues'>): HTMLElement {
   const section = node('section', 'pr-section');
   section.append(node('h2', undefined, 'Evidence issues'));
   if (!detail.evidenceIssues.length) {
@@ -218,7 +243,7 @@ function evidenceIssuesSection(detail: PullRequestDetailV1): HTMLElement {
   return section;
 }
 
-function timelineSection(detail: PullRequestDetailV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
+function timelineSection(detail: PullRequestTrajectoryV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const section = node('section', 'pr-section');
   const heading = node('div', 'pr-section-heading');
   heading.append(node('h2', undefined, 'Evaluation history'), node('span', 'muted', 'Newest first'));
@@ -244,12 +269,24 @@ function timelineSection(detail: PullRequestDetailV1, activitySearch: string, fa
   }
   section.append(rail);
 
-  if (detail.transitions.length) {
+  if (detail.notableTransitions.length) {
     const transitions = node('div', 'pr-transition-list');
     transitions.append(node('span', 'pr-section-kicker', 'Notable transitions'));
-    for (const item of [...detail.transitions].reverse().slice(0, 6)) {
-      const row = node('div', 'pr-transition');
-      row.append(node('strong', undefined, transitionText(item)), node('span', undefined, `${shortSha(item.toHeadSha)} · ${relativeTime(item.evaluatedAt)} ago`));
+    for (const item of [...detail.notableTransitions].reverse().slice(0, 8)) {
+      const row = node('article', `pr-transition pr-transition-${item.severity.toLowerCase()}`);
+      row.dataset.testid = 'notable-transition';
+      const heading = node('div', 'pr-transition-heading');
+      heading.append(
+        node('strong', undefined, notableTransitionTitle(item)),
+        node('span', undefined, `${shortSha(item.delta.toHeadSha)} · ${relativeTime(item.occurredAt)} ago`),
+      );
+      row.append(heading);
+      const causes = notableTransitionCauses(item);
+      if (causes.length) {
+        const list = node('ul', 'pr-transition-causes');
+        for (const cause of causes) list.append(node('li', undefined, cause));
+        row.append(list);
+      }
       transitions.append(row);
     }
     section.append(transitions);
@@ -257,7 +294,7 @@ function timelineSection(detail: PullRequestDetailV1, activitySearch: string, fa
   return section;
 }
 
-export function renderPullRequest(viewer: ViewerV1, detail: PullRequestDetailV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
+export function renderPullRequest(viewer: ViewerV1, detail: PullRequestTrajectoryV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const { root, main } = shell(viewer);
   main.dataset.testid = 'pull-request-detail';
   const back = node('a', 'back-link', '← Activity') as HTMLAnchorElement;

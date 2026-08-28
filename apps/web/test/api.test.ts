@@ -52,6 +52,30 @@ describe('HttpDashboardApi', () => {
     );
   });
 
+  it('loads Change Trajectory from the dedicated scoped endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      version: 1,
+      repository: {},
+      pullRequest: {},
+      current: {},
+      summary: {},
+      evidenceIssues: [],
+      insights: [],
+      notableTransitions: [],
+      runs: [],
+      truncated: false,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+
+    await api.getTrajectory(2, 13);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://spark.test/api/repositories/2/pulls/13/trajectory',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
   it('loads pull request history from the scoped history endpoint', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       version: 1,

@@ -125,6 +125,60 @@ export interface PullRequestTransitionV1 {
   evaluatedAt: string;
 }
 
+export interface TransitionEvidenceDeltaV1 {
+  name: string;
+  from?: EvidenceStatusV1;
+  to?: EvidenceStatusV1;
+  change: 'ADDED' | 'REMOVED' | 'STATUS_CHANGED';
+}
+
+export interface TransitionDeltaV1 {
+  fromRunId: string;
+  toRunId: string;
+  fromHeadSha: string;
+  toHeadSha: string;
+  evaluatedAt: string;
+  timeInPreviousStateMs: number;
+  attention?: {
+    from: AttentionLevelV1;
+    to: AttentionLevelV1;
+    direction: 'INCREASED' | 'DECREASED';
+  };
+  evidenceHealth?: { from: EvidenceHealthV1; to: EvidenceHealthV1 };
+  evidence: TransitionEvidenceDeltaV1[];
+  areas: {
+    directAdded: string[];
+    directRemoved: string[];
+    affectedAdded: string[];
+    affectedRemoved: string[];
+  };
+  sensitiveSurfaces: { added: string[]; removed: string[] };
+  changedFiles: { added: string[]; removed: string[] };
+  reasons: { added: string[]; removed: string[] };
+  profile?: { changed: boolean; fromSourceSha?: string; toSourceSha?: string };
+  detailCompleteness: 'COMPLETE' | 'PARTIAL';
+}
+
+export type NotableTransitionKindV1 =
+  | 'ATTENTION_INCREASED'
+  | 'ATTENTION_DECREASED'
+  | 'EVIDENCE_REGRESSED'
+  | 'EVIDENCE_RECOVERED'
+  | 'EVIDENCE_BECAME_PENDING'
+  | 'EVIDENCE_RESOLVED'
+  | 'SENSITIVE_SURFACE_ADDED'
+  | 'CHANGE_SCOPE_EXPANDED';
+
+export interface NotableTransitionV1 {
+  id: string;
+  fromRunId: string;
+  toRunId: string;
+  occurredAt: string;
+  kinds: NotableTransitionKindV1[];
+  severity: 'INFO' | 'MATERIAL';
+  delta: TransitionDeltaV1;
+}
+
 export type PullRequestInsightKindV1 =
   | 'CURRENTLY_CLEAR'
   | 'CURRENTLY_FAILING'
@@ -170,6 +224,31 @@ export interface PullRequestDetailV1 {
   evidenceIssues: PullRequestEvidenceIssueV1[];
   transitions: PullRequestTransitionV1[];
   insights: PullRequestInsightV1[];
+  runs: EvaluationSummaryV1[];
+  historyCompleteness?: HistoryCompletenessV1;
+  truncated: boolean;
+}
+
+export interface PullRequestTrajectoryV1 {
+  version: 1;
+  repository: RepositoryRefV1;
+  pullRequest: PullRequestRefV1;
+  current: EvaluationSummaryV1;
+  summary: {
+    totalRuns: number;
+    analyzedRuns: number;
+    totalTransitions: number;
+    regressions: number;
+    recoveries: number;
+    attentionIncreases: number;
+    attentionDecreases: number;
+    currentClearStreak: number;
+    firstEvaluatedAt: string;
+    lastEvaluatedAt: string;
+  };
+  evidenceIssues: PullRequestEvidenceIssueV1[];
+  insights: PullRequestInsightV1[];
+  notableTransitions: NotableTransitionV1[];
   runs: EvaluationSummaryV1[];
   historyCompleteness?: HistoryCompletenessV1;
   truncated: boolean;

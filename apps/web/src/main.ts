@@ -108,8 +108,8 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'pull-request') {
-      const detail = await api.getPullRequest(route.repositoryId, route.pullRequestNumber);
-      replace(renderPullRequest(viewer, detail, currentActivitySearch(), favorites));
+      const trajectory = await api.getTrajectory(route.repositoryId, route.pullRequestNumber);
+      replace(renderPullRequest(viewer, trajectory, currentActivitySearch(), favorites));
       return;
     }
 
