@@ -80,6 +80,13 @@ const unavailable: EvaluationDetailResponseV1 = {
   summary,
 };
 
+const runUnavailable: EvaluationDetailResponseV1 = {
+  version: 1,
+  status: 'unavailable',
+  reason: 'LEGACY_RECORD',
+  summary: { ...summary, runId: 'run:1', observationSource: 'BACKFILL' },
+};
+
 const env: Env = {
   DB: {} as Env['DB'],
   GITHUB_APP_ID: '42',
@@ -109,6 +116,7 @@ function reader() {
     pullRequest: vi.fn(async () => pullRequest),
     pullRequestHistory: vi.fn(async () => history),
     evaluation: vi.fn(async () => unavailable),
+    run: vi.fn(async () => runUnavailable),
   } satisfies DashboardReader;
 }
 
@@ -216,7 +224,29 @@ describe('dashboard read API', () => {
     expect(denied.status).toBe(404);
   });
 
-  it('returns a stored evaluation only inside the authorized repository scope', async () => {
+  it('returns an immutable run only inside the authorized repository scope', async () => {
+    const dashboardReader = reader();
+    const allowed = await handleRequest(
+      new Request('https://spark.test/api/repositories/2/runs/run%3A1'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual(runUnavailable);
+    expect(dashboardReader.run).toHaveBeenCalledWith(2, 'run:1');
+
+    const denied = await handleRequest(
+      new Request('https://spark.test/api/repositories/3/runs/run%3A1'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2]), dashboardReader },
+    );
+    expect(denied.status).toBe(404);
+    expect(dashboardReader.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the SHA evaluation route as repository-scoped latest-by-SHA compatibility', async () => {
     const dashboardReader = reader();
     const allowed = await handleRequest(
       new Request('https://spark.test/api/evaluations/2/sha'),
