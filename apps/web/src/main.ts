@@ -1,6 +1,7 @@
 import './styles.css';
 import './shell.css';
 import './home.css';
+import './overview.css';
 import './account.css';
 import './pr.css';
 import type { AccountV1, ViewerV1 } from '@spark/dashboard-contracts';
@@ -9,6 +10,8 @@ import { createDashboardApi, UnauthorizedError } from './api';
 import { createPersistentAppShell } from './app-shell';
 import { FavoriteStore } from './favorites';
 import { enhanceActivityHome } from './home-ui';
+import { getOverviewDrilldown } from './overview-api';
+import { renderOverviewDrilldown } from './overview-ui';
 import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
 import { navigate, parseRoute } from './router';
 import { parseActivityState, serializeActivityState, withActivityState } from './state';
@@ -136,7 +139,8 @@ async function render(): Promise<void> {
     if (route.kind === 'activity') {
       const state = parseActivityState(window.location.search);
       const activityTask = abortable(api.getActivity(state), signal);
-      const [viewer, account, favorites, activity] = await Promise.all([viewerTask, accountTask, favoritesTask, activityTask]);
+      const overviewTask = abortable(getOverviewDrilldown('merged-unresolved', state), signal).catch(() => undefined);
+      const [viewer, account, favorites, activity, overviewDetail] = await Promise.all([viewerTask, accountTask, favoritesTask, activityTask, overviewTask]);
       if (generation !== routeGeneration || signal.aborted) return;
 
       const view = renderActivity(viewer, activity, state, {
@@ -166,7 +170,19 @@ async function render(): Promise<void> {
         },
         favorites,
       });
-      shell.show(enhanceActivityHome(view, account, activity, state));
+      shell.show(enhanceActivityHome(view, account, activity, state, overviewDetail));
+      return;
+    }
+
+    if (route.kind === 'overview') {
+      const state = parseActivityState(window.location.search);
+      const overviewTask = abortable(getOverviewDrilldown(route.metric, state), signal);
+      const [viewer, , , overview] = await Promise.all([viewerTask, accountTask, favoritesTask, overviewTask]);
+      if (generation !== routeGeneration || signal.aborted) return;
+      shell.show(renderOverviewDrilldown(viewer, overview, state, (value) => {
+        const next = withActivityState(state, { window: value, attention: 'ALL' });
+        navigate(`/app/overview/${route.metric}?${serializeActivityState(next)}`);
+      }));
       return;
     }
 
