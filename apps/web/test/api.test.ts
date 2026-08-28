@@ -28,6 +28,30 @@ describe('HttpDashboardApi', () => {
     );
   });
 
+  it('loads pull request observability from the scoped PR endpoint', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      version: 1,
+      repository: {},
+      pullRequest: {},
+      latest: {},
+      history: {},
+      evidenceIssues: [],
+      transitions: [],
+      insights: [],
+      runs: [],
+      truncated: false,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+
+    await api.getPullRequest(2, 13);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://spark.test/api/repositories/2/pulls/13',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
   it('loads pull request history from the scoped history endpoint', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       version: 1,
