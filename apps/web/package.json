@@ -1,0 +1,19 @@
+{
+  "name": "@spark/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run test",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@spark/dashboard-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0"
+  }
+}
