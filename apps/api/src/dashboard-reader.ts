@@ -22,6 +22,7 @@ import type { D1Database } from './d1';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
 import { buildPullRequestDetail, type PullRequestHistoryAggregate } from './pull-request-insights';
 import { buildTrajectory } from './change-trajectory';
+import { readActivityHome } from './activity-home';
 
 const EVAL_TIME_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', COALESCE(d.evaluated_at, e.updated_at))";
 const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
@@ -313,6 +314,15 @@ export class D1DashboardReader implements DashboardReader {
         counts: { LOW: 0, MEDIUM: 0, HIGH: 0 },
         repositories: [],
         pullRequests: [],
+        overview: {
+          observedPRs: 0,
+          totalEvaluations: 0,
+          activePRsNeedingAttention: 0,
+          mergedUnresolved: 0,
+          recovery: { recoveredPRs: 0, failedToClearEvents: 0, waitingToClearEvents: 0 },
+        },
+        needsAttention: { total: 0, preview: [] },
+        hasObservedHistory: false,
         pagination: { nextCursor: null },
       };
     }
@@ -404,6 +414,11 @@ export class D1DashboardReader implements DashboardReader {
     const rows = activityResult.results ?? [];
     const page = rows.slice(0, limit);
     const last = page.at(-1);
+    const home = await readActivityHome(this.db, {
+      repositoryIds,
+      repositoryId: query.repositoryId,
+      start,
+    });
 
     return {
       version: 1,
@@ -413,6 +428,12 @@ export class D1DashboardReader implements DashboardReader {
       counts,
       repositories,
       pullRequests: page.map(pullRequestActivityFromRow),
+      overview: home.overview,
+      needsAttention: {
+        total: home.needsAttentionTotal,
+        preview: home.needsAttentionRows.map((row) => pullRequestActivityFromRow(row)),
+      },
+      hasObservedHistory: home.hasObservedHistory,
       pagination: {
         nextCursor: rows.length > limit && last
           ? encodeCursor({ t: last.evaluated_at, r: last.repository_id, p: last.pull_request_number })
