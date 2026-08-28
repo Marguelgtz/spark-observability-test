@@ -1,4 +1,3 @@
-import './context-insight-enhancers.css';
 import type { PullRequestTrajectoryV1 } from '@spark/dashboard-contracts';
 import { renderPullRequestTrajectoryCanvas } from './insight-canvases';
 
