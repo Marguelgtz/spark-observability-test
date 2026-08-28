@@ -1,0 +1,49 @@
+.insight-histogram .insight-horizontal-row {
+  grid-template-columns: 54px minmax(90px, 1fr) 34px;
+}
+
+.insight-stacked-bars {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(5px, 1fr);
+  gap: 4px;
+  min-height: 170px;
+  align-items: end;
+}
+
+.insight-stacked-cell {
+  display: grid;
+  grid-template-rows: 140px 22px;
+  gap: 5px;
+  min-width: 0;
+  align-items: end;
+}
+
+.insight-stacked-track {
+  width: 100%;
+  min-height: 1px;
+  display: flex;
+  flex-direction: column-reverse;
+  overflow: hidden;
+  border-radius: 3px 3px 0 0;
+  background: #ecece7;
+}
+
+.insight-stacked-segment { display: block; width: 100%; min-height: 1px; }
+.insight-stacked-segment.is-high, .insight-stack-swatch.is-high { background: #9b322d; }
+.insight-stacked-segment.is-medium, .insight-stack-swatch.is-medium { background: #9a6d1d; }
+.insight-stacked-segment.is-low, .insight-stack-swatch.is-low { background: #3e7650; }
+.insight-stack-swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+.insight-step-svg { width: 100%; height: 210px; overflow: visible; }
+.insight-step-grid { stroke: #e5e5df; stroke-width: 1; }
+.insight-step-path { fill: none; stroke: #4c5358; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.insight-step-level, .insight-step-time { fill: #777771; font-size: 10px; }
+.insight-step-level { font-weight: 800; letter-spacing: 0.04em; }
+.insight-step-level.is-high { fill: #8f302c; }
+.insight-step-level.is-medium { fill: #8a631f; }
+.insight-step-level.is-low { fill: #356b46; }
+.insight-step-point { stroke: white; stroke-width: 2; fill: #666; }
+.insight-step-point.is-high { fill: #9b322d; }
+.insight-step-point.is-medium { fill: #9a6d1d; }
+.insight-step-point.is-low { fill: #3e7650; }
