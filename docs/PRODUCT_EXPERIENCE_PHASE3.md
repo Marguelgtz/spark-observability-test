@@ -13,11 +13,11 @@ This phase therefore treats the PR page as a **story-building substrate**:
 ```text
 observations
     ↓
-key moments / change evolution
-    ↓
 analytical trajectory
     ↓
 forensic detail
+    ↓
+key moments / change evolution
     ↓
 future human / deployment / incident context
 ```
@@ -73,7 +73,7 @@ Each row should prioritize:
 - elapsed time from the previous retained moment;
 - link to the immutable evaluation when available.
 
-The timeline is the **narrative spine**, not a stack of article cards.
+The timeline is a **supporting narrative spine** at the bottom of the PR page, after the analytical and forensic views. It should help the user reconstruct the sequence without displacing the primary observability information.
 
 ## Terminology
 
@@ -81,7 +81,7 @@ User-facing terminology for this phase:
 
 - **Key moments** — the retained material moments in the PR's evolution.
 - **Change evolution** — explanatory copy for what the sequence represents.
-- **Change trajectory** — the analytical severity/transition canvas already present below the sequence.
+- **Change trajectory** — the analytical severity/transition canvas shown earlier on the PR page.
 
 Avoid presenting the primary component as a completed `Change story`. A true story is a future layer that may include human annotations, review decisions, deployments, incidents, or other outcome context.
 
@@ -158,15 +158,15 @@ The drawer must preserve existing feedback semantics:
 The primary page order is:
 
 1. PR identity and current state/actions from the existing PR view.
-2. **Key moments / Change evolution** compact timeline.
-3. Existing **Change trajectory** insight canvas.
-4. **Forensic details** progressive disclosure:
+2. Existing **Change trajectory** insight canvas and analytical PR content.
+3. **Forensic details** progressive disclosure:
    - observations;
    - evidence issues;
    - complete evaluation history;
    - unchanged evaluations.
+4. **Key moments / Change evolution** compact timeline at the bottom of the PR page.
 
-This is intentionally between the older dense PR page and the first story-card implementation: compact chronology first, analytical context second, full detail still one interaction away.
+This keeps the PR page analytical first. The compact chronology remains available as a synthesis aid after the user has seen the current state, trajectory, and evidence structure.
 
 ## Architecture
 
@@ -188,13 +188,15 @@ PullRequestTrajectoryV1
         ↓
 pure retained-moment derivation
         ↓
-compact key-moments renderer
-        ↓
-contextual feedback drawer
+compact key-moments renderer + contextual feedback drawer
+
+PR page composition
         ↓
 change-trajectory canvas
         ↓
 forensic disclosure
+        ↓
+key moments / change evolution
 ```
 
 The derivation module remains DOM-free and unit tested.
@@ -212,8 +214,8 @@ The derivation module remains DOM-free and unit tested.
 ## Exit gates
 
 - initial, notable, latest, and terminal moments render chronologically;
-- unchanged evaluations do not clutter the primary sequence;
-- primary sequence is materially more compact than the previous large-card implementation;
+- unchanged evaluations do not clutter the compact sequence;
+- key moments render at the bottom of the PR page after trajectory and forensic detail;
 - transition headline priority remains deterministic;
 - transition causes remain inspectable without dominating the row;
 - feedback controls are absent from the resting timeline and available through tooltip + drawer;
@@ -222,7 +224,7 @@ The derivation module remains DOM-free and unit tested.
 - partial/backfilled history is labeled truthfully;
 - immutable run navigation remains intact;
 - trajectory canvas remains visible without opening forensic details;
-- desktop and mobile browser acceptance cover sequence structure, feedback drawer, lifecycle copy, and forensic disclosure;
+- desktop and mobile browser acceptance cover sequence structure, feedback drawer, lifecycle copy, forensic disclosure, and page order;
 - typecheck, unit/API tests, production build, D1 migration validation, Worker dry-run, and browser acceptance pass.
 
 ## Future story layer
