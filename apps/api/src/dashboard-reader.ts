@@ -9,11 +9,13 @@ import type {
   EvidenceSummaryV1,
   ObservedRepositoryV1,
   PullRequestActivityV1,
+  PullRequestDetailV1,
   PullRequestHistoryResponseV1,
   RepositoryRefV1,
 } from '@spark/dashboard-contracts';
 import type { D1Database } from './d1';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
+import { buildPullRequestDetail } from './pull-request-insights';
 
 const EVAL_TIME_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', COALESCE(d.evaluated_at, e.updated_at))";
 const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
@@ -220,8 +222,17 @@ export function detailFromRow(row: ActivityRow): EvaluationDetailResponseV1 {
   return { version: 1, status: 'available', detail: response };
 }
 
+function runInputFromRow(row: ActivityRow) {
+  const response = detailFromRow(row);
+  return {
+    summary: response.status === 'available' ? summaryFromRow(row) : response.summary,
+    ...(response.status === 'available' ? { detail: response.detail } : {}),
+  };
+}
+
 export interface DashboardReader {
   activity(query: ActivityQueryV1, repositoryIds: number[], now?: Date): Promise<ActivityResponseV1>;
+  pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined>;
   pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined>;
   evaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1 | undefined>;
 }
@@ -343,7 +354,7 @@ export class D1DashboardReader implements DashboardReader {
     };
   }
 
-  async pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined> {
+  private async pullRequestRows(repositoryId: number, pullRequestNumber: number): Promise<HistoryRow[]> {
     const result = await this.db.prepare(
       `SELECT e.repository_id, r.full_name, e.head_sha, e.pull_request_number, e.attention,
               ${EVAL_TIME_SQL} AS evaluated_at, d.normalized_json, d.check_url,
@@ -355,7 +366,18 @@ export class D1DashboardReader implements DashboardReader {
        ORDER BY datetime(COALESCE(d.evaluated_at, e.updated_at)) DESC, e.head_sha DESC
        LIMIT ?`,
     ).bind(repositoryId, pullRequestNumber, MAX_HISTORY_RUNS).all<HistoryRow>();
-    const rows = result.results ?? [];
+    return result.results ?? [];
+  }
+
+  async pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined> {
+    const rows = await this.pullRequestRows(repositoryId, pullRequestNumber);
+    if (!rows.length) return undefined;
+    const totalRunCount = Number(rows[0].total_run_count ?? rows.length);
+    return buildPullRequestDetail(rows.map(runInputFromRow), totalRunCount);
+  }
+
+  async pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined> {
+    const rows = await this.pullRequestRows(repositoryId, pullRequestNumber);
     if (!rows.length) return undefined;
     const runs = rows.map(summaryFromRow);
     const latest = runs[0];
