@@ -9,11 +9,9 @@ The current dashboard work is a bounded presentation/legibility sequence on top 
 1. **Persistent shell and navigation** — keep context stable across Home → PR → Run.
 2. **Action-oriented Home** — surface active changes, attention, recovery, and merge quality.
 3. **Composable insight canvases** — pair related visualizations around one product question instead of presenting isolated chart cards.
-4. **Key moments and change evolution** — compress each PR into initial state → material changes → latest state → merge/close outcome, while keeping the analytical trajectory visible and forensic detail one interaction away.
+4. **Key moments and Change evolution** — keep the PR page analytical first, then expose a compact Initial → material changes → Latest → merge/close sequence at the bottom as a story-building aid while retaining forensic detail.
 
-The fourth item is intentionally constrained to existing trajectory/lifecycle/feedback data. Spark should expose the factual building blocks of a change story without claiming it can yet narrate the full story or infer unsupported causality.
-
-A future story layer may combine these retained moments with human annotations, review decisions, deployment/runtime outcomes, incident links, or carefully bounded generated narration.
+The fourth item is intentionally constrained to existing trajectory/lifecycle/feedback data. It should not add evaluator logic, enforcement, RBAC, AI narration, new integrations, or new persistence unless a truthful retained moment cannot be derived from the existing contract.
 
 ## V0
 **Question: Will people install Spark for change observability?**
@@ -55,7 +53,6 @@ Focus:
 * Argo / Kubernetes deployment lineage tracking
 * Managed LLM inference for deep diff context
 * Experiential outcome history (linking production outages to specific PR patterns)
-* Human-authored / outcome-enriched change stories built on Spark key moments
 * Contextual autonomy (empowering autonomous agents using Spark's graph)
 
 ---
