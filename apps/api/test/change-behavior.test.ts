@@ -126,8 +126,8 @@ describe('change behavior projection', () => {
     expect(behavior.motifs.map((motif) => motif.kind)).toEqual([
       'SCOPE_THEN_REGRESSION',
       'SURFACE_THEN_ATTENTION_UP',
-      'REGRESSION_THEN_RECOVERY',
       'ATTENTION_OSCILLATION',
+      'REGRESSION_THEN_RECOVERY',
     ]);
     expect(behavior.signatures.full).toBe(
       'v1:SCOPE_EXPANDED+SENSITIVE_SURFACE_ADDED+ATTENTION_UP>EVIDENCE_WORSE+ATTENTION_UP>EVIDENCE_BETTER+ATTENTION_DOWN>ATTENTION_UP',
