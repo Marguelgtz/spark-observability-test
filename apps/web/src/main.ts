@@ -11,7 +11,6 @@ import { createPersistentAppShell } from './app-shell';
 import { enhancePullRequestWithSeverityTimeline } from './context-insight-enhancers';
 import { FavoriteStore } from './favorites';
 import { enhanceActivityHome } from './home-ui';
-import { enhanceHomeWithInsightCanvases, enhanceOverviewWithInsightCanvases } from './insight-page-enhancers';
 import { getNotableTransitionInsights, getOverviewDrilldown } from './overview-api';
 import { renderOverviewDrilldown } from './overview-ui';
 import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
@@ -182,9 +181,15 @@ async function render(): Promise<void> {
         },
         favorites,
       });
-      const homeView = enhanceActivityHome(view, account, activity, state, mergeOverview);
-      enhanceHomeWithInsightCanvases(homeView, activity, evaluationOverview, transitions, state);
-      shell.show(homeView);
+      shell.show(enhanceActivityHome(
+        view,
+        account,
+        activity,
+        state,
+        mergeOverview,
+        evaluationOverview,
+        transitions,
+      ));
       return;
     }
 
@@ -204,12 +209,17 @@ async function render(): Promise<void> {
         companionTask,
       ]);
       if (generation !== routeGeneration || signal.aborted) return;
-      const overviewView = renderOverviewDrilldown(viewer, overview, state, (value) => {
-        const next = withActivityState(state, { window: value, attention: 'ALL' });
-        navigate(`/app/overview/${route.metric}?${serializeActivityState(next)}`);
-      });
-      enhanceOverviewWithInsightCanvases(overviewView, overview, transitions, state, companion);
-      shell.show(overviewView);
+      shell.show(renderOverviewDrilldown(
+        viewer,
+        overview,
+        state,
+        (value) => {
+          const next = withActivityState(state, { window: value, attention: 'ALL' });
+          navigate(`/app/overview/${route.metric}?${serializeActivityState(next)}`);
+        },
+        transitions,
+        companion,
+      ));
       return;
     }
 
