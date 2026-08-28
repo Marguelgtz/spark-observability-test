@@ -5,11 +5,13 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./outcome": "./src/outcome.ts"
+    "./outcome": "./src/outcome.ts",
+    "./behavior": "./src/behavior.ts"
   },
   "typesVersions": {
     "*": {
-      "outcome": ["src/outcome.ts"]
+      "outcome": ["src/outcome.ts"],
+      "behavior": ["src/behavior.ts"]
     }
   }
 }
