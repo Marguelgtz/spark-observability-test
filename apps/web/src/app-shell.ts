@@ -107,17 +107,32 @@ export function createPersistentAppShell(): PersistentAppShell {
     identitySlot.append(identity);
   }
 
+  function syncOutletAttributes(source?: HTMLElement): void {
+    for (const attribute of Array.from(outlet.attributes)) {
+      if (attribute.name !== 'class') outlet.removeAttribute(attribute.name);
+    }
+
+    const sourceClasses = source
+      ? [...source.classList].filter((name) => name !== 'main-column' && name !== 'route-outlet')
+      : [];
+    outlet.className = ['main-column', 'route-outlet', ...sourceClasses].join(' ');
+
+    if (!source) return;
+    for (const attribute of Array.from(source.attributes)) {
+      if (attribute.name === 'class') continue;
+      outlet.setAttribute(attribute.name, attribute.value);
+    }
+  }
+
   function show(view: HTMLElement): void {
     const source = view.matches('main') ? view : view.querySelector<HTMLElement>('main');
     const content = source ?? view;
-    const extraClasses = source ? [...source.classList].filter((name) => name !== 'main-column') : [];
-    outlet.className = ['main-column', 'route-outlet', ...extraClasses].join(' ');
-    outlet.removeAttribute('aria-busy');
+    syncOutletAttributes(source ?? undefined);
     outlet.replaceChildren(...Array.from(content.childNodes));
   }
 
   function showLoading(kind: DashboardRoute['kind']): void {
-    outlet.className = 'main-column route-outlet';
+    syncOutletAttributes();
     outlet.setAttribute('aria-busy', 'true');
     outlet.setAttribute('aria-live', 'polite');
     outlet.replaceChildren(loadingContent(kind));
