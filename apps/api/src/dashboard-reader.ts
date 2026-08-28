@@ -278,6 +278,7 @@ export interface DashboardReader {
   pullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1 | undefined>;
   pullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1 | undefined>;
   evaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1 | undefined>;
+  run(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1 | undefined>;
 }
 
 export class D1DashboardReader implements DashboardReader {
@@ -472,6 +473,18 @@ export class D1DashboardReader implements DashboardReader {
        LEFT JOIN evaluation_details d ON d.repository_id = e.repository_id AND d.head_sha = e.head_sha
        WHERE e.repository_id = ? AND e.head_sha = ?`,
     ).bind(repositoryId, headSha).first<ActivityRow>();
+    return row ? detailFromRow(row) : undefined;
+  }
+
+  async run(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1 | undefined> {
+    const row = await this.db.prepare(
+      `SELECT er.repository_id, r.full_name, er.head_sha, er.pull_request_number, er.attention,
+              er.evaluated_at, er.normalized_json, NULL AS check_url,
+              er.id AS run_id, er.observation_source, er.evidence_health
+       FROM evaluation_runs er
+       JOIN repositories r ON r.id = er.repository_id
+       WHERE er.repository_id = ? AND er.id = ?`,
+    ).bind(repositoryId, runId).first<ActivityRow>();
     return row ? detailFromRow(row) : undefined;
   }
 }
