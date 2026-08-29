@@ -124,12 +124,29 @@ function pointBackToActivity(view: HTMLElement, activitySearch: string): void {
   back.href = activityPath(activitySearch);
 }
 
-function trimActivityBrowserFromDashboard(view: HTMLElement): HTMLElement {
+function trimActivityBrowserFromDashboard(view: HTMLElement, state: ActivityUrlState): HTMLElement {
   const main = view.querySelector<HTMLElement>('main[data-testid="activity-view"]');
   if (!main) return view;
-  main.dataset.testid = 'dashboard-view';
-  for (const selector of ['.attention-filters', '.client-filters', '.activity-section', '.recent-activity-heading']) {
-    main.querySelector(selector)?.remove();
+  main.dataset.surface = 'dashboard';
+  main.querySelector('.attention-filters')?.remove();
+  main.querySelector('.client-filters')?.remove();
+
+  const previewRows = [...main.querySelectorAll<HTMLElement>('.pull-request-activity')];
+  previewRows.slice(5).forEach((row) => row.remove());
+
+  const sectionLabel = main.querySelector<HTMLElement>('.section-label');
+  if (sectionLabel) sectionLabel.textContent = `Recent pull requests · ${Math.min(previewRows.length, 5)}`;
+
+  const recentNote = main.querySelector<HTMLElement>('.recent-activity-heading span');
+  if (recentNote) {
+    const activityState = { ...state, attention: 'ALL' as const, cursor: null, query: undefined, favoritesOnly: false };
+    const search = serializeActivityState(activityState);
+    const link = document.createElement('a');
+    link.className = 'home-section-link';
+    link.href = activityPath(search);
+    link.dataset.routerLink = 'true';
+    link.textContent = 'View all activity →';
+    recentNote.replaceChildren(link);
   }
   return view;
 }
@@ -228,7 +245,7 @@ async function render(): Promise<void> {
         evaluationOverview,
         transitions,
       );
-      shell.show(trimActivityBrowserFromDashboard(dashboard));
+      shell.show(trimActivityBrowserFromDashboard(dashboard, state));
       return;
     }
 
