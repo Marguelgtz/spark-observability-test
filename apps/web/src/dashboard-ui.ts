@@ -182,8 +182,8 @@ function renderRecentShell(state: ActivityUrlState): HTMLElement {
   return details;
 }
 
-function renderInsightsShell(): HTMLElement {
-  const { details, content } = disclosure('Insights', 'dashboard-insights', false);
+function renderInsightsShell(collapseSecondarySections: boolean): HTMLElement {
+  const { details, content } = disclosure('Insights', 'dashboard-insights', !collapseSecondarySections);
   details.id = 'insights';
   content.dataset.testid = 'dashboard-insights-content';
   const loading = node('p', 'dashboard-section-status', 'Loading supporting insights…');
@@ -290,6 +290,7 @@ export function renderOperationalDashboard(
   state: ActivityUrlState,
   handlers: DashboardHandlers,
   previewSize: PreviewSize = DEFAULT_PREVIEW_SIZE,
+  collapseSecondarySections = true,
 ): HTMLElement {
   const main = node('main', 'dashboard-page');
   main.dataset.testid = 'dashboard-view';
@@ -315,7 +316,7 @@ export function renderOperationalDashboard(
     renderNeedsAttention(response, state, previewSize),
     renderActiveChanges(response, state, previewSize),
     renderRecentShell(state),
-    renderInsightsShell(),
+    renderInsightsShell(collapseSecondarySections),
   );
   return main;
 }
