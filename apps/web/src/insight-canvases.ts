@@ -170,7 +170,8 @@ export function renderOverviewInsightCanvases(
     const flow = lineChart(response.trend, 'Evaluation flow', [
       { label: 'Evaluations', read: (point) => point.evaluations },
       { label: 'PRs observed', read: (point) => point.observedPRs },
-    ], state.window);
+    ], state.window, { dualScale: true });
+    flow.dataset.testid = 'evaluation-flow-trend';
     const volume = timeBarChart(response.trend, 'Evaluation volume', (point) => point.evaluations, state.window);
     volume.dataset.testid = 'overview-evaluation-volume';
     stack.append(insightCanvas({
