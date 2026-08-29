@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpDashboardApi, UnauthorizedError } from '../src/api';
+import { HttpDashboardApi, SettingsConflictError, UnauthorizedError } from '../src/api';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -205,5 +205,53 @@ describe('HttpDashboardApi', () => {
     expect(fetcher).toHaveBeenNthCalledWith(3, 'https://spark.test/api/favorites', expect.objectContaining({
       method: 'DELETE', credentials: 'include', body: JSON.stringify(favorite),
     }));
+  });
+
+  it('loads settings with the response ETag and sends it on replacement', async () => {
+    const current = {
+      version: 1 as const,
+      revision: 2,
+      defaultWindow: '7d' as const,
+      previewSize: 15 as const,
+      density: 'COMFORTABLE' as const,
+      collapseSecondarySections: true,
+      defaultRepositoryId: null,
+      updatedAt: '2026-08-29T11:00:00.000Z',
+    };
+    const saved = { ...current, revision: 3, defaultWindow: '24h' as const };
+    const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => new Response(
+      JSON.stringify(init?.method === 'PUT' ? saved : current),
+      { status: 200, headers: { 'content-type': 'application/json', etag: init?.method === 'PUT' ? '"settings-3"' : '"settings-2"' } },
+    ));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+
+    await expect(api.getSettings()).resolves.toEqual({ settings: current, etag: '"settings-2"' });
+    const input = {
+      defaultWindow: saved.defaultWindow,
+      previewSize: saved.previewSize,
+      density: saved.density,
+      collapseSecondarySections: saved.collapseSecondarySections,
+      defaultRepositoryId: saved.defaultRepositoryId,
+    };
+    await expect(api.replaceSettings(input, '"settings-2"')).resolves.toEqual({ settings: saved, etag: '"settings-3"' });
+    expect(fetcher).toHaveBeenNthCalledWith(2, 'https://spark.test/api/settings', expect.objectContaining({
+      method: 'PUT',
+      credentials: 'include',
+      headers: expect.objectContaining({ 'if-match': '"settings-2"' }),
+      body: JSON.stringify(input),
+    }));
+  });
+
+  it('maps a stale settings write to the conflict control flow', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'settings changed' }), { status: 412 })));
+    const api = new HttpDashboardApi('https://spark.test');
+    await expect(api.replaceSettings({
+      defaultWindow: '7d',
+      previewSize: 15,
+      density: 'COMFORTABLE',
+      collapseSecondarySections: true,
+      defaultRepositoryId: null,
+    }, '"settings-1"')).rejects.toBeInstanceOf(SettingsConflictError);
   });
 });

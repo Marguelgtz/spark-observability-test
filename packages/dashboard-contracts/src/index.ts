@@ -6,6 +6,30 @@ export type EvidenceStatusV1 = 'PASSED' | 'PENDING' | 'FAILED' | 'MISSING' | 'UN
 export type EvidenceHealthV1 = 'CLEAR' | 'FAILED' | 'PENDING_OR_MISSING' | 'UNKNOWN';
 export type EvaluationObservationSourceV1 = 'LIVE' | 'BACKFILL';
 export type HistoryCompletenessV1 = 'COMPLETE' | 'PARTIAL_BACKFILL';
+export type DashboardDensityV1 = 'COMFORTABLE' | 'COMPACT';
+
+export interface DashboardSettingsInputV1 {
+  defaultWindow: ActivityWindowV1;
+  previewSize: PreviewSize;
+  density: DashboardDensityV1;
+  collapseSecondarySections: boolean;
+  defaultRepositoryId: number | null;
+}
+
+export interface DashboardSettingsV1 extends DashboardSettingsInputV1 {
+  version: 1;
+  revision: number;
+  /** Null only for synthesized defaults that have never been persisted. */
+  updatedAt: string | null;
+}
+
+export const DASHBOARD_SETTINGS_DEFAULTS: Readonly<DashboardSettingsInputV1> = {
+  defaultWindow: '7d',
+  previewSize: 15,
+  density: 'COMFORTABLE',
+  collapseSecondarySections: true,
+  defaultRepositoryId: null,
+};
 
 export interface ViewerV1 {
   version: 1;
