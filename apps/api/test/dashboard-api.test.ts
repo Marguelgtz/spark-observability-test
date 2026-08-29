@@ -296,6 +296,32 @@ describe('dashboard read API', () => {
     }, [2, 4]);
   });
 
+  it('resolves global search and favorites before asking the reader for an activity page', async () => {
+    const dashboardReader = reader();
+    const dashboardFavoriteStore = favoriteStore();
+    dashboardFavoriteStore.list = vi.fn().mockResolvedValue({
+      version: 1,
+      favorites: [
+        { kind: 'evaluation', repositoryId: 2, pullRequestNumber: 3, runId: 'run-1', headSha: 'sha' },
+        { kind: 'pull-request', repositoryId: 2, pullRequestNumber: 3 },
+      ],
+    });
+    const response = await handleRequest(
+      new Request('https://spark.test/api/activity?q=auth%20policy&favorites=1&limit=5'),
+      env,
+      context,
+      { dashboardAuthorizer: authorizer([2, 4]), dashboardReader, dashboardFavoriteStore },
+    );
+
+    expect(response.status).toBe(200);
+    expect(dashboardReader.activity).toHaveBeenCalledWith(expect.objectContaining({
+      q: 'auth policy',
+      favoritesOnly: true,
+      favoritePullRequestKeys: ['2:3'],
+      limit: 5,
+    }), [2, 4]);
+  });
+
   it('fails closed for repository filters outside the authorized scope', async () => {
     const dashboardReader = reader();
     const response = await handleRequest(

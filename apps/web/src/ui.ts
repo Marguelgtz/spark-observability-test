@@ -12,6 +12,7 @@ import type { ActivityUrlState } from './state';
 import { FavoriteStore, type FavoriteTarget } from './favorites';
 import { changeLabel, evidenceLabel, relativeTime, shortSha, trustedGitHubUrl } from './format';
 import { serializeActivityState } from './state';
+import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -186,7 +187,13 @@ function sameObservation(run: EvaluationSummaryV1, latest: EvaluationSummaryV1):
   return latest.runId ? run.runId === latest.runId : run.headSha === latest.headSha;
 }
 
-function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: EvaluationSummaryV1, state: ActivityUrlState, favorites: FavoriteStore): HTMLElement {
+function renderHistoryPanel(
+  history: PullRequestHistoryResponseV1,
+  latest: EvaluationSummaryV1,
+  state: ActivityUrlState,
+  favorites: FavoriteStore,
+  previewSize: PreviewSize,
+): HTMLElement {
   const panel = node('div', 'pr-history-panel');
   panel.dataset.testid = `history-${history.repository.id}-${history.pullRequest.number}`;
 
@@ -201,12 +208,11 @@ function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: Evalu
   );
   panel.append(summary);
 
-  const rail = node('div', 'history-rail');
-  rail.setAttribute('role', 'list');
-  for (const run of history.runs) {
+  const renderRun = (run: EvaluationSummaryV1): HTMLElement => {
     const isLatest = sameObservation(run, latest);
     const shell = node('div', 'history-card-shell');
     shell.setAttribute('role', 'listitem');
+    shell.tabIndex = -1;
     const card = node('a', `history-card${isLatest ? ' is-latest' : ''}`) as HTMLAnchorElement;
     card.href = activityHref(run, state);
     card.dataset.routerLink = 'true';
@@ -220,8 +226,18 @@ function renderHistoryPanel(history: PullRequestHistoryResponseV1, latest: Evalu
     const favorite = favoriteButton(favorites, evaluationTarget(run), `evaluation ${shortSha(run.headSha)}`);
     favorite.classList.add('favorite-overlay');
     shell.append(card, favorite);
-    rail.append(shell);
-  }
+    return shell;
+  };
+  const rail = progressiveList({
+    items: history.runs,
+    total: history.runs.length,
+    previewSize,
+    identity: (run) => run.runId ?? `${run.repository.id}:${run.headSha}:${run.evaluatedAt}`,
+    renderItem: renderRun,
+    itemsClassName: 'history-rail',
+    itemLabel: 'evaluations',
+  });
+  rail.querySelector('.progressive-list-items')?.setAttribute('role', 'list');
   panel.append(rail);
   return panel;
 }
@@ -232,6 +248,7 @@ function pullRequestRow(
   loadHistory: (repositoryId: number, pullRequestNumber: number) => Promise<PullRequestHistoryResponseV1>,
   favorites: FavoriteStore,
   onFavoriteChange: () => void,
+  previewSize: PreviewSize,
 ): HTMLElement {
   const latest = activity.latest;
   const wrapper = node('div', 'pull-request-activity');
@@ -300,7 +317,7 @@ function pullRequestRow(
     try {
       const history = await loadHistory(latest.repository.id, latest.pullRequest.number);
       const newest = history.runs[0] ?? latest;
-      panel = renderHistoryPanel(history, newest, state, favorites);
+      panel = renderHistoryPanel(history, newest, state, favorites, previewSize);
       wrapper.append(panel);
       historyButton.setAttribute('aria-expanded', 'true');
     } catch {
@@ -323,8 +340,10 @@ export interface ActivityHandlers {
   setRepository(value: number | null): void;
   showAllAttention(): void;
   setClientFilters(query: string, favoritesOnly: boolean): void;
+  loadMore(cursor: string): Promise<ActivityResponseV1>;
   loadHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
   favorites: FavoriteStore;
+  previewSize?: PreviewSize;
 }
 
 export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, state: ActivityUrlState, handlers: ActivityHandlers): HTMLElement {
@@ -372,6 +391,7 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
 
   let query = state.query ?? '';
   let favoritesOnly = state.favoritesOnly ?? false;
+  const previewSize = handlers.previewSize ?? DEFAULT_PREVIEW_SIZE;
   const clientFilters = node('div', 'client-filters');
   const searchField = node('label', 'search-filter');
   searchField.append(node('span', 'filter-label', 'Search'));
@@ -386,7 +406,6 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
     favoriteFilter.classList.toggle('is-active', favoritesOnly);
     favoriteFilter.setAttribute('aria-pressed', favoritesOnly ? 'true' : 'false');
     handlers.setClientFilters(query, favoritesOnly);
-    paintRows();
   }, { active: favoritesOnly, testId: 'favorites-only' });
   favoriteFilter.classList.add('favorites-filter');
   clientFilters.append(searchField, favoriteFilter);
@@ -398,41 +417,39 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
   section.append(sectionLabel, results);
   main.append(section);
 
-  function matchesQuery(activity: PullRequestActivityV1): boolean {
-    const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return true;
-    const latest = activity.latest;
-    const searchable = [
-      latest.pullRequest.title,
-      latest.repository.owner,
-      latest.repository.name,
-      `${latest.repository.owner}/${latest.repository.name}`,
-      `#${latest.pullRequest.number}`,
-      String(latest.pullRequest.number),
-      latest.headSha,
-      latest.attention,
-      ...latest.topReasons,
-      ...latest.sensitiveSurfaces,
-    ].join(' ').toLocaleLowerCase();
-    return searchable.includes(normalized);
-  }
-
   function paintRows(): void {
-    const visible = response.pullRequests.filter((activity) => {
-      if (!matchesQuery(activity)) return false;
-      return !favoritesOnly || handlers.favorites.hasFavoriteForPullRequest(activity.repository.id, activity.pullRequest.number);
-    });
-    sectionLabel.textContent = `Recent pull requests · ${visible.length}`;
+    const total = response.total ?? response.pullRequests.length;
+    sectionLabel.textContent = `Recent pull requests · ${total}`;
     results.replaceChildren();
 
-    if (visible.length > 0) {
-      const list = node('div', 'evaluation-list');
+    if (response.pullRequests.length > 0) {
       const rowState: ActivityUrlState = { ...state, query: query.trim() || undefined, favoritesOnly };
-      for (const activity of visible) {
-        list.append(pullRequestRow(activity, rowState, handlers.loadHistory, handlers.favorites, () => {
-          if (favoritesOnly) paintRows();
-        }));
-      }
+      const list = progressiveList({
+        items: response.pullRequests,
+        total,
+        nextCursor: response.pagination.nextCursor,
+        previewSize,
+        identity: (activity) => `${activity.repository.id}:${activity.pullRequest.number}`,
+        renderItem: (activity) => pullRequestRow(
+          activity,
+          rowState,
+          handlers.loadHistory,
+          handlers.favorites,
+          () => { if (favoritesOnly) handlers.setClientFilters(query, favoritesOnly); },
+          previewSize,
+        ),
+        loadMore: async (cursor) => {
+          const page = await handlers.loadMore(cursor);
+          return {
+            items: page.pullRequests,
+            nextCursor: page.pagination.nextCursor,
+            total: page.total ?? total,
+          };
+        },
+        className: 'evaluation-list',
+        testId: 'activity-progressive-list',
+        itemLabel: 'pull requests',
+      });
       results.append(list);
       return;
     }
@@ -453,7 +470,6 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
         favoriteFilter.classList.remove('is-active');
         favoriteFilter.setAttribute('aria-pressed', 'false');
         handlers.setClientFilters(query, favoritesOnly);
-        paintRows();
       });
       empty.append(reset);
     } else if (response.repositories.length === 0) {
@@ -470,10 +486,11 @@ export function renderActivity(viewer: ViewerV1, response: ActivityResponseV1, s
     results.append(empty);
   }
 
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
   search.addEventListener('input', () => {
     query = search.value.slice(0, 100);
-    handlers.setClientFilters(query, favoritesOnly);
-    paintRows();
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => handlers.setClientFilters(query, favoritesOnly), 250);
   });
   paintRows();
   return root;

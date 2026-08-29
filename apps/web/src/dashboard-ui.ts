@@ -5,6 +5,7 @@ import { renderHomeInsightCanvases } from './insight-canvases';
 import type { DashboardInsightsData } from './dashboard-api';
 import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
+import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -102,7 +103,25 @@ function changeList(items: PullRequestActivityV1[], state: ActivityUrlState, pre
   return list;
 }
 
-function renderNeedsAttention(response: OperationalDashboardResponseV1, state: ActivityUrlState): HTMLElement {
+function progressiveChangeList(
+  items: PullRequestActivityV1[],
+  total: number,
+  state: ActivityUrlState,
+  prefix: string,
+  previewSize: PreviewSize,
+): HTMLElement {
+  return progressiveList({
+    items,
+    total,
+    previewSize,
+    identity: (item) => `${item.repository.id}:${item.pullRequest.number}`,
+    renderItem: (item) => changeRow(item, state, prefix),
+    itemsClassName: 'dashboard-change-list',
+    itemLabel: 'changes',
+  });
+}
+
+function renderNeedsAttention(response: OperationalDashboardResponseV1, state: ActivityUrlState, previewSize: PreviewSize): HTMLElement {
   const section = node('section', 'needs-attention dashboard-primary-section');
   section.dataset.testid = 'needs-attention';
   const heading = node('div', 'home-section-heading');
@@ -118,7 +137,7 @@ function renderNeedsAttention(response: OperationalDashboardResponseV1, state: A
     section.append(node('p', 'home-clear-state', 'Nothing currently needs attention in this view.'));
     return section;
   }
-  section.append(changeList(response.needsAttention.preview, state, 'attention-change'));
+  section.append(progressiveChangeList(response.needsAttention.preview, response.needsAttention.total, state, 'attention-change', previewSize));
   return section;
 }
 
@@ -135,14 +154,18 @@ function disclosure(title: string, testId: string, open: boolean, count?: string
   return { details, content };
 }
 
-function renderActiveChanges(response: OperationalDashboardResponseV1, state: ActivityUrlState): HTMLElement {
+function renderActiveChanges(response: OperationalDashboardResponseV1, state: ActivityUrlState, previewSize: PreviewSize): HTMLElement {
   const { details, content } = disclosure('Active changes', 'active-changes', true, String(response.activeChanges.total));
   details.id = 'active-changes';
   if (!response.activeChanges.preview.length) {
     content.append(node('p', 'home-clear-state', 'No active observed changes in this view.'));
   } else {
-    content.append(changeList(response.activeChanges.preview, state, 'active-change'));
+    content.append(progressiveChangeList(response.activeChanges.preview, response.activeChanges.total, state, 'active-change', previewSize));
   }
+  const link = node('a', 'home-section-link dashboard-section-link', 'Browse all changes →') as HTMLAnchorElement;
+  link.href = activityHref(state);
+  link.dataset.routerLink = 'true';
+  details.append(link);
   return details;
 }
 
@@ -266,6 +289,7 @@ export function renderOperationalDashboard(
   response: OperationalDashboardResponseV1,
   state: ActivityUrlState,
   handlers: DashboardHandlers,
+  previewSize: PreviewSize = DEFAULT_PREVIEW_SIZE,
 ): HTMLElement {
   const main = node('main', 'dashboard-page');
   main.dataset.testid = 'dashboard-view';
@@ -288,8 +312,8 @@ export function renderOperationalDashboard(
   main.append(
     repositoryControl(response, state, handlers.setRepository),
     renderOverview(response, state),
-    renderNeedsAttention(response, state),
-    renderActiveChanges(response, state),
+    renderNeedsAttention(response, state, previewSize),
+    renderActiveChanges(response, state, previewSize),
     renderRecentShell(state),
     renderInsightsShell(),
   );

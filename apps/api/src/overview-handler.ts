@@ -1,7 +1,7 @@
 import type { ActivityWindowV1 } from '@spark/dashboard-contracts';
 import type { OutcomeOverviewV1 } from '@spark/dashboard-contracts/outcome';
 import type { Env } from './app';
-import { readActivityDrilldown, type OverviewMetricV1 } from './activity-drilldown';
+import { InvalidOverviewCursorError, readActivityDrilldown, type OverviewMetricV1 } from './activity-drilldown';
 import { readNotableTransitionInsights } from './activity-transitions';
 import { GitHubDashboardAuth } from './github-auth';
 import { readOutcomeOverview } from './outcome-overview';
@@ -52,12 +52,20 @@ export async function handleOverviewRequest(request: Request, env: Env): Promise
   }
 
   const now = new Date();
+  const limitValue = url.searchParams.get('limit');
+  let limit: number | undefined;
+  if (limitValue) {
+    limit = Number(limitValue);
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50) return json({ error: 'invalid overview query' }, 400);
+  }
   const input = {
     window,
     repositoryIds: principal.repositoryIds,
     repositoryId,
     start: windowStart(window, now),
     now,
+    cursor: url.searchParams.get('cursor'),
+    limit,
   };
 
   if (match[1] === 'transitions') {
@@ -66,7 +74,13 @@ export async function handleOverviewRequest(request: Request, env: Env): Promise
 
   if (!METRICS.includes(match[1] as OverviewMetricV1)) return json({ error: 'not found' }, 404);
   const metric = match[1] as OverviewMetricV1;
-  const drilldown = await readActivityDrilldown(env.DB, { ...input, metric });
+  let drilldown;
+  try {
+    drilldown = await readActivityDrilldown(env.DB, { ...input, metric });
+  } catch (error) {
+    if (error instanceof InvalidOverviewCursorError) return json({ error: 'invalid overview cursor' }, 400);
+    throw error;
+  }
   if (metric !== 'merged-unresolved') return json(drilldown);
 
   const outcomes: OutcomeOverviewV1 = await readOutcomeOverview(env.DB, {

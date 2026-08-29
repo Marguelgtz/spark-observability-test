@@ -13,7 +13,7 @@ import { summaryFromRow } from './dashboard-reader';
 import { readActivityTrend, type ActivityTrendPointV1 } from './activity-trend';
 
 const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
-const MAX_ITEMS = 100;
+const MAX_ITEMS = 50;
 
 export type OverviewMetricV1 = 'pull-requests' | 'evaluations' | 'attention' | 'merged-unresolved';
 
@@ -102,6 +102,8 @@ export interface OverviewDrilldownResponseV1 {
   total: number;
   trend: ActivityTrendPointV1[];
   items: OverviewDrilldownItemV1[];
+  pagination: { nextCursor: string | null };
+  /** @deprecated Prefer pagination.nextCursor. */
   truncated: boolean;
 }
 
@@ -112,6 +114,40 @@ interface DrilldownInput {
   repositoryId: number | null;
   start: string;
   now: Date;
+  cursor?: string | null;
+  limit?: number;
+}
+
+interface DrilldownCursorV1 {
+  v: 1;
+  m: OverviewMetricV1;
+  t: string;
+  r: number;
+  p: number;
+  c?: string;
+  i?: string;
+  a?: AttentionLevelV1;
+}
+
+export class InvalidOverviewCursorError extends Error {}
+
+function encodeCursor(cursor: DrilldownCursorV1): string {
+  return btoa(JSON.stringify(cursor)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function decodeCursor(value: string | null | undefined, metric: OverviewMetricV1): DrilldownCursorV1 | undefined {
+  if (!value) return undefined;
+  try {
+    const padded = value.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - value.length % 4) % 4);
+    const parsed = JSON.parse(atob(padded)) as Partial<DrilldownCursorV1>;
+    if (parsed.v !== 1 || parsed.m !== metric || typeof parsed.t !== 'string'
+      || typeof parsed.r !== 'number' || typeof parsed.p !== 'number') throw new Error('invalid');
+    if (metric === 'evaluations' && (typeof parsed.c !== 'string' || typeof parsed.i !== 'string')) throw new Error('invalid');
+    if (metric === 'attention' && parsed.a !== 'HIGH' && parsed.a !== 'MEDIUM') throw new Error('invalid');
+    return parsed as DrilldownCursorV1;
+  } catch {
+    throw new InvalidOverviewCursorError('Invalid overview cursor');
+  }
 }
 
 function splitRepository(id: number, fullName: string): RepositoryRefV1 {
@@ -175,9 +211,17 @@ function commonPullRequestSelect(): string {
           pl.unresolved_at_merge, pl.last_event_at AS lifecycle_last_event_at`;
 }
 
-async function pullRequestItems(db: D1Database, input: DrilldownInput): Promise<{ total: number; items: OverviewDrilldownItemV1[] }> {
+interface DrilldownData {
+  total: number;
+  items: OverviewDrilldownItemV1[];
+  nextCursor: string | null;
+}
+
+async function pullRequestItems(db: D1Database, input: DrilldownInput): Promise<DrilldownData> {
   const repositoryScope = JSON.stringify(input.repositoryIds);
   const repositoryFilter = input.repositoryId === null ? '' : 'AND er.repository_id = ?';
+  const cursor = decodeCursor(input.cursor, input.metric);
+  const limit = Math.max(1, Math.min(input.limit ?? 15, MAX_ITEMS));
   let query: string;
   let bindings: unknown[];
 
@@ -202,19 +246,33 @@ async function pullRequestItems(db: D1Database, input: DrilldownInput): Promise<
        FROM evaluation_runs er
        WHERE er.repository_id IN (${REPOSITORY_SCOPE_SQL})
        GROUP BY er.repository_id, er.pull_request_number
+     ), base AS (
+       SELECT ${commonPullRequestSelect()}, COUNT(*) OVER() AS total_count
+       FROM latest
+       JOIN history ON history.repository_id = latest.repository_id AND history.pull_request_number = latest.pull_request_number
+       LEFT JOIN pull_request_lifecycle pl ON pl.repository_id = latest.repository_id AND pl.pull_request_number = latest.pull_request_number
+       WHERE latest.latest_rank = 1
+         AND datetime(latest.evaluated_at) >= datetime(?)
+         AND latest.attention IN ('HIGH', 'MEDIUM')
+         AND (pl.state IS NULL OR pl.state = 'OPEN')
      )
-     SELECT ${commonPullRequestSelect()}, COUNT(*) OVER() AS total_count
-     FROM latest
-     JOIN history ON history.repository_id = latest.repository_id AND history.pull_request_number = latest.pull_request_number
-     LEFT JOIN pull_request_lifecycle pl ON pl.repository_id = latest.repository_id AND pl.pull_request_number = latest.pull_request_number
-     WHERE latest.latest_rank = 1
-       AND datetime(latest.evaluated_at) >= datetime(?)
-       AND latest.attention IN ('HIGH', 'MEDIUM')
-       AND (pl.state IS NULL OR pl.state = 'OPEN')
-     ORDER BY CASE latest.attention WHEN 'HIGH' THEN 0 ELSE 1 END,
-              datetime(latest.evaluated_at) DESC, latest.repository_id DESC, latest.pull_request_number DESC
-     LIMIT ${MAX_ITEMS}`;
-    bindings = [repositoryScope, ...(input.repositoryId === null ? [] : [input.repositoryId]), repositoryScope, input.start];
+     SELECT * FROM base
+     ${cursor ? `WHERE (CASE attention WHEN 'HIGH' THEN 0 ELSE 1 END > ?
+       OR (CASE attention WHEN 'HIGH' THEN 0 ELSE 1 END = ? AND
+         (evaluated_at < ? OR (evaluated_at = ? AND repository_id < ?)
+          OR (evaluated_at = ? AND repository_id = ? AND pull_request_number < ?))))` : ''}
+     ORDER BY CASE attention WHEN 'HIGH' THEN 0 ELSE 1 END,
+              datetime(evaluated_at) DESC, repository_id DESC, pull_request_number DESC
+     LIMIT ?`;
+    const rank = cursor?.a === 'HIGH' ? 0 : 1;
+    bindings = [
+      repositoryScope,
+      ...(input.repositoryId === null ? [] : [input.repositoryId]),
+      repositoryScope,
+      input.start,
+      ...(cursor ? [rank, rank, cursor.t, cursor.t, cursor.r, cursor.t, cursor.r, cursor.p] : []),
+      limit + 1,
+    ];
   } else {
     query = `WITH latest AS (
        SELECT er.repository_id, r.full_name, er.head_sha, er.pull_request_number, er.attention,
@@ -241,59 +299,92 @@ async function pullRequestItems(db: D1Database, input: DrilldownInput): Promise<
        FROM evaluation_runs er
        WHERE er.repository_id IN (${REPOSITORY_SCOPE_SQL})
        GROUP BY er.repository_id, er.pull_request_number
+     ), base AS (
+       SELECT ${commonPullRequestSelect()}, COUNT(*) OVER() AS total_count
+       FROM latest
+       JOIN window_prs ON window_prs.repository_id = latest.repository_id AND window_prs.pull_request_number = latest.pull_request_number
+       JOIN history ON history.repository_id = latest.repository_id AND history.pull_request_number = latest.pull_request_number
+       LEFT JOIN pull_request_lifecycle pl ON pl.repository_id = latest.repository_id AND pl.pull_request_number = latest.pull_request_number
+       WHERE latest.latest_rank = 1
      )
-     SELECT ${commonPullRequestSelect()}, COUNT(*) OVER() AS total_count
-     FROM latest
-     JOIN window_prs ON window_prs.repository_id = latest.repository_id AND window_prs.pull_request_number = latest.pull_request_number
-     JOIN history ON history.repository_id = latest.repository_id AND history.pull_request_number = latest.pull_request_number
-     LEFT JOIN pull_request_lifecycle pl ON pl.repository_id = latest.repository_id AND pl.pull_request_number = latest.pull_request_number
-     WHERE latest.latest_rank = 1
-     ORDER BY datetime(latest.evaluated_at) DESC, latest.repository_id DESC, latest.pull_request_number DESC
-     LIMIT ${MAX_ITEMS}`;
-    bindings = [repositoryScope, repositoryScope, ...(input.repositoryId === null ? [] : [input.repositoryId]), input.start, repositoryScope];
+     SELECT * FROM base
+     ${cursor ? `WHERE (evaluated_at < ? OR (evaluated_at = ? AND repository_id < ?)
+       OR (evaluated_at = ? AND repository_id = ? AND pull_request_number < ?))` : ''}
+     ORDER BY datetime(evaluated_at) DESC, repository_id DESC, pull_request_number DESC
+     LIMIT ?`;
+    bindings = [
+      repositoryScope,
+      repositoryScope,
+      ...(input.repositoryId === null ? [] : [input.repositoryId]),
+      input.start,
+      repositoryScope,
+      ...(cursor ? [cursor.t, cursor.t, cursor.r, cursor.t, cursor.r, cursor.p] : []),
+      limit + 1,
+    ];
   }
 
   const result = await db.prepare(query).bind(...bindings).all<PullRequestRow>();
   const rows = result.results ?? [];
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
   return {
     total: Number(rows[0]?.total_count ?? 0),
-    items: rows.map((row) => {
+    items: page.map((row) => {
       const lifecycle = lifecycleFromRow(row);
       return { kind: 'pull-request' as const, activity: activityFromRow(row), ...(lifecycle ? { lifecycle } : {}) };
     }),
+    nextCursor: rows.length > limit && last
+      ? encodeCursor({ v: 1, m: input.metric, t: last.evaluated_at, r: last.repository_id, p: last.pull_request_number, ...(input.metric === 'attention' ? { a: last.attention } : {}) })
+      : null,
   };
 }
 
-async function evaluationItems(db: D1Database, input: DrilldownInput): Promise<{ total: number; items: OverviewDrilldownItemV1[] }> {
+async function evaluationItems(db: D1Database, input: DrilldownInput): Promise<DrilldownData> {
   const repositoryScope = JSON.stringify(input.repositoryIds);
   const repositoryFilter = input.repositoryId === null ? '' : 'AND er.repository_id = ?';
+  const cursor = decodeCursor(input.cursor, input.metric);
+  const limit = Math.max(1, Math.min(input.limit ?? 15, MAX_ITEMS));
   const result = await db.prepare(
-    `SELECT er.repository_id, r.full_name, er.head_sha, er.pull_request_number, er.attention,
+    `WITH base AS (
+       SELECT er.repository_id, r.full_name, er.head_sha, er.pull_request_number, er.attention,
             er.evaluated_at, er.normalized_json, NULL AS check_url,
             er.id AS run_id, er.observation_source, er.evidence_health, er.created_at,
             COUNT(*) OVER() AS total_count
-     FROM evaluation_runs er
-     JOIN repositories r ON r.id = er.repository_id
-     WHERE er.repository_id IN (${REPOSITORY_SCOPE_SQL})
-       ${repositoryFilter}
-       AND datetime(er.evaluated_at) >= datetime(?)
-     ORDER BY datetime(er.evaluated_at) DESC, datetime(er.created_at) DESC, er.id DESC
-     LIMIT ${MAX_ITEMS}`,
+       FROM evaluation_runs er
+       JOIN repositories r ON r.id = er.repository_id
+       WHERE er.repository_id IN (${REPOSITORY_SCOPE_SQL})
+         ${repositoryFilter}
+         AND datetime(er.evaluated_at) >= datetime(?)
+     )
+     SELECT * FROM base
+     ${cursor ? `WHERE (evaluated_at < ? OR (evaluated_at = ? AND created_at < ?)
+       OR (evaluated_at = ? AND created_at = ? AND run_id < ?))` : ''}
+     ORDER BY datetime(evaluated_at) DESC, datetime(created_at) DESC, run_id DESC
+     LIMIT ?`,
   ).bind(
     repositoryScope,
     ...(input.repositoryId === null ? [] : [input.repositoryId]),
     input.start,
+    ...(cursor ? [cursor.t, cursor.t, cursor.c, cursor.t, cursor.c, cursor.i] : []),
+    limit + 1,
   ).all<EvaluationRow>();
   const rows = result.results ?? [];
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
   return {
     total: Number(rows[0]?.total_count ?? 0),
-    items: rows.map((row) => ({ kind: 'evaluation' as const, evaluation: summaryFromRow(row) })),
+    items: page.map((row) => ({ kind: 'evaluation' as const, evaluation: summaryFromRow(row) })),
+    nextCursor: rows.length > limit && last && last.created_at && last.run_id
+      ? encodeCursor({ v: 1, m: input.metric, t: last.evaluated_at, c: last.created_at, i: last.run_id, r: last.repository_id, p: last.pull_request_number })
+      : null,
   };
 }
 
-async function mergeItems(db: D1Database, input: DrilldownInput): Promise<{ total: number; items: OverviewDrilldownItemV1[] }> {
+async function mergeItems(db: D1Database, input: DrilldownInput): Promise<DrilldownData> {
   const repositoryScope = JSON.stringify(input.repositoryIds);
   const repositoryFilter = input.repositoryId === null ? '' : 'AND pl.repository_id = ?';
+  const cursor = decodeCursor(input.cursor, input.metric);
+  const limit = Math.max(1, Math.min(input.limit ?? 15, MAX_ITEMS));
   const result = await db.prepare(
     `WITH latest AS (
        SELECT er.repository_id, er.pull_request_number, er.head_sha, er.attention, er.evaluated_at,
@@ -304,36 +395,44 @@ async function mergeItems(db: D1Database, input: DrilldownInput): Promise<{ tota
               ) AS latest_rank
        FROM evaluation_runs er
        WHERE er.repository_id IN (${REPOSITORY_SCOPE_SQL})
-     )
-     SELECT pl.repository_id, r.full_name, pl.pull_request_number,
+     ), base AS (
+       SELECT pl.repository_id, r.full_name, pl.pull_request_number,
             pl.state AS lifecycle_state, pl.opened_at, pl.closed_at, pl.merged_at, pl.merge_sha,
             pl.pre_merge_run_id, pl.pre_merge_attention, pl.pre_merge_evidence_health,
             pl.unresolved_at_merge, pl.last_event_at AS lifecycle_last_event_at,
             latest.head_sha, latest.attention, latest.evaluated_at, latest.normalized_json,
             latest.run_id, latest.observation_source, latest.evidence_health, latest.created_at,
             COUNT(*) OVER() AS total_count
-     FROM pull_request_lifecycle pl
-     JOIN repositories r ON r.id = pl.repository_id
-     LEFT JOIN latest ON latest.repository_id = pl.repository_id
-       AND latest.pull_request_number = pl.pull_request_number AND latest.latest_rank = 1
-     WHERE pl.repository_id IN (${REPOSITORY_SCOPE_SQL})
-       ${repositoryFilter}
-       AND pl.state = 'MERGED'
-       AND pl.unresolved_at_merge = 1
-       AND pl.merged_at IS NOT NULL
-       AND datetime(pl.merged_at) >= datetime(?)
-     ORDER BY datetime(pl.merged_at) DESC, pl.repository_id DESC, pl.pull_request_number DESC
-     LIMIT ${MAX_ITEMS}`,
+       FROM pull_request_lifecycle pl
+       JOIN repositories r ON r.id = pl.repository_id
+       LEFT JOIN latest ON latest.repository_id = pl.repository_id
+         AND latest.pull_request_number = pl.pull_request_number AND latest.latest_rank = 1
+       WHERE pl.repository_id IN (${REPOSITORY_SCOPE_SQL})
+         ${repositoryFilter}
+         AND pl.state = 'MERGED'
+         AND pl.unresolved_at_merge = 1
+         AND pl.merged_at IS NOT NULL
+         AND datetime(pl.merged_at) >= datetime(?)
+     )
+     SELECT * FROM base
+     ${cursor ? `WHERE (merged_at < ? OR (merged_at = ? AND repository_id < ?)
+       OR (merged_at = ? AND repository_id = ? AND pull_request_number < ?))` : ''}
+     ORDER BY datetime(merged_at) DESC, repository_id DESC, pull_request_number DESC
+     LIMIT ?`,
   ).bind(
     repositoryScope,
     repositoryScope,
     ...(input.repositoryId === null ? [] : [input.repositoryId]),
     input.start,
+    ...(cursor ? [cursor.t, cursor.t, cursor.r, cursor.t, cursor.r, cursor.p] : []),
+    limit + 1,
   ).all<MergeRow>();
   const rows = result.results ?? [];
+  const page = rows.slice(0, limit);
+  const last = page.at(-1);
   return {
     total: Number(rows[0]?.total_count ?? 0),
-    items: rows.map((row) => {
+    items: page.map((row) => {
       const lifecycle = lifecycleFromRow(row)!;
       const repository = splitRepository(row.repository_id, row.full_name);
       let latest: EvaluationSummaryV1 | undefined;
@@ -365,6 +464,9 @@ async function mergeItems(db: D1Database, input: DrilldownInput): Promise<{ tota
         lifecycle,
       };
     }),
+    nextCursor: rows.length > limit && last && last.merged_at
+      ? encodeCursor({ v: 1, m: input.metric, t: last.merged_at, r: last.repository_id, p: last.pull_request_number })
+      : null,
   };
 }
 
@@ -378,6 +480,7 @@ export async function readActivityDrilldown(db: D1Database, input: DrilldownInpu
       total: 0,
       trend: [],
       items: [],
+      pagination: { nextCursor: null },
       truncated: false,
     };
   }
@@ -399,6 +502,7 @@ export async function readActivityDrilldown(db: D1Database, input: DrilldownInpu
     total: data.total,
     trend,
     items: data.items,
-    truncated: data.total > data.items.length,
+    pagination: { nextCursor: data.nextCursor },
+    truncated: data.nextCursor !== null,
   };
 }

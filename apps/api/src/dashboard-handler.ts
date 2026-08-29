@@ -52,7 +52,7 @@ function fallbackOverview(activity: ActivityResponseV1): ActivityOverviewV1 {
 function fallbackNeedsAttention(activity: ActivityResponseV1): NeedsAttentionV1 {
   const preview = activity.pullRequests
     .filter((item) => item.latest.attention === 'HIGH' || item.latest.attention === 'MEDIUM')
-    .slice(0, 5);
+    .slice(0, 15);
   return { total: preview.length, preview };
 }
 
@@ -92,7 +92,7 @@ export async function handleOperationalDashboardRequest(
     repositoryIds: principal.repositoryIds,
     repositoryId: query.repositoryId,
     start: windowStart(query.window, now),
-    limit: 5,
+    limit: 15,
   };
 
   const [activity, activeChanges] = await Promise.all([

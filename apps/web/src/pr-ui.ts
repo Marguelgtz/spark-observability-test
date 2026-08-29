@@ -13,6 +13,7 @@ import type {
 } from '@spark/dashboard-contracts';
 import type { FavoriteStore } from './favorites';
 import { evidenceLabel, relativeTime, shortSha, trustedGitHubUrl } from './format';
+import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
 import { evaluationTarget, favoriteButton } from './ui';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -359,16 +360,17 @@ function timelineSection(
   activitySearch: string,
   favorites: FavoriteStore,
   saveFeedback: SaveTransitionFeedback,
+  previewSize: PreviewSize,
 ): HTMLElement {
   const section = node('section', 'pr-section');
   const heading = node('div', 'pr-section-heading');
   heading.append(node('h2', undefined, 'Evaluation history'), node('span', 'muted', 'Newest first'));
   section.append(heading);
-  const rail = node('div', 'pr-timeline');
-  rail.setAttribute('role', 'list');
-  for (const [index, run] of detail.runs.entries()) {
+  const renderRun = (run: EvaluationSummaryV1): HTMLElement => {
+    const index = detail.runs.indexOf(run);
     const runShell = node('div', 'pr-run-shell');
     runShell.setAttribute('role', 'listitem');
+    runShell.tabIndex = -1;
     const link = node('a', `pr-run${index === 0 ? ' is-latest' : ''}`) as HTMLAnchorElement;
     link.href = observationHref(run, activitySearch);
     link.dataset.routerLink = 'true';
@@ -381,8 +383,19 @@ function timelineSection(
     const favorite = favoriteButton(favorites, evaluationTarget(run), `evaluation ${shortSha(run.headSha)}`);
     favorite.classList.add('favorite-overlay');
     runShell.append(link, favorite);
-    rail.append(runShell);
-  }
+    return runShell;
+  };
+  const rail = progressiveList({
+    items: detail.runs,
+    total: detail.runs.length,
+    previewSize,
+    identity: (run) => run.runId ?? `${run.repository.id}:${run.headSha}:${run.evaluatedAt}`,
+    renderItem: renderRun,
+    itemsClassName: 'pr-timeline',
+    testId: 'pr-history-progressive-list',
+    itemLabel: 'evaluations',
+  });
+  rail.querySelector('.progressive-list-items')?.setAttribute('role', 'list');
   section.append(rail);
 
   if (detail.notableTransitions.length) {
@@ -419,6 +432,7 @@ export function renderPullRequest(
   activitySearch: string,
   favorites: FavoriteStore,
   saveFeedback: SaveTransitionFeedback,
+  previewSize: PreviewSize = DEFAULT_PREVIEW_SIZE,
 ): HTMLElement {
   const { root, main } = shell(viewer);
   main.dataset.testid = 'pull-request-detail';
@@ -441,7 +455,7 @@ export function renderPullRequest(
   const terminal = lifecycleTerminal(detail);
   main.append(header, currentSection(detail, activitySearch));
   if (terminal) main.append(terminal);
-  main.append(historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch, favorites, saveFeedback));
+  main.append(historySection(detail), insightsSection(detail), evidenceIssuesSection(detail), timelineSection(detail, activitySearch, favorites, saveFeedback, previewSize));
   return root;
 }
 

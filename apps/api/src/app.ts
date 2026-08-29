@@ -93,12 +93,17 @@ function parseActivityQuery(url: URL): ActivityQueryV1 | undefined {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) return undefined;
   }
 
+  const q = url.searchParams.get('q')?.trim();
+  if (q && q.length > 100) return undefined;
+
   return {
     window: windowValue as ActivityWindowV1,
     attention: attentionValue as AttentionFilterV1,
     repositoryId,
     cursor: url.searchParams.get('cursor'),
     limit,
+    ...(q ? { q } : {}),
+    ...(url.searchParams.get('favorites') === '1' ? { favoritesOnly: true } : {}),
   };
 }
 
@@ -209,6 +214,10 @@ async function handleDashboardRequest(
     if (!query) return json({ error: 'invalid activity query' }, 400);
     if (query.repositoryId !== null && !principal.repositoryIds.includes(query.repositoryId)) {
       return json({ error: 'not found' }, 404);
+    }
+    if (query.favoritesOnly) {
+      const saved = await favoriteStore.list(principal.viewer.id, principal.repositoryIds);
+      query.favoritePullRequestKeys = [...new Set(saved.favorites.map((favorite) => `${favorite.repositoryId}:${favorite.pullRequestNumber}`))];
     }
     return json(await reader.activity(query, principal.repositoryIds));
   }

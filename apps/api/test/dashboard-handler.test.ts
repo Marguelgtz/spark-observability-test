@@ -97,7 +97,7 @@ describe('operational dashboard API', () => {
       window: '24h', attention: 'ALL', repositoryId: 2, cursor: null, limit: 1,
     }, [2, 4], now);
     expect(activeChangesReader).toHaveBeenCalledWith(env.DB, {
-      repositoryIds: [2, 4], repositoryId: 2, start: '2026-08-28T12:00:00.000Z', limit: 5,
+      repositoryIds: [2, 4], repositoryId: 2, start: '2026-08-28T12:00:00.000Z', limit: 15,
     });
   });
 

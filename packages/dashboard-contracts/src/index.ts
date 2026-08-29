@@ -1,6 +1,7 @@
 export type AttentionLevelV1 = 'LOW' | 'MEDIUM' | 'HIGH';
 export type AttentionFilterV1 = 'ALL' | AttentionLevelV1;
 export type ActivityWindowV1 = '24h' | '7d' | '30d';
+export type PreviewSize = 5 | 10 | 15;
 export type EvidenceStatusV1 = 'PASSED' | 'PENDING' | 'FAILED' | 'MISSING' | 'UNKNOWN';
 export type EvidenceHealthV1 = 'CLEAR' | 'FAILED' | 'PENDING_OR_MISSING' | 'UNKNOWN';
 export type EvaluationObservationSourceV1 = 'LIVE' | 'BACKFILL';
@@ -314,6 +315,8 @@ export interface ActivityResponseV1 {
   selectedRepositoryId: number | null;
   counts: Record<AttentionLevelV1, number>;
   repositories: ObservedRepositoryV1[];
+  /** Exact number of pull requests matching the current server-side filters. */
+  total?: number;
   pullRequests: PullRequestActivityV1[];
   overview?: ActivityOverviewV1;
   needsAttention?: NeedsAttentionV1;
@@ -329,6 +332,10 @@ export interface ActivityQueryV1 {
   repositoryId: number | null;
   cursor?: string | null;
   limit?: number;
+  q?: string;
+  favoritesOnly?: boolean;
+  /** Server-resolved favorite PR identities. Not serialized by clients. */
+  favoritePullRequestKeys?: string[];
 }
 
 export interface ChangedFileV1 {

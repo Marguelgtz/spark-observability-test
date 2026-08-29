@@ -168,7 +168,7 @@ export async function readActivityHome(db: D1Database, input: ActivityHomeInput)
               datetime(ranked.evaluated_at) DESC,
               ranked.repository_id DESC,
               ranked.pull_request_number DESC
-     LIMIT 5`,
+     LIMIT 15`,
   ).bind(
     ...scopedBindings,
     ...scopedBindings,

@@ -74,6 +74,8 @@ export class HttpDashboardApi implements DashboardApi {
     if (query.repositoryId !== null) params.set('repositoryId', String(query.repositoryId));
     if (query.cursor) params.set('cursor', query.cursor);
     if (query.limit !== undefined) params.set('limit', String(query.limit));
+    if (query.q) params.set('q', query.q);
+    if (query.favoritesOnly) params.set('favorites', '1');
     return this.request(`/api/activity?${params.toString()}`);
   }
 
@@ -414,7 +416,10 @@ export class FixtureDashboardApi implements DashboardApi {
         pagination: { nextCursor: null }
       };
     }
-    return buildFixtureActivity(query);
+    const favoritePullRequestKeys = query.favoritesOnly
+      ? [...new Set(this.readFavorites().map((favorite) => `${favorite.repositoryId}:${favorite.pullRequestNumber}`))]
+      : undefined;
+    return buildFixtureActivity({ ...query, ...(favoritePullRequestKeys ? { favoritePullRequestKeys } : {}) });
   }
 
   async getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1> {

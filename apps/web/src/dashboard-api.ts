@@ -98,8 +98,8 @@ async function fixtureDashboard(state: ActivityUrlState): Promise<OperationalDas
       mergedUnresolved,
       recovery: fixtureRecovery(histories, start),
     },
-    needsAttention: { total: needsAttention.length, preview: needsAttention.slice(0, 5) },
-    activeChanges: { total: active.length, preview: active.slice(0, 5) },
+    needsAttention: { total: needsAttention.length, preview: needsAttention.slice(0, 15) },
+    activeChanges: { total: active.length, preview: active.slice(0, 15) },
     hasObservedHistory: activity.repositories.length > 0,
   };
 }
