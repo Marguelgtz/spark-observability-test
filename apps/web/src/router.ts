@@ -11,7 +11,7 @@ export type DashboardRoute =
   | { kind: 'evaluation'; repositoryId: number; headSha: string }
   | { kind: 'not-found' };
 
-const LEGACY_ACTIVITY_PARAMS = ['attention', 'cursor', 'q', 'favorites', 'limit'] as const;
+const LEGACY_ACTIVITY_PARAMS = ['cursor', 'q', 'favorites', 'limit'] as const;
 
 export function parseRoute(pathname: string): DashboardRoute {
   if (pathname === '/app' || pathname === '/app/') return { kind: 'dashboard' };
@@ -44,7 +44,8 @@ export function parseRoute(pathname: string): DashboardRoute {
 export function legacyActivityRedirect(pathname: string, search: string): string | null {
   if (pathname !== '/app' && pathname !== '/app/') return null;
   const params = new URLSearchParams(search);
-  if (!LEGACY_ACTIVITY_PARAMS.some((name) => params.has(name))) return null;
+  const hasAttentionFilter = params.has('attention') && params.get('attention')?.toUpperCase() !== 'ALL';
+  if (!hasAttentionFilter && !LEGACY_ACTIVITY_PARAMS.some((name) => params.has(name))) return null;
   const serialized = params.toString();
   return `/app/activity${serialized ? `?${serialized}` : ''}`;
 }
