@@ -2,6 +2,9 @@ import { expect, test } from '@playwright/test';
 
 test('preserves temporal volume bars and adds iteration density canvases', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
+  const dashboardInsights = page.getByTestId('dashboard-insights');
+  await expect(dashboardInsights).not.toHaveAttribute('open', '');
+  await dashboardInsights.locator('summary').click();
 
   const throughput = page.getByTestId('insight-canvas-throughput-iteration');
   await expect(throughput).toBeVisible();
