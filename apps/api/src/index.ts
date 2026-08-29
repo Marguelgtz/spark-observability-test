@@ -6,6 +6,7 @@ import type {
 } from '@spark/dashboard-contracts';
 import { handleRequest, type Env, type WorkerExecutionContext } from './app';
 import { handleBehaviorRequest, isBehaviorRequest } from './behavior-handler';
+import { handleOperationalDashboardRequest, isOperationalDashboardRequest } from './dashboard-handler';
 import { handleOverviewRequest, isOverviewRequest } from './overview-handler';
 
 interface CompatibleRepository {
@@ -82,6 +83,7 @@ async function withActivityV1Compatibility(request: Request, response: Response)
 
 export default {
   async fetch(request: Request, env: Env, context: WorkerExecutionContext): Promise<Response> {
+    if (isOperationalDashboardRequest(request)) return handleOperationalDashboardRequest(request, env);
     if (isOverviewRequest(request)) return handleOverviewRequest(request, env);
     if (isBehaviorRequest(request)) return handleBehaviorRequest(request, env);
     const response = await handleRequest(request, env, context);
