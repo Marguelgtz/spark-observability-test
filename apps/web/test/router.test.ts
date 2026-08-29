@@ -1,7 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { parseRoute } from '../src/router';
+import { legacyActivityRedirect, parseRoute } from '../src/router';
 
 describe('dashboard router', () => {
+  it('splits dashboard, activity, settings, and account routes', () => {
+    expect(parseRoute('/app')).toEqual({ kind: 'dashboard' });
+    expect(parseRoute('/app/')).toEqual({ kind: 'dashboard' });
+    expect(parseRoute('/app/activity')).toEqual({ kind: 'activity' });
+    expect(parseRoute('/app/activity/')).toEqual({ kind: 'activity' });
+    expect(parseRoute('/app/settings')).toEqual({ kind: 'settings' });
+    expect(parseRoute('/app/account')).toEqual({ kind: 'account' });
+  });
+
+  it('redirects legacy activity-only dashboard bookmarks and preserves their query', () => {
+    expect(legacyActivityRedirect('/app', '?window=7d&attention=HIGH&q=checkout&favorites=1')).toBe(
+      '/app/activity?window=7d&attention=HIGH&q=checkout&favorites=1',
+    );
+    expect(legacyActivityRedirect('/app/', '?cursor=opaque&repositoryId=101')).toBe(
+      '/app/activity?cursor=opaque&repositoryId=101',
+    );
+    expect(legacyActivityRedirect('/app', '?window=30d&repositoryId=101&attention=ALL')).toBeNull();
+    expect(legacyActivityRedirect('/app/activity', '?attention=HIGH')).toBeNull();
+  });
+
   it('parses overview drilldown routes', () => {
     expect(parseRoute('/app/overview/pull-requests')).toEqual({ kind: 'overview', metric: 'pull-requests' });
     expect(parseRoute('/app/overview/evaluations')).toEqual({ kind: 'overview', metric: 'evaluations' });
