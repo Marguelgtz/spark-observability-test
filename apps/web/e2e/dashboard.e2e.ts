@@ -17,15 +17,42 @@ test('loading state has stable shell', async ({ page }) => {
   await expect(page.getByTestId('loading')).toBeVisible();
 });
 
-test('activity renders one row per pull request and captures screenshot', async ({ page }, testInfo) => {
+test('dashboard, activity, and settings are distinct primary routes', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
+  await expect(page.getByTestId('change-overview')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('activity-search')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Recent activity', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'View all activity →', exact: true })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Activity', exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/activity/);
+  await expect(page.getByTestId('activity-view')).toBeVisible();
+  await expect(page.getByTestId('activity-search')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Activity', exact: true })).toHaveAttribute('aria-current', 'page');
+
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/settings/);
+  await expect(page.getByTestId('settings-view')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page');
+});
+
+test('legacy activity-only dashboard query redirects to activity and preserves filters', async ({ page }) => {
+  await page.goto('/app?window=7d&attention=HIGH&q=checkout&favorites=1');
+  await expect(page).toHaveURL(/\/app\/activity\?window=7d&attention=HIGH&q=checkout&favorites=1/);
+  await expect(page.getByTestId('activity-search')).toHaveValue('checkout');
+  await expect(page.getByTestId('favorites-only')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('activity renders one row per pull request and captures screenshot', async ({ page }, testInfo) => {
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await expect(page.getByTestId('activity-view')).toBeVisible();
   await expect(page.locator('.evaluation-row')).toHaveCount(5);
   await page.screenshot({ path: `${screenshotDir}/activity-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
 test('pull request history expands into a horizontal evaluation rail', async ({ page }, testInfo) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   const toggle = page.getByTestId('history-toggle-101-42');
   await expect(toggle).toContainText('3');
   await expect(page.getByTestId('history-toggle-202-120')).toHaveClass(/is-singular/);
@@ -39,7 +66,7 @@ test('pull request history expands into a horizontal evaluation rail', async ({ 
 });
 
 test('attention, time, and repository filters are URL-owned', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByTestId('attention-HIGH').click();
   await expect(page).toHaveURL(/attention=HIGH/);
   await expect(page.locator('.evaluation-row')).toHaveCount(1);
@@ -54,7 +81,7 @@ test('attention, time, and repository filters are URL-owned', async ({ page }) =
 });
 
 test('search and favorites filter the activity view and survive reload', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   const search = page.getByTestId('activity-search');
   await search.fill('checkout');
   await expect(page).toHaveURL(/q=checkout/);
@@ -77,7 +104,7 @@ test('search and favorites filter the activity view and survive reload', async (
 });
 
 test('same-SHA evaluations can be favorited independently by run ID', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByTestId('history-toggle-101-42').click();
   const history = page.getByTestId('history-101-42');
   const favorites = history.locator('.favorite-button');
@@ -92,7 +119,7 @@ test('same-SHA evaluations can be favorited independently by run ID', async ({ p
 });
 
 test('filtered empty state can reset attention', async ({ page }) => {
-  await page.goto('/app?window=24h&attention=HIGH&repositoryId=202');
+  await page.goto('/app/activity?window=24h&attention=HIGH&repositoryId=202');
   await expect(page.getByTestId('empty-result')).toBeVisible();
   await page.getByRole('button', { name: 'Show all attention' }).click();
   await expect(page).toHaveURL(/attention=ALL/);
@@ -106,10 +133,11 @@ test('API error state is explicit', async ({ page }) => {
 });
 
 test('activity opens a pull request observability page', async ({ page }, testInfo) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByRole('link', { name: 'Open pull request 42: API authentication changes' }).click();
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
   await expect(page).toHaveURL(/\/app\/repositories\/101\/pulls\/42/);
+  await expect(page.getByRole('link', { name: '← Activity' })).toHaveAttribute('href', /\/app\/activity\?window=7d&attention=ALL/);
   await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Key moments', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Trajectory', exact: true })).toBeVisible();
@@ -187,7 +215,7 @@ test('pull request page drills into latest immutable run and keeps PR context', 
 });
 
 test('same SHA observations remain individually inspectable by run ID', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByTestId('history-toggle-101-42').click();
   const history = page.getByTestId('history-101-42');
   const cards = history.locator('.history-card');
@@ -219,7 +247,7 @@ test('legacy SHA route remains latest-by-SHA compatibility', async ({ page }) =>
 });
 
 test('legacy evaluation has a truthful unavailable state through the PR page', async ({ page }) => {
-  await page.goto('/app?window=30d&attention=ALL');
+  await page.goto('/app/activity?window=30d&attention=ALL');
   await page.getByRole('link', { name: 'Open pull request 37: Initial repository mapping' }).click();
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
   await page.getByRole('link', { name: 'View latest evaluation' }).click();
@@ -230,9 +258,10 @@ test('legacy evaluation has a truthful unavailable state through the PR page', a
 });
 
 test('back navigation preserves activity filters through the PR layer', async ({ page }) => {
-  await page.goto('/app?window=24h&attention=HIGH');
+  await page.goto('/app/activity?window=24h&attention=HIGH');
   await page.locator('.evaluation-main-link').first().click();
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
+  await expect(page.getByRole('link', { name: '← Activity' })).toHaveAttribute('href', /\/app\/activity\?window=24h&attention=HIGH/);
   await page.goBack();
   await expect(page).toHaveURL(/window=24h/);
   await expect(page).toHaveURL(/attention=HIGH/);
