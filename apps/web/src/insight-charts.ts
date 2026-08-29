@@ -128,7 +128,7 @@ export function lineChart<T extends TimePoint>(
 ): HTMLElement {
   const { figure, body } = shell(title, window === '24h' ? 'Hourly trend' : 'Daily trend', 'line');
   const dualScale = options.dualScale === true && series.length === 2;
-  const sharedMax = lineScaleMax(series.flatMap((item) => points.map(item.read)));
+  const sharedMax = Math.max(1, ...series.flatMap((item) => points.map(item.read)));
   const maxima = dualScale
     ? series.map((item) => lineScaleMax(points.map(item.read)))
     : series.map(() => sharedMax);
