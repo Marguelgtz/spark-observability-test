@@ -56,7 +56,7 @@ function renderOverview(response: OperationalDashboardResponseV1, state: Activit
   const metrics = node('div', 'home-metrics');
   metrics.append(
     metric('Needs attention', response.needsAttention.total, overviewHref('attention', state), 'dashboard-card-attention', 'Open HIGH / MEDIUM'),
-    metric('Active changes', response.activeChanges.total, '#active-changes', 'dashboard-card-active', 'Open observed PRs', undefined, false),
+    metric('Active changes', response.activeChanges.total, '#active-changes', 'dashboard-card-active', 'Open observed PRs', false),
     metric('Merged unresolved', response.overview.mergedUnresolved, overviewHref('merged-unresolved', state), 'dashboard-card-merged-unresolved'),
     metric('Recent recoveries', response.overview.recovery.recoveredPRs, overviewHref('attention', state), 'dashboard-card-recoveries', `in ${state.window}`),
   );
@@ -147,7 +147,7 @@ function renderActiveChanges(response: OperationalDashboardResponseV1, state: Ac
 }
 
 function renderRecentShell(state: ActivityUrlState): HTMLElement {
-  const { details, content } = disclosure('Recent activity', 'recent-activity', true);
+  const { details, content } = disclosure('Recent activity', 'recent-activity', true, '…');
   content.dataset.testid = 'dashboard-recent-content';
   const loading = node('p', 'dashboard-section-status', 'Loading recent activity…');
   loading.setAttribute('role', 'status');
@@ -197,6 +197,7 @@ function renderNoHistory(account: AccountV1): HTMLElement {
     node('h1', undefined, 'Spark is connected. The first change will start the story.'),
     node('p', 'state-copy', `Spark can access ${account.repositoryCount} repositor${account.repositoryCount === 1 ? 'y' : 'ies'}, but no evaluation history has been observed yet.`),
   );
+
   const checklist = node('ol', 'onboarding-checklist');
   checklist.append(
     node('li', undefined, 'Repository access is configured.'),
@@ -204,6 +205,22 @@ function renderNoHistory(account: AccountV1): HTMLElement {
     node('li', undefined, 'After Spark evaluates it, the change and its trajectory will appear here.'),
   );
   section.append(checklist, githubLink('Manage repository access', account.githubSettingsUrl, 'secondary-link'));
+
+  const example = node('div', 'example-trajectory');
+  example.append(node('span', 'example-label', 'STATIC EXAMPLE · NOT YOUR DATA'));
+  const story = node('div', 'example-story');
+  for (const [level, copy] of [
+    ['LOW', 'Initial evaluation'],
+    ['HIGH', 'Sensitive surface touched · integration evidence missing'],
+    ['MEDIUM', 'Unit evidence recovered · integration evidence still missing'],
+    ['MERGED', 'Merged with unresolved attention'],
+  ]) {
+    const row = node('div', 'example-story-row');
+    row.append(node('strong', 'example-story-state', level), node('span', undefined, copy));
+    story.append(row);
+  }
+  example.append(story);
+  section.append(example);
   return section;
 }
 
