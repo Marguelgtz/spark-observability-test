@@ -24,6 +24,10 @@ export interface StatePoint {
   label?: string;
 }
 
+export interface LineChartOptions {
+  dualScale?: boolean;
+}
+
 function bucketLabel(value: string, hourly: boolean): string {
   const date = new Date(value);
   if (hourly) return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -73,41 +77,108 @@ export function timeBarChart<T extends TimePoint>(
   return figure;
 }
 
+function lineScaleMax(values: number[]): number {
+  const max = Math.max(1, ...values);
+  const rawStep = max / 3;
+  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+  const normalized = rawStep / magnitude;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 3 ? 3 : normalized <= 5 ? 5 : 10;
+  return Math.max(3, nice * magnitude * 3);
+}
+
+function lineAxisLabel(
+  svg: SVGSVGElement,
+  value: number,
+  x: number,
+  y: number,
+  seriesIndex: number,
+  anchor: 'start' | 'end',
+): void {
+  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  label.setAttribute('x', String(x));
+  label.setAttribute('y', String(y + 3));
+  label.setAttribute('text-anchor', anchor);
+  label.setAttribute('class', `insight-line-axis series-${seriesIndex + 1}`);
+  label.textContent = String(Math.round(value));
+  svg.append(label);
+}
+
+function lineAxisTitle(
+  svg: SVGSVGElement,
+  labelText: string,
+  x: number,
+  seriesIndex: number,
+  anchor: 'start' | 'end',
+): void {
+  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  label.setAttribute('x', String(x));
+  label.setAttribute('y', '10');
+  label.setAttribute('text-anchor', anchor);
+  label.setAttribute('class', `insight-line-axis-title series-${seriesIndex + 1}`);
+  label.textContent = labelText;
+  svg.append(label);
+}
+
 export function lineChart<T extends TimePoint>(
   points: T[],
   title: string,
   series: Array<{ label: string; read: (point: T) => number }>,
   window: ActivityWindowV1,
+  options: LineChartOptions = {},
 ): HTMLElement {
   const { figure, body } = shell(title, window === '24h' ? 'Hourly trend' : 'Daily trend', 'line');
-  const values = series.flatMap((item) => points.map(item.read));
-  const max = Math.max(1, ...values);
+  const dualScale = options.dualScale === true && series.length === 2;
+  const sharedMax = lineScaleMax(series.flatMap((item) => points.map(item.read)));
+  const maxima = dualScale
+    ? series.map((item) => lineScaleMax(points.map(item.read)))
+    : series.map(() => sharedMax);
   const width = 640;
   const height = 180;
-  const padX = 12;
-  const padY = 12;
+  const left = dualScale ? 44 : 12;
+  const right = dualScale ? 44 : 12;
+  const top = dualScale ? 24 : 12;
+  const bottom = 12;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   svg.setAttribute('class', 'insight-line-svg');
   svg.setAttribute('role', 'img');
-  svg.setAttribute('aria-label', `${title} over the selected ${window} window`);
+  svg.setAttribute(
+    'aria-label',
+    dualScale
+      ? `${title} over the selected ${window} window. ${series[0].label} scale 0 to ${Math.round(maxima[0])}; ${series[1].label} scale 0 to ${Math.round(maxima[1])}.`
+      : `${title} over the selected ${window} window`,
+  );
+  if (dualScale) figure.dataset.scaleMode = 'dual';
 
   for (let index = 0; index <= 3; index += 1) {
-    const y = padY + ((height - padY * 2) * index) / 3;
+    const y = top + (plotHeight * index) / 3;
     const grid = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    grid.setAttribute('x1', String(padX));
-    grid.setAttribute('x2', String(width - padX));
+    grid.setAttribute('x1', String(left));
+    grid.setAttribute('x2', String(width - right));
     grid.setAttribute('y1', String(y));
     grid.setAttribute('y2', String(y));
     grid.setAttribute('class', 'insight-line-grid');
     svg.append(grid);
+
+    if (dualScale) {
+      const fraction = (3 - index) / 3;
+      lineAxisLabel(svg, maxima[0] * fraction, left - 8, y, 0, 'end');
+      lineAxisLabel(svg, maxima[1] * fraction, width - right + 8, y, 1, 'start');
+    }
+  }
+
+  if (dualScale) {
+    lineAxisTitle(svg, series[0].label, left, 0, 'start');
+    lineAxisTitle(svg, series[1].label, width - right, 1, 'end');
   }
 
   series.forEach((item, seriesIndex) => {
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
     const coords = points.map((point, pointIndex) => {
-      const x = points.length <= 1 ? width / 2 : padX + ((width - padX * 2) * pointIndex) / (points.length - 1);
-      const y = height - padY - (item.read(point) / max) * (height - padY * 2);
+      const x = points.length <= 1 ? left + plotWidth / 2 : left + (plotWidth * pointIndex) / (points.length - 1);
+      const y = height - bottom - (item.read(point) / maxima[seriesIndex]) * plotHeight;
       return `${x},${y}`;
     }).join(' ');
     path.setAttribute('points', coords);
