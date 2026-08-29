@@ -116,6 +116,33 @@
   background: #9b6b1f;
 }
 
+.insight-line-axis,
+.insight-line-axis-title {
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.insight-line-axis {
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.insight-line-axis-title {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.insight-line-axis.series-1,
+.insight-line-axis-title.series-1 {
+  fill: #2f5f87;
+}
+
+.insight-line-axis.series-2,
+.insight-line-axis-title.series-2 {
+  fill: #9b6b1f;
+}
+
 .insight-chart-legend {
   display: flex;
   flex-wrap: wrap;
