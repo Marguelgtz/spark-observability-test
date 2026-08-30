@@ -72,6 +72,20 @@ This document identifies consumers that must remain stable while the repository-
 5. Persisting the full model without independent bounds can exceed current normalized-detail assumptions.
 6. Replacing `Repository root` in the compatibility output during G2 would mix model validation with product behavior; improved structural claims should first appear in shadow/debug output.
 
+## Implemented projector rules
+
+`projectRepositoryUnderstanding` is the sole model-to-legacy seam during compatibility mode. It currently:
+
+- selects the longest matching project membership for each changed artifact, falling back to other display-eligible memberships only when no project membership matches;
+- projects only `DEPENDS_ON` edges into `Project.dependencies` and reverse-traverses those edges for affected labels;
+- retains current `CI/CD`, `Dependency Management`, `Infrastructure`, `Repository-wide`, `Repository root`, and `Unmapped area` markers;
+- collapses changed boundary claims into sorted sensitive-surface labels;
+- preserves every evidence run and derives coverage only from explicit attribution claims, otherwise returning `UNKNOWN`;
+- compresses source/dimension completeness into legacy `AnalysisCompleteness`; and
+- normalizes before projecting, returning repair diagnostics beside the legacy fields.
+
+The projector exposes a constant loss inventory. Compatibility output omits overlapping views not selected for display, semantic identities and support, non-dependency edge types, boundary links, attribution rationale, and detailed completeness. These losses are deliberate only while the full model remains available to new consumers.
+
 ## Migration state vocabulary
 
 - `legacy canonical`: still produced by the current evaluator.
