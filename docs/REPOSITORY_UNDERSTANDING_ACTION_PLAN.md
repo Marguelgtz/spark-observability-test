@@ -216,7 +216,7 @@ Each branch targets the branch immediately above it in the stack. Keep each PR b
 | Stack | Branch | Target | Scope | Tasks | PR | Commits | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | `repository-understanding/0-research` | `dashboard/phase-6-graph-restoration` | Research, decisions, and living action plan | Planning foundation | [#49](https://github.com/Marguelgtz/spark-observability-test/pull/49) | 2 | Open |
-| S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | Pending | 2–6 planned | In progress |
+| S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | [#50](https://github.com/Marguelgtz/spark-observability-test/pull/50) | 5 | Open |
 | S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | Pending | 4–10 planned | Planned |
 
 Add later stack branches only when the preceding gate is sufficiently stable to define a reviewable target. If a planned branch approaches 20 commits or mixes independent rollback boundaries, split it before opening or updating the PR.
@@ -241,6 +241,7 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-004 | ready -> in progress | Compatibility labels, ordering, deduplication, repository-wide markers, evidence retention, and trajectory set behavior are being locked in S1. |
 | 2026-08-30 | RU-004 | in progress -> done | Core compatibility tests report 34 passing tests, trajectory tests report 12 passing tests, and repository typecheck passes. |
 | 2026-08-30 | G0 | in progress -> complete | RU-001 through RU-004 are committed as four bounded characterization and compatibility changes in S1. |
+| 2026-08-30 | S1 | preparing -> open | Characterization gate opened as PR #50 against S0 with five commits including this stack-ledger update. |
 
 ## Plan change log
 
