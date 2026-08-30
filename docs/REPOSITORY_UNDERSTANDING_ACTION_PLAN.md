@@ -215,7 +215,7 @@ Each branch targets the branch immediately above it in the stack. Keep each PR b
 
 | Stack | Branch | Target | Scope | Tasks | PR | Commits | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| S0 | `repository-understanding/0-research` | `dashboard/phase-6-graph-restoration` | Research, decisions, and living action plan | Planning foundation | Pending | 1 planned | Preparing |
+| S0 | `repository-understanding/0-research` | `dashboard/phase-6-graph-restoration` | Research, decisions, and living action plan | Planning foundation | [#49](https://github.com/Marguelgtz/spark-observability-test/pull/49) | 2 | Open |
 | S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | Pending | 2–6 planned | Planned |
 | S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | Pending | 4–10 planned | Planned |
 
@@ -228,6 +228,7 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | Date | Task | Transition | Evidence / reason |
 | --- | --- | --- | --- |
 | 2026-08-30 | Plan | created | Research conclusion `VIABLE WITH REVISIONS`; task register initialized with RU-001 ready and all implementation tasks unstarted. |
+| 2026-08-30 | S0 | preparing -> open | Documentation foundation committed and opened as PR #49 against `dashboard/phase-6-graph-restoration`. |
 
 ## Plan change log
 
