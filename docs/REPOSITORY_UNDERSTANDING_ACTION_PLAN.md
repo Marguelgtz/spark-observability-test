@@ -1,6 +1,6 @@
 # Repository Understanding Action Plan
 
-Status: active living plan. G0 and G1 are complete; G2 is next.
+Status: active living plan. G0 and G1 are complete; G2 is in progress. The cross-gate UI compatibility audit is complete.
 
 Research basis: [`REPOSITORY_UNDERSTANDING_RESEARCH.md`](./REPOSITORY_UNDERSTANDING_RESEARCH.md).
 
@@ -192,6 +192,18 @@ The implementation round is successful when:
 | RU-605 | BACKLOG | Remove obsolete canonical `Project` and embedded evidence-coverage paths. | RU-601, RU-602 | No current consumer reads the old canonical path; compatibility DTOs remain only where explicitly required. |
 | RU-606 | BACKLOG | Close the implementation round with a requirement audit. | RU-605 | Outcome criteria, gates, tests, docs, and deferred work are verified against authoritative state. |
 
+### Cross-gate UI compatibility audit
+
+This audit records the current UI boundary without redesigning product surfaces. Future UIE tasks remain gated recommendations in [`REPOSITORY_UNDERSTANDING_UI_AUDIT.md`](./REPOSITORY_UNDERSTANDING_UI_AUDIT.md); promote them into implementation tasks only when their backend prerequisites are complete.
+
+| ID | Status | Task | Depends on | Acceptance evidence |
+| --- | --- | --- | --- | --- |
+| UIA-001 | DONE | Capture desktop and mobile compatibility baselines. | G1 | Eight labelled screenshots cover activity, PR trajectory, evaluation detail, and historical-unavailable states with route, viewport, fixture, and source commit. |
+| UIA-002 | DONE | Compare representative model cases through projection and visible UI. | UIA-001 | Spark, Stint, boundary, overlapping-area, evidence, and incomplete-analysis cases map canonical model to projection to UI. |
+| UIA-003 | DONE | Classify every new-model UI concept. | UIA-002 | Observation, claim/support, projection, and diagnostic concepts are classified as exact, compatible-lossy, absent, or misleading. |
+| UIA-004 | DONE | Record terminology conflicts. | UIA-003 | Audit covers Observations, Directly changed, Potentially affected, Sensitive surfaces, coverage, and Repository context. |
+| UIA-005 | DONE | Create the gated UI-evolution backlog. | UIA-004 | UIE-001–UIE-009 name backend prerequisites, compatibility boundaries, and visual acceptance evidence. |
+
 ## Expansion backlog
 
 These are intentionally outside the initial gates. Promote them into numbered tasks only when corpus or product evidence justifies them:
@@ -219,6 +231,7 @@ Each branch targets the branch immediately above it in the stack. Keep each PR b
 | S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | [#50](https://github.com/Marguelgtz/spark-observability-test/pull/50) | 5 | Open |
 | S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | [#51](https://github.com/Marguelgtz/spark-observability-test/pull/51) | 6 | Open |
 | S3 | `repository-understanding/3-native-analysis` | `repository-understanding/2-substrate` | Analyzer orchestration, generic structure, JS adapter, boundaries, and completeness | RU-201–RU-208 | [#52](https://github.com/Marguelgtz/spark-observability-test/pull/52) | 4 current | Draft |
+| S4 | `repository-understanding/4-ui-audit` | `repository-understanding/3-native-analysis` | Visual UI compatibility audit and gated evolution backlog | UIA-001–UIA-005 | Pending | 3 current | Preparing |
 
 Add later stack branches only when the preceding gate is sufficiently stable to define a reviewable target. If a planned branch approaches 20 commits or mixes independent rollback boundaries, split it before opening or updating the PR.
 
@@ -272,9 +285,16 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-203 | in progress -> done | Generic analyzer output retains artifact references, heuristic support, and partial tree/change completeness with 57 passing core tests and repository typecheck. |
 | 2026-08-30 | RU-204 | backlog -> ready | Analyzer contribution types and the generic baseline are stable enough to refactor JS workspace output independently. |
 | 2026-08-30 | S3 | preparing -> draft | Repository-native analysis opened as draft PR #52 against S2 with four commits including this ledger update; RU-204 through RU-208 remain in scope. |
+| 2026-08-31 | UIA-001 | created -> done | Audit capture spec retains eight labelled desktop/mobile screenshots and verifies keyboard disclosure, natural tab order, and text-labelled state. |
+| 2026-08-31 | UIA-002 | created -> done | Audit cases C1–C6 map Spark, Stint, boundary, overlap, evidence, and incomplete analysis from canonical understanding through V1 UI. |
+| 2026-08-31 | UIA-003 | created -> done | Exhaustive classification covers the observation layer, semantic/support layer, policy projection, and diagnostics. |
+| 2026-08-31 | UIA-004 | created -> done | Six current copy conflicts have eligible replacements tied to backend gates. |
+| 2026-08-31 | UIA-005 | created -> done | UIE-001–UIE-009 preserve V1 until their bounded inspection, evidence, shadow, profile, or adoption prerequisites complete. |
+| 2026-08-31 | S4 | planned -> preparing | Visual-first audit is isolated from production UI/contracts on a branch stacked against S3. |
 
 ## Plan change log
 
 | Date | Change | Reason |
 | --- | --- | --- |
 | 2026-08-30 | Initial six-gate action plan created. | Convert completed research into reversible implementation work while keeping tasks editable and evidence-backed. |
+| 2026-08-31 | Cross-gate UI compatibility audit completed and UIE backlog linked. | Establish what the current UI preserves, loses, omits, or overstates before any product-surface evolution. |
