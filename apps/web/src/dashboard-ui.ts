@@ -1,7 +1,7 @@
 import type { AccountV1, ActivityResponseV1, PullRequestActivityV1 } from '@spark/dashboard-contracts';
 import type { OperationalDashboardResponseV1 } from '@spark/dashboard-contracts/dashboard';
 import { evidenceLabel, relativeTime } from './format';
-import { renderHomeInsightCanvases } from './insight-canvases';
+import { renderDashboardTrendSnapshot, renderHomeInsightCanvases } from './insight-canvases';
 import type { DashboardInsightsData } from './dashboard-api';
 import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
@@ -182,6 +182,28 @@ function renderRecentShell(state: ActivityUrlState): HTMLElement {
   return details;
 }
 
+function renderTrendSnapshotShell(state: ActivityUrlState): HTMLElement {
+  const section = node('section', 'dashboard-trend-snapshot');
+  section.dataset.testid = 'dashboard-trend-snapshot';
+  const heading = node('div', 'home-section-heading');
+  const copy = node('div', 'dashboard-trend-heading-copy');
+  copy.append(
+    node('h2', undefined, 'Trend snapshot'),
+    node('p', 'muted', 'Evaluation flow, current attention, and notable movement.'),
+  );
+  const link = node('a', 'home-section-link', 'Explore trends →') as HTMLAnchorElement;
+  link.href = overviewHref('evaluations', state);
+  link.dataset.routerLink = 'true';
+  heading.append(copy, link);
+  const content = node('div', 'dashboard-trend-content');
+  content.dataset.testid = 'dashboard-trend-content';
+  const loading = node('p', 'dashboard-section-status', 'Loading trend snapshot…');
+  loading.setAttribute('role', 'status');
+  content.append(loading);
+  section.append(heading, content);
+  return section;
+}
+
 function renderInsightsShell(collapseSecondarySections: boolean): HTMLElement {
   const { details, content } = disclosure('Insights', 'dashboard-insights', !collapseSecondarySections);
   details.id = 'insights';
@@ -316,6 +338,7 @@ export function renderOperationalDashboard(
     renderNeedsAttention(response, state, previewSize),
     renderActiveChanges(response, state, previewSize),
     renderRecentShell(state),
+    renderTrendSnapshotShell(state),
     renderInsightsShell(collapseSecondarySections),
   );
   return main;
@@ -349,7 +372,8 @@ export function renderDashboardInsights(
   state: ActivityUrlState,
 ): void {
   const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
-  if (!content) return;
+  const snapshot = root.querySelector<HTMLElement>('[data-testid="dashboard-trend-content"]');
+  if (!content && !snapshot) return;
   const activityLike: ActivityResponseV1 = {
     version: 1,
     selectedWindow: response.selectedWindow,
@@ -363,15 +387,20 @@ export function renderDashboardInsights(
     hasObservedHistory: response.hasObservedHistory,
     pagination: { nextCursor: null },
   };
-  content.replaceChildren(renderHomeInsightCanvases(activityLike, insights.evaluations, insights.transitions, state));
+  snapshot?.replaceChildren(renderDashboardTrendSnapshot(activityLike, insights.evaluations, insights.transitions, state));
+  content?.replaceChildren(renderHomeInsightCanvases(activityLike, insights.evaluations, insights.transitions, state));
 }
 
 export function renderDashboardInsightsError(root: HTMLElement): void {
   const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
-  if (!content) return;
+  const snapshot = root.querySelector<HTMLElement>('[data-testid="dashboard-trend-content"]');
+  if (!content && !snapshot) return;
   const status = node('p', 'dashboard-section-error', 'Supporting insights could not be loaded. Needs attention and active-change data are unaffected.');
   status.setAttribute('role', 'status');
-  content.replaceChildren(status);
+  content?.replaceChildren(status);
+  const snapshotStatus = node('p', 'dashboard-section-error', 'Trend graphs could not be loaded. Operational queues and recent activity are unaffected.');
+  snapshotStatus.setAttribute('role', 'status');
+  snapshot?.replaceChildren(snapshotStatus);
 }
 
 export function markDashboardMergedUnresolved(root: HTMLElement, overview: OverviewDrilldownResponseV1): void {
