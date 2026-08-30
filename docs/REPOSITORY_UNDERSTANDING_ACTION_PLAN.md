@@ -1,6 +1,6 @@
 # Repository Understanding Action Plan
 
-Status: active living plan. G0 characterization is complete; G1 is next.
+Status: active living plan. G0 and G1 are complete; G2 is next.
 
 Research basis: [`REPOSITORY_UNDERSTANDING_RESEARCH.md`](./REPOSITORY_UNDERSTANDING_RESEARCH.md).
 
@@ -134,7 +134,7 @@ The implementation round is successful when:
 | RU-103 | DONE | Add Area, Membership, Relationship, Boundary, Attribution, and Expectation types. | RU-102 | Types support overlapping memberships, optional hierarchy, typed edges, boundaries without known connected areas, and claim support. |
 | RU-104 | DONE | Define model invariants and deterministic normalization. | RU-103 | Duplicate IDs, dangling references, unstable ordering, and invalid confidence/completeness states have deterministic outcomes and tests. |
 | RU-105 | DONE | Implement the compatibility projector. | RU-104 | Projects `Project[]`, direct/affected area strings, sensitive surfaces, legacy evidence coverage, and analysis completeness with documented loss. |
-| RU-106 | READY | Prove projector parity for current JS workspace scenarios. | RU-105 | G0 fixtures pass through both current and projected paths with intentional differences recorded as new tasks. |
+| RU-106 | DONE | Prove projector parity for current JS workspace scenarios. | RU-105 | G0 fixtures pass through both current and projected paths with intentional differences recorded as new tasks. |
 
 ### G2 — Build repository-native analysis
 
@@ -257,6 +257,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-105 | ready -> in progress | The explicit model-to-legacy projection seam and its information-loss inventory are being implemented. |
 | 2026-08-30 | RU-105 | in progress -> done | Projector tests cover projects, reverse dependencies, markers, boundaries, duplicate runs, attribution coverage, completeness, and explicit losses with 43 passing core tests and repository typecheck. |
 | 2026-08-30 | RU-106 | backlog -> ready | The projector and G0 exact-output fixtures are available for dual-path parity comparison. |
+| 2026-08-30 | RU-106 | ready -> in progress | Every G0 scenario is being evaluated through both the current and projected compatibility paths. |
+| 2026-08-30 | RU-106 | in progress -> done | All seven G0 exact-output scenarios match through both paths; the full repository suite reports 213 passing tests and repository typecheck passes. |
+| 2026-08-30 | G1 | in progress -> complete | Provider-neutral observations, supported claims, semantic vocabulary, normalization, legacy projection, and dual-path parity are complete in five S2 commits. |
 
 ## Plan change log
 
