@@ -48,6 +48,7 @@ function hasRole(area: Area, role: string): boolean {
 }
 
 function pathMatches(path: string, prefix: string): boolean {
+    if (prefix === '') return true;
     return path === prefix || path.startsWith(`${prefix}/`);
 }
 

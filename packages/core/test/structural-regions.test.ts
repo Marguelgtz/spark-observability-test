@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveStructuralRegions } from '../src/structural-regions';
+import { genericStructuralAnalyzer } from '../src/structural-regions';
+import { analyzeRepository } from '../src/analyzers';
 import type { ArtifactObservation } from '../src/understanding';
 
 function artifacts(paths: string[]): ArtifactObservation[] {
@@ -42,5 +44,41 @@ describe('generic structural-region decision', () => {
         const changed = artifacts(['src/http/routes.ts', 'src/domain/user.ts', 'README.md']);
 
         expect(resolveStructuralRegions(changed, changed).map(region => region.path)).toEqual(['', 'src']);
+    });
+
+    it('emits provenance-bearing structural claims with source-scoped completeness', () => {
+        const observedArtifacts = artifacts(['internal/provider/vast/instance.go', 'internal/provider/vast/instance_test.go']);
+        const result = analyzeRepository({
+            snapshot: { kind: 'repository-snapshot', id: 'snapshot', repositoryId: 'repository:fixture', revision: 'head', source: { kind: 'vcs' } },
+            change: {
+                kind: 'change', id: 'change', repositoryId: 'repository:fixture', baseRevision: 'base', headRevision: 'head',
+                artifacts: observedArtifacts.map(artifact => ({ artifactId: artifact.id, status: 'MODIFIED' })), source: { kind: 'vcs' },
+            },
+            artifacts: observedArtifacts,
+            evidenceRuns: [],
+            completeness: [
+                { source: 'changed-files', state: 'COMPLETE' },
+                { source: 'repository-tree', state: 'PARTIAL', reason: 'tree truncated' },
+            ],
+        }, [genericStructuralAnalyzer]);
+
+        expect(result.understanding.areas).toEqual([expect.objectContaining({
+            id: 'area:structural:internal/provider/vast',
+            label: 'internal/provider/vast',
+            roles: ['STRUCTURAL'],
+            support: [expect.objectContaining({
+                provenance: { kind: 'GENERIC_ANALYZER', source: 'generic-structure', version: '1' },
+                derivation: 'HEURISTIC',
+                confidence: 'TENTATIVE',
+                completeness: { state: 'PARTIAL', reason: 'tree truncated' },
+            })],
+        })]);
+        expect(result.understanding.memberships[0]).toMatchObject({
+            areaId: 'area:structural:internal/provider/vast',
+            target: { kind: 'PATH', path: 'internal/provider/vast' },
+        });
+        expect(result.understanding.completeness[0]).toMatchObject({
+            dimension: 'analyzer:generic-structure', state: 'PARTIAL', reason: 'tree truncated',
+        });
     });
 });
