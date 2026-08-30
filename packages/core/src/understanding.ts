@@ -76,3 +76,140 @@ export interface RepositoryObservations {
     /** Acquisition truth remains independent for each source or dimension. */
     completeness: SourceCompleteness[];
 }
+
+export type ClaimDerivation = 'DECLARED' | 'DETERMINISTIC' | 'HEURISTIC';
+export type ClaimConfidence = 'SUPPORTED' | 'TENTATIVE' | 'UNKNOWN';
+
+export type ClaimProvenanceKind =
+    | 'GENERIC_ANALYZER'
+    | 'ECOSYSTEM_ADAPTER'
+    | 'WORKFLOW_ANALYZER'
+    | 'PROFILE'
+    | 'PROVIDER'
+    | 'USER';
+
+export interface ClaimProvenance {
+    kind: ClaimProvenanceKind;
+    /** Identifies the concrete analyzer, adapter, provider, profile, or user source. */
+    source: string;
+    version?: string;
+}
+
+export interface ClaimEvidenceReference {
+    kind: 'OBSERVATION' | 'ARTIFACT' | 'EVIDENCE_RUN';
+    id: string;
+}
+
+export interface ClaimCompleteness {
+    state: CompletenessState;
+    reason?: string;
+}
+
+export interface ClaimSupport {
+    provenance: ClaimProvenance;
+    derivation: ClaimDerivation;
+    confidence: ClaimConfidence;
+    evidence: ClaimEvidenceReference[];
+    completeness: ClaimCompleteness;
+}
+
+export type AreaId = string;
+export type MembershipId = string;
+export type RelationshipId = string;
+export type BoundaryId = string;
+export type EvidenceAttributionId = string;
+export type EvidenceExpectationId = string;
+
+export type ExtensibleValue<Name extends string> = Name | { extension: string };
+
+export type AreaRole = ExtensibleValue<'STRUCTURAL' | 'PROJECT' | 'FUNCTIONAL' | 'OWNERSHIP' | 'DEPLOYABLE'>;
+
+export interface Area {
+    id: AreaId;
+    label: string;
+    roles: AreaRole[];
+    parentAreaId?: AreaId;
+    support: ClaimSupport[];
+}
+
+export type MembershipTarget =
+    | { kind: 'ARTIFACT'; artifactId: ArtifactId }
+    | { kind: 'PATH'; path: string };
+
+export interface AreaMembership {
+    id: MembershipId;
+    areaId: AreaId;
+    target: MembershipTarget;
+    /** Optional structural, functional, ownership, or adapter-defined view. */
+    view?: string;
+    support: ClaimSupport[];
+}
+
+export type AreaRelationshipType = ExtensibleValue<'CONTAINS' | 'DEPENDS_ON' | 'GENERATED_FROM'>;
+
+export interface AreaRelationship {
+    id: RelationshipId;
+    sourceAreaId: AreaId;
+    targetAreaId: AreaId;
+    type: AreaRelationshipType;
+    support: ClaimSupport[];
+}
+
+export type BoundaryKind = ExtensibleValue<
+    | 'CI'
+    | 'DEPENDENCY'
+    | 'DEPLOYMENT'
+    | 'MIGRATION'
+    | 'SECURITY'
+    | 'PUBLIC_INTERFACE'
+    | 'GENERATED_INTERFACE'
+>;
+
+export interface Boundary {
+    id: BoundaryId;
+    kind: BoundaryKind;
+    label: string;
+    artifactIds: ArtifactId[];
+    connectedAreaIds: AreaId[];
+    support: ClaimSupport[];
+}
+
+export type UnderstandingTarget =
+    | { kind: 'CHANGE'; changeId: ObservationId }
+    | { kind: 'ARTIFACT'; artifactId: ArtifactId }
+    | { kind: 'AREA'; areaId: AreaId }
+    | { kind: 'RELATIONSHIP'; relationshipId: RelationshipId }
+    | { kind: 'BOUNDARY'; boundaryId: BoundaryId };
+
+export interface EvidenceAttribution {
+    id: EvidenceAttributionId;
+    evidenceRunId: ObservationId;
+    target: UnderstandingTarget;
+    support: ClaimSupport[];
+}
+
+export interface EvidenceExpectation {
+    id: EvidenceExpectationId;
+    name: string;
+    target: UnderstandingTarget;
+    support: ClaimSupport[];
+}
+
+export interface CompletenessAssessment {
+    id: string;
+    dimension: string;
+    state: CompletenessState;
+    reason?: string;
+    support: ClaimSupport[];
+}
+
+export interface RepositoryUnderstanding {
+    observations: RepositoryObservations;
+    areas: Area[];
+    memberships: AreaMembership[];
+    relationships: AreaRelationship[];
+    boundaries: Boundary[];
+    evidenceAttributions: EvidenceAttribution[];
+    evidenceExpectations: EvidenceExpectation[];
+    completeness: CompletenessAssessment[];
+}
