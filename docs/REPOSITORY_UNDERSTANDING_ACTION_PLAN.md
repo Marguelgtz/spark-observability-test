@@ -217,7 +217,8 @@ Each branch targets the branch immediately above it in the stack. Keep each PR b
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | `repository-understanding/0-research` | `dashboard/phase-6-graph-restoration` | Research, decisions, and living action plan | Planning foundation | [#49](https://github.com/Marguelgtz/spark-observability-test/pull/49) | 2 | Open |
 | S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | [#50](https://github.com/Marguelgtz/spark-observability-test/pull/50) | 5 | Open |
-| S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | Pending | 4–10 planned | Planned |
+| S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | [#51](https://github.com/Marguelgtz/spark-observability-test/pull/51) | 6 | Open |
+| S3 | `repository-understanding/3-native-analysis` | `repository-understanding/2-substrate` | Analyzer orchestration, generic structure, JS adapter, boundaries, and completeness | RU-201–RU-208 | Pending | 6–12 planned | Planned |
 
 Add later stack branches only when the preceding gate is sufficiently stable to define a reviewable target. If a planned branch approaches 20 commits or mixes independent rollback boundaries, split it before opening or updating the PR.
 
@@ -260,6 +261,7 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-106 | ready -> in progress | Every G0 scenario is being evaluated through both the current and projected compatibility paths. |
 | 2026-08-30 | RU-106 | in progress -> done | All seven G0 exact-output scenarios match through both paths; the full repository suite reports 213 passing tests and repository typecheck passes. |
 | 2026-08-30 | G1 | in progress -> complete | Provider-neutral observations, supported claims, semantic vocabulary, normalization, legacy projection, and dual-path parity are complete in five S2 commits. |
+| 2026-08-30 | S2 | preparing -> open | Substrate gate opened as PR #51 against S1 with six commits including this stack-ledger update. |
 
 ## Plan change log
 
