@@ -129,8 +129,8 @@ The implementation round is successful when:
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| RU-101 | BACKLOG | Add provider-neutral observation types. | G0 | Types represent repository snapshot, change/artifact observations, evidence runs, and independent source completeness without semantic area conclusions. |
-| RU-102 | BACKLOG | Add claim-support types. | RU-101 | Provenance, derivation, categorical confidence, evidence references, and completeness are independent and validated. |
+| RU-101 | DONE | Add provider-neutral observation types. | G0 | Types represent repository snapshot, change/artifact observations, evidence runs, and independent source completeness without semantic area conclusions. |
+| RU-102 | READY | Add claim-support types. | RU-101 | Provenance, derivation, categorical confidence, evidence references, and completeness are independent and validated. |
 | RU-103 | BACKLOG | Add Area, Membership, Relationship, Boundary, Attribution, and Expectation types. | RU-102 | Types support overlapping memberships, optional hierarchy, typed edges, boundaries without known connected areas, and claim support. |
 | RU-104 | BACKLOG | Define model invariants and deterministic normalization. | RU-103 | Duplicate IDs, dangling references, unstable ordering, and invalid confidence/completeness states have deterministic outcomes and tests. |
 | RU-105 | BACKLOG | Implement the compatibility projector. | RU-104 | Projects `Project[]`, direct/affected area strings, sensitive surfaces, legacy evidence coverage, and analysis completeness with documented loss. |
@@ -242,6 +242,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-004 | in progress -> done | Core compatibility tests report 34 passing tests, trajectory tests report 12 passing tests, and repository typecheck passes. |
 | 2026-08-30 | G0 | in progress -> complete | RU-001 through RU-004 are committed as four bounded characterization and compatibility changes in S1. |
 | 2026-08-30 | S1 | preparing -> open | Characterization gate opened as PR #50 against S0 with five commits including this stack-ledger update. |
+| 2026-08-30 | RU-101 | backlog -> in progress | G0 is complete and S2 was created from S1; provider-neutral observations are the active task. |
+| 2026-08-30 | RU-101 | in progress -> done | Provider-neutral snapshot, change, artifact, evidence-run, and source-completeness types pass 35 core tests and repository typecheck. |
+| 2026-08-30 | RU-102 | backlog -> ready | The observation layer now provides stable evidence-reference targets for independent claim support. |
 
 ## Plan change log
 

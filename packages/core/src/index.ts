@@ -1,4 +1,5 @@
 export * from './types';
+export * from './understanding';
 export * from './graph';
 export * from './surfaces';
 export * from './attention';
