@@ -153,21 +153,28 @@ function motifs(behavior: ChangeBehaviorV1): HTMLElement | undefined {
 }
 
 function behaviorPanel(behavior: ChangeBehaviorV1): HTMLElement {
-  const section = node('section', 'behavior-panel');
+  const section = node('details', 'behavior-panel pr-depth-disclosure') as HTMLDetailsElement;
   section.dataset.testid = 'change-behavior';
 
+  const disclosureSummary = node('summary', 'behavior-disclosure-summary');
   const heading = node('div', 'behavior-heading');
   const headingCopy = node('div');
   headingCopy.append(
     node('p', 'eyebrow', 'CHANGE BEHAVIOR'),
     node('h3', undefined, 'Observed behavior'),
-    node('p', 'behavior-copy', 'A deterministic projection of how this change moved through Spark’s retained evaluation history.'),
+    node('p', 'behavior-copy', 'Inspect the deterministic journey, patterns, and retained-history diagnostics.'),
   );
   heading.append(headingCopy);
   if (behavior.truncated || behavior.historyCompleteness === 'PARTIAL_BACKFILL') {
     heading.append(node('span', 'behavior-completeness', behavior.truncated ? 'Partial retained history' : 'Backfilled history'));
   }
-  section.append(heading, attentionJourney(behavior));
+  disclosureSummary.append(heading, node('span', 'behavior-disclosure-action', 'Show behavior details'));
+  section.addEventListener('toggle', () => {
+    const action = section.querySelector<HTMLElement>('.behavior-disclosure-action');
+    if (action) action.textContent = section.open ? 'Hide behavior details' : 'Show behavior details';
+  });
+  const disclosureBody = node('div', 'behavior-disclosure-body');
+  disclosureBody.append(attentionJourney(behavior));
 
   const layout = node('div', 'behavior-layout');
   const primary = node('div', 'behavior-layout-primary');
@@ -191,7 +198,7 @@ function behaviorPanel(behavior: ChangeBehaviorV1): HTMLElement {
   if (motifSection) secondary.append(motifSection);
 
   layout.append(primary, secondary);
-  section.append(layout);
+  disclosureBody.append(layout);
 
   const signatures = node('details', 'behavior-signatures');
   const summary = node('summary', undefined, 'Inspect deterministic signatures');
@@ -203,20 +210,19 @@ function behaviorPanel(behavior: ChangeBehaviorV1): HTMLElement {
     node('code', undefined, behavior.signatures.attention),
   );
   signatures.append(summary, body);
-  section.append(signatures);
+  disclosureBody.append(signatures);
+  section.append(disclosureSummary, disclosureBody);
   return section;
 }
 
 export function enhancePullRequestWithBehavior(root: HTMLElement, behavior: ChangeBehaviorV1): HTMLElement {
   if (root.querySelector('[data-testid="change-behavior"]')) return root;
-  const trajectoryHeading = [...root.querySelectorAll<HTMLHeadingElement>('h2')]
-    .find((heading) => heading.textContent?.trim() === 'Trajectory');
-  const trajectorySection = trajectoryHeading?.closest<HTMLElement>('.pr-section');
-  if (!trajectorySection) return root;
+  const page = root.querySelector<HTMLElement>('[data-testid="pull-request-detail"]');
+  if (!page) return root;
   const panel = behaviorPanel(behavior);
-  const canvas = trajectorySection.querySelector<HTMLElement>('[data-testid="insight-canvas-pr-trajectory"]');
-  if (canvas) canvas.insertAdjacentElement('afterend', panel);
-  else trajectorySection.append(panel);
+  const forensics = page.querySelector<HTMLElement>('[data-testid="pr-forensics"]');
+  if (forensics) forensics.insertAdjacentElement('beforebegin', panel);
+  else page.append(panel);
   return root;
 }
 

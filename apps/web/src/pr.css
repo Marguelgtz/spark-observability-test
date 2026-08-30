@@ -4,7 +4,7 @@
 .pr-repo { margin: 0 0 8px; color: #6e6e68; font-size: 13px; }
 .pr-header h1 { margin: 0; font-size: 32px; line-height: 1.1; letter-spacing: -0.04em; }
 
-.pr-current { border: 1px solid #d7d7d1; border-radius: 10px; background: #fbfbf9; padding: 20px; }
+.pr-current { border: 1px solid #d7d7d1; border-radius: var(--radius-panel); background: var(--color-surface); padding: 24px; }
 .pr-current-top { display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; }
 .pr-current-state { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .pr-current-time { color: #777771; font-size: 12px; white-space: nowrap; }
@@ -30,11 +30,12 @@
 .pr-terminal-status.is-unresolved { color: #812c27; background: #f6e6e3; }
 .pr-terminal-status.is-resolved { color: #2f633f; background: #e5f0e7; }
 
-.pr-section { padding: 28px 0; border-bottom: 1px solid #deded9; }
+.pr-section { padding: 32px 0; border-bottom: 1px solid var(--color-border); }
 .pr-section h2 { margin: 0 0 14px; font-size: 13px; color: #6f6f69; text-transform: uppercase; letter-spacing: 0.075em; }
 .pr-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pr-depth-disclosure { margin-top: 32px; }
 .pr-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.pr-metric { min-height: 110px; border: 1px solid #deded8; border-radius: 8px; padding: 14px; background: #fafaf8; display: flex; flex-direction: column; gap: 7px; }
+.pr-metric { min-height: 104px; border: 1px solid #deded8; border-radius: var(--radius-card); padding: 16px; background: var(--color-surface-subtle); display: flex; flex-direction: column; gap: 7px; }
 .pr-metric-label { color: #74746f; font-size: 11px; text-transform: uppercase; letter-spacing: 0.055em; font-weight: 740; }
 .pr-metric-value { font-size: 27px; line-height: 1; letter-spacing: -0.04em; }
 .pr-metric-detail { margin-top: auto; color: #777771; font-size: 11px; }

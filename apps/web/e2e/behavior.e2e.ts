@@ -1,11 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-test('pull request exposes a visual deterministic behavior journey inside trajectory without changing page order', async ({ page }) => {
+test('pull request keeps deterministic behavior available as progressive diagnostic depth', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
   const behavior = page.getByTestId('change-behavior');
   await expect(behavior).toBeVisible();
   await expect(behavior.getByRole('heading', { name: 'Observed behavior', exact: true })).toBeVisible();
+  await expect(behavior).not.toHaveAttribute('open', '');
+  await expect(behavior.getByText('Show behavior details', { exact: true })).toBeVisible();
+  await behavior.locator('.behavior-disclosure-summary').click();
+  await expect(behavior).toHaveAttribute('open', '');
 
   const attentionJourney = behavior.getByTestId('behavior-attention-journey');
   await expect(attentionJourney).toBeVisible();
@@ -21,9 +25,6 @@ test('pull request exposes a visual deterministic behavior journey inside trajec
   await expect(behavior.getByText('Recoveries', { exact: true })).toBeVisible();
   await expect(behavior.getByText('Inspect deterministic signatures', { exact: true })).toBeVisible();
 
-  const trajectory = page.getByRole('heading', { name: 'Trajectory', exact: true }).locator('..');
-  await expect(trajectory.locator('[data-testid="change-behavior"]')).toBeVisible();
-
   const pageRoot = page.getByTestId('pull-request-detail');
   const order = await pageRoot.evaluate((element) => {
     const children = [...element.children];
@@ -32,12 +33,14 @@ test('pull request exposes a visual deterministic behavior journey inside trajec
     return {
       evaluationHistory: indexByHeading('Evaluation history'),
       keyMoments: children.findIndex((child) => child.getAttribute('data-testid') === 'key-moments'),
+      behavior: children.findIndex((child) => child.getAttribute('data-testid') === 'change-behavior'),
       forensics: children.findIndex((child) => child.getAttribute('data-testid') === 'pr-forensics'),
     };
   });
   expect(order.evaluationHistory).toBeGreaterThan(-1);
-  expect(order.keyMoments).toBeGreaterThan(order.evaluationHistory);
-  expect(order.forensics).toBeGreaterThan(order.keyMoments);
+  expect(order.keyMoments).toBeLessThan(order.evaluationHistory);
+  expect(order.behavior).toBeGreaterThan(order.evaluationHistory);
+  expect(order.forensics).toBeGreaterThan(order.behavior);
 });
 
 test('change outcomes exposes recurring behavior prevalence, outcomes, and concrete PR examples', async ({ page }) => {

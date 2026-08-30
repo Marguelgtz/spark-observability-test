@@ -75,8 +75,8 @@ export function enhancePullRequestWithSeverityTimeline(
   const evaluationHistory = sectionByHeading(page, 'Evaluation history');
   const forensics = collectForensics(page);
 
-  // The detailed run history is useful context before the compressed change
-  // evolution. Deeper observations/evidence remain a final collapsed layer.
+  // Lead with the compressed change evolution, then retain run-level history
+  // for inspection. Deeper observations/evidence remain a final collapsed layer.
   let moments = root.querySelector<HTMLElement>('[data-testid="key-moments"]');
   if (!moments) {
     moments = renderChangeStory(detail, {
@@ -84,8 +84,8 @@ export function enhancePullRequestWithSeverityTimeline(
       ...(saveFeedback ? { saveFeedback } : {}),
     });
   }
-  if (evaluationHistory) page.append(evaluationHistory);
   page.append(moments);
+  if (evaluationHistory) page.append(evaluationHistory);
   if (forensics) page.append(forensics);
   return root;
 }

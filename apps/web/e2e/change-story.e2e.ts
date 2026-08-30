@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('pull request page keeps trajectory first, evaluation history before change evolution, and forensics last', async ({ page }) => {
+test('pull request page keeps trajectory first, change evolution before evaluation history, and forensics last', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
   const moments = page.getByTestId('key-moments');
@@ -38,8 +38,8 @@ test('pull request page keeps trajectory first, evaluation history before change
     const moments = element.querySelector('[data-testid="key-moments"]');
     const forensics = element.querySelector('[data-testid="pr-forensics"]');
     if (!history || !moments || !forensics) return false;
-    return Boolean(history.compareDocumentPosition(moments) & Node.DOCUMENT_POSITION_FOLLOWING)
-      && Boolean(moments.compareDocumentPosition(forensics) & Node.DOCUMENT_POSITION_FOLLOWING)
+    return Boolean(moments.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING)
+      && Boolean(history.compareDocumentPosition(forensics) & Node.DOCUMENT_POSITION_FOLLOWING)
       && element.lastElementChild === forensics;
   })).resolves.toBe(true);
 
