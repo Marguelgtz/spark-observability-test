@@ -30,3 +30,20 @@ test('routes use analytics, standard, and reading rails without viewport overflo
   expect(detailWidth).toBeCloseTo(testInfo.project.name === 'mobile' ? 358 : 760, 0);
   await expectNoViewportOverflow(page);
 });
+
+test('dashboard moves from operational work to trends, recent activity, and optional insight', async ({ page }) => {
+  await page.goto('/app?window=7d&attention=ALL');
+  const order = await page.getByTestId('dashboard-view').evaluate((element) => {
+    const children = [...element.children];
+    const index = (testId: string) => children.findIndex(child => child.getAttribute('data-testid') === testId);
+    return {
+      attention: index('needs-attention'),
+      trends: index('dashboard-trend-snapshot'),
+      recent: index('recent-activity'),
+      insights: index('dashboard-insights'),
+    };
+  });
+  expect(order.attention).toBeLessThan(order.trends);
+  expect(order.trends).toBeLessThan(order.recent);
+  expect(order.recent).toBeLessThan(order.insights);
+});

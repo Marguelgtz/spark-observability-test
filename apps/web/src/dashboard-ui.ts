@@ -337,8 +337,8 @@ export function renderOperationalDashboard(
     renderOverview(response, state),
     renderNeedsAttention(response, state, previewSize),
     renderActiveChanges(response, state, previewSize),
-    renderRecentShell(state),
     renderTrendSnapshotShell(state),
+    renderRecentShell(state),
     renderInsightsShell(collapseSecondarySections),
   );
   return main;
