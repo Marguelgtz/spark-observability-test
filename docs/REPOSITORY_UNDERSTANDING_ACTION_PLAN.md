@@ -120,8 +120,8 @@ The implementation round is successful when:
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| RU-001 | READY | Create characterization fixtures for current Spark evaluation behavior. | — | Fixtures cover localized workspace, downstream fan-out, generic root fallback, unmapped paths, sensitive paths, incomplete files, and unknown coverage without changing expected outputs. |
-| RU-002 | BACKLOG | Add immutable Spark and Stint change fixtures from the research corpus. | RU-001 | Fixture provenance records commit/PR identity and contains only the metadata needed for deterministic tests. |
+| RU-001 | DONE | Create characterization fixtures for current Spark evaluation behavior. | — | Fixtures cover localized workspace, downstream fan-out, generic root fallback, unmapped paths, sensitive paths, incomplete files, and unknown coverage without changing expected outputs. |
+| RU-002 | READY | Add immutable Spark and Stint change fixtures from the research corpus. | RU-001 | Fixture provenance records commit/PR identity and contains only the metadata needed for deterministic tests. |
 | RU-003 | BACKLOG | Catalogue every current consumer of `Project`, `directAreas`, `affectedAreas`, `sensitiveSurfaces`, evidence coverage, and analysis notes. | RU-001 | Consumer map covers core, GitHub Check, persistence, trajectory, contracts, CLI, and web with an owner migration state. |
 | RU-004 | BACKLOG | Establish compatibility snapshot and ordering rules. | RU-001, RU-003 | Tests specify stable labels, ordering, deduplication, repository-wide markers, and trajectory set behavior. |
 
@@ -216,7 +216,7 @@ Each branch targets the branch immediately above it in the stack. Keep each PR b
 | Stack | Branch | Target | Scope | Tasks | PR | Commits | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | `repository-understanding/0-research` | `dashboard/phase-6-graph-restoration` | Research, decisions, and living action plan | Planning foundation | [#49](https://github.com/Marguelgtz/spark-observability-test/pull/49) | 2 | Open |
-| S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | Pending | 2–6 planned | Planned |
+| S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | Pending | 2–6 planned | In progress |
 | S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | Pending | 4–10 planned | Planned |
 
 Add later stack branches only when the preceding gate is sufficiently stable to define a reviewable target. If a planned branch approaches 20 commits or mixes independent rollback boundaries, split it before opening or updating the PR.
@@ -229,6 +229,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | --- | --- | --- | --- |
 | 2026-08-30 | Plan | created | Research conclusion `VIABLE WITH REVISIONS`; task register initialized with RU-001 ready and all implementation tasks unstarted. |
 | 2026-08-30 | S0 | preparing -> open | Documentation foundation committed and opened as PR #49 against `dashboard/phase-6-graph-restoration`. |
+| 2026-08-30 | RU-001 | ready -> in progress | S1 created from S0; characterization fixtures are the active implementation task. |
+| 2026-08-30 | RU-001 | in progress -> done | Seven exact-output scenarios pass in `current-behavior.test.ts`; core tests report 28 passing tests and repository typecheck passes. |
+| 2026-08-30 | RU-002 | backlog -> ready | RU-001 characterization baseline is committed and the corpus identities are already recorded in the research RFC. |
 
 ## Plan change log
 
