@@ -132,9 +132,8 @@ The implementation round is successful when:
 | RU-101 | DONE | Add provider-neutral observation types. | G0 | Types represent repository snapshot, change/artifact observations, evidence runs, and independent source completeness without semantic area conclusions. |
 | RU-102 | DONE | Add claim-support types. | RU-101 | Provenance, derivation, categorical confidence, evidence references, and completeness are independent and validated. |
 | RU-103 | DONE | Add Area, Membership, Relationship, Boundary, Attribution, and Expectation types. | RU-102 | Types support overlapping memberships, optional hierarchy, typed edges, boundaries without known connected areas, and claim support. |
-| RU-104 | READY | Define model invariants and deterministic normalization. | RU-103 | Duplicate IDs, dangling references, unstable ordering, and invalid confidence/completeness states have deterministic outcomes and tests. |
-| RU-104 | BACKLOG | Define model invariants and deterministic normalization. | RU-103 | Duplicate IDs, dangling references, unstable ordering, and invalid confidence/completeness states have deterministic outcomes and tests. |
-| RU-105 | BACKLOG | Implement the compatibility projector. | RU-104 | Projects `Project[]`, direct/affected area strings, sensitive surfaces, legacy evidence coverage, and analysis completeness with documented loss. |
+| RU-104 | DONE | Define model invariants and deterministic normalization. | RU-103 | Duplicate IDs, dangling references, unstable ordering, and invalid confidence/completeness states have deterministic outcomes and tests. |
+| RU-105 | READY | Implement the compatibility projector. | RU-104 | Projects `Project[]`, direct/affected area strings, sensitive surfaces, legacy evidence coverage, and analysis completeness with documented loss. |
 | RU-106 | BACKLOG | Prove projector parity for current JS workspace scenarios. | RU-105 | G0 fixtures pass through both current and projected paths with intentional differences recorded as new tasks. |
 
 ### G2 — Build repository-native analysis
@@ -252,6 +251,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-103 | ready -> in progress | Area, membership, relationship, boundary, attribution, expectation, and completeness-assessment claims are being added. |
 | 2026-08-30 | RU-103 | in progress -> done | Type tests cover overlapping memberships, optional hierarchy, built-in and extensible values, and boundaries without connected areas. |
 | 2026-08-30 | RU-104 | backlog -> ready | The complete observation and claim vocabulary is available for invariant enforcement. |
+| 2026-08-30 | RU-104 | ready -> in progress | Canonical ordering and explicit duplicate, dangling-reference, and invalid-state repair rules are being implemented. |
+| 2026-08-30 | RU-104 | in progress -> done | Normalization tests cover first-wins duplicate IDs, dangling-reference repair, stable ordering, truthful enum fallbacks, immutability, 41 passing core tests, and repository typecheck. |
+| 2026-08-30 | RU-105 | backlog -> ready | Normalized observations and claims now provide deterministic projector input. |
 
 ## Plan change log
 
