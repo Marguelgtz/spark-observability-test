@@ -166,10 +166,10 @@ The unavailable state is truthful and should remain unchanged. It does not fabri
 | Check | Result |
 | --- | --- |
 | Dedicated visual capture, desktop and mobile | 8 passing; eight labelled PNGs retained above |
-| Full Playwright suite | Pending final audit validation |
-| Web unit tests | Pending final audit validation |
-| Core projector parity | Pending final audit validation |
-| Repository typecheck | Pending final audit validation |
+| Full Playwright suite | 110 passing |
+| Web unit tests | 51 passing |
+| Core projector parity | 7 passing |
+| Repository typecheck | Passing |
 
 ## Audit completion
 

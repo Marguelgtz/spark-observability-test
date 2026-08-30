@@ -231,7 +231,7 @@ Each branch targets the branch immediately above it in the stack. Keep each PR b
 | S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | [#50](https://github.com/Marguelgtz/spark-observability-test/pull/50) | 5 | Open |
 | S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | [#51](https://github.com/Marguelgtz/spark-observability-test/pull/51) | 6 | Open |
 | S3 | `repository-understanding/3-native-analysis` | `repository-understanding/2-substrate` | Analyzer orchestration, generic structure, JS adapter, boundaries, and completeness | RU-201–RU-208 | [#52](https://github.com/Marguelgtz/spark-observability-test/pull/52) | 4 current | Draft |
-| S4 | `repository-understanding/4-ui-audit` | `repository-understanding/3-native-analysis` | Visual UI compatibility audit and gated evolution backlog | UIA-001–UIA-005 | Pending | 3 current | Preparing |
+| S4 | `repository-understanding/4-ui-audit` | `repository-understanding/3-native-analysis` | Visual UI compatibility audit and gated evolution backlog | UIA-001–UIA-005 | [#53](https://github.com/Marguelgtz/spark-observability-test/pull/53) | 4 | Draft |
 
 Add later stack branches only when the preceding gate is sufficiently stable to define a reviewable target. If a planned branch approaches 20 commits or mixes independent rollback boundaries, split it before opening or updating the PR.
 
@@ -291,6 +291,7 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-31 | UIA-004 | created -> done | Six current copy conflicts have eligible replacements tied to backend gates. |
 | 2026-08-31 | UIA-005 | created -> done | UIE-001–UIE-009 preserve V1 until their bounded inspection, evidence, shadow, profile, or adoption prerequisites complete. |
 | 2026-08-31 | S4 | planned -> preparing | Visual-first audit is isolated from production UI/contracts on a branch stacked against S3. |
+| 2026-08-31 | S4 | preparing -> draft | UI compatibility audit opened as draft PR #53 against S3; 51 web unit, 110 Playwright, 7 projector-parity tests, and repository typecheck pass. |
 
 ## Plan change log
 
