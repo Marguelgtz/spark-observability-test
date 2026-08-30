@@ -122,8 +122,8 @@ The implementation round is successful when:
 | --- | --- | --- | --- | --- |
 | RU-001 | DONE | Create characterization fixtures for current Spark evaluation behavior. | — | Fixtures cover localized workspace, downstream fan-out, generic root fallback, unmapped paths, sensitive paths, incomplete files, and unknown coverage without changing expected outputs. |
 | RU-002 | DONE | Add immutable Spark and Stint change fixtures from the research corpus. | RU-001 | Fixture provenance records commit/PR identity and contains only the metadata needed for deterministic tests. |
-| RU-003 | READY | Catalogue every current consumer of `Project`, `directAreas`, `affectedAreas`, `sensitiveSurfaces`, evidence coverage, and analysis notes. | RU-001 | Consumer map covers core, GitHub Check, persistence, trajectory, contracts, CLI, and web with an owner migration state. |
-| RU-004 | BACKLOG | Establish compatibility snapshot and ordering rules. | RU-001, RU-003 | Tests specify stable labels, ordering, deduplication, repository-wide markers, and trajectory set behavior. |
+| RU-003 | DONE | Catalogue every current consumer of `Project`, `directAreas`, `affectedAreas`, `sensitiveSurfaces`, evidence coverage, and analysis notes. | RU-001 | Consumer map covers core, GitHub Check, persistence, trajectory, contracts, CLI, and web with an owner migration state. |
+| RU-004 | READY | Establish compatibility snapshot and ordering rules. | RU-001, RU-003 | Tests specify stable labels, ordering, deduplication, repository-wide markers, and trajectory set behavior. |
 
 ### G1 — Add the substrate and compatibility projector
 
@@ -235,6 +235,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-002 | ready -> in progress | Immutable Spark commits and Stint PR merge commits were resolved to exact changed-file metadata. |
 | 2026-08-30 | RU-002 | in progress -> done | Eight metadata-only fixtures cover four categories in Spark and Stint; 32 core tests and repository typecheck pass. |
 | 2026-08-30 | RU-003 | backlog -> ready | Current behavior and real change fixtures are stable enough to map compatibility consumers. |
+| 2026-08-30 | RU-003 | ready -> in progress | Consumer search confirmed compatibility dependencies across core, GitHub, normalized storage, trajectory, contracts, CLI, and web. |
+| 2026-08-30 | RU-003 | in progress -> done | Compatibility map covers all required subsystems and records migration ownership, stability requirements, and six concrete risks. |
+| 2026-08-30 | RU-004 | backlog -> ready | Consumer invariants are explicit enough to encode as compatibility tests. |
 
 ## Plan change log
 
