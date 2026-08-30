@@ -140,8 +140,8 @@ The implementation round is successful when:
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| RU-201 | BACKLOG | Define the analyzer contribution and orchestration contract. | G1 | Multiple analyzers contribute claims independently; failures and truncation remain source-scoped; output ordering is deterministic. |
-| RU-202 | BACKLOG | Resolve the conservative generic structural-region heuristic against corpus fixtures. | RU-201 | Written decision and tests show useful Spark/Stint/Django regions without treating every directory as an area or inventing project semantics. |
+| RU-201 | DONE | Define the analyzer contribution and orchestration contract. | G1 | Multiple analyzers contribute claims independently; failures and truncation remain source-scoped; output ordering is deterministic. |
+| RU-202 | READY | Resolve the conservative generic structural-region heuristic against corpus fixtures. | RU-201 | Written decision and tests show useful Spark/Stint/Django regions without treating every directory as an area or inventing project semantics. |
 | RU-203 | BACKLOG | Implement the generic structural analyzer. | RU-202 | Zero-config changed paths map to supported structural areas with provenance; flat repositories remain useful without fabricated subdivisions. |
 | RU-204 | BACKLOG | Convert the current JS workspace resolver into an adapter. | RU-201, RU-103 | Existing project units and dependencies become areas, memberships, and `depends_on` claims with manifest evidence references. |
 | RU-205 | BACKLOG | Convert sensitive-path logic into boundary claims. | RU-201, RU-103 | CI, dependency, deployment, migration, and security detections no longer become canonical area identities; compatibility labels remain stable. |
@@ -262,6 +262,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-106 | in progress -> done | All seven G0 exact-output scenarios match through both paths; the full repository suite reports 213 passing tests and repository typecheck passes. |
 | 2026-08-30 | G1 | in progress -> complete | Provider-neutral observations, supported claims, semantic vocabulary, normalization, legacy projection, and dual-path parity are complete in five S2 commits. |
 | 2026-08-30 | S2 | preparing -> open | Substrate gate opened as PR #51 against S1 with six commits including this stack-ledger update. |
+| 2026-08-30 | RU-201 | backlog -> in progress | G1 is complete and S3 was created from S2; analyzer contribution and source-scoped orchestration are active. |
+| 2026-08-30 | RU-201 | in progress -> done | Orchestration tests prove order-independent merging and source-scoped failure completeness with 52 passing core tests and repository typecheck. |
+| 2026-08-30 | RU-202 | backlog -> ready | Analyzer orchestration can now host and test one bounded generic structural heuristic. |
 
 ## Plan change log
 
