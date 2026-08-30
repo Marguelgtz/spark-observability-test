@@ -141,8 +141,8 @@ The implementation round is successful when:
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
 | RU-201 | DONE | Define the analyzer contribution and orchestration contract. | G1 | Multiple analyzers contribute claims independently; failures and truncation remain source-scoped; output ordering is deterministic. |
-| RU-202 | READY | Resolve the conservative generic structural-region heuristic against corpus fixtures. | RU-201 | Written decision and tests show useful Spark/Stint/Django regions without treating every directory as an area or inventing project semantics. |
-| RU-203 | BACKLOG | Implement the generic structural analyzer. | RU-202 | Zero-config changed paths map to supported structural areas with provenance; flat repositories remain useful without fabricated subdivisions. |
+| RU-202 | DONE | Resolve the conservative generic structural-region heuristic against corpus fixtures. | RU-201 | Written decision and tests show useful Spark/Stint/Django regions without treating every directory as an area or inventing project semantics. |
+| RU-203 | READY | Implement the generic structural analyzer. | RU-202 | Zero-config changed paths map to supported structural areas with provenance; flat repositories remain useful without fabricated subdivisions. |
 | RU-204 | BACKLOG | Convert the current JS workspace resolver into an adapter. | RU-201, RU-103 | Existing project units and dependencies become areas, memberships, and `depends_on` claims with manifest evidence references. |
 | RU-205 | BACKLOG | Convert sensitive-path logic into boundary claims. | RU-201, RU-103 | CI, dependency, deployment, migration, and security detections no longer become canonical area identities; compatibility labels remain stable. |
 | RU-206 | BACKLOG | Add source/dimension completeness aggregation. | RU-203, RU-204, RU-205 | Tree, file, analyzer, relationship, and boundary completeness remain independently inspectable and project to legacy notes. |
@@ -265,6 +265,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-201 | backlog -> in progress | G1 is complete and S3 was created from S2; analyzer contribution and source-scoped orchestration are active. |
 | 2026-08-30 | RU-201 | in progress -> done | Orchestration tests prove order-independent merging and source-scoped failure completeness with 52 passing core tests and repository typecheck. |
 | 2026-08-30 | RU-202 | backlog -> ready | Analyzer orchestration can now host and test one bounded generic structural heuristic. |
+| 2026-08-30 | RU-202 | ready -> in progress | A conservative structural decision is being tested against Spark, Stint, Django, and flat-service paths before analyzer integration. |
+| 2026-08-30 | RU-202 | in progress -> done | The accepted heuristic and four corpus/archetype tests pass with 56 core tests and repository typecheck. |
+| 2026-08-30 | RU-203 | backlog -> ready | Structural grouping rules and their non-semantic limits are fixed and ready for provenance-bearing analyzer output. |
 
 ## Plan change log
 
