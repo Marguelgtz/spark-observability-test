@@ -1,4 +1,4 @@
-.pr-page { max-width: 980px; }
+.pr-page { --layout-content-width: var(--layout-standard); }
 .pr-header { margin-bottom: 26px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .pr-header > div { min-width: 0; }
 .pr-repo { margin: 0 0 8px; color: #6e6e68; font-size: 13px; }

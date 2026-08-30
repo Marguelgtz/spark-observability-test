@@ -1,4 +1,4 @@
-.dashboard-page { width: 100%; }
+.dashboard-page { width: min(var(--layout-analytics), calc(100% - var(--layout-gutter) - var(--layout-gutter))); }
 
 .dashboard-heading-copy { display: grid; gap: 4px; }
 .dashboard-heading-copy .eyebrow { margin: 0; }

@@ -49,7 +49,7 @@
 }
 
 .shell-preference-warning {
-  width: min(920px, calc(100% - 40px));
+  width: min(var(--layout-standard), calc(100% - var(--layout-gutter) - var(--layout-gutter)));
   margin: 16px auto -24px;
   border: 1px solid #d9b86c;
   border-radius: 7px;
@@ -146,7 +146,6 @@
 
 @media (max-width: 640px) {
   .shell-preference-warning {
-    width: min(100% - 28px, 920px);
     margin-bottom: -12px;
   }
 
