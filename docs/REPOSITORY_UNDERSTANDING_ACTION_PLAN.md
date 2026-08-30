@@ -1,6 +1,6 @@
 # Repository Understanding Action Plan
 
-Status: active living plan. No implementation task has started yet.
+Status: active living plan. G0 characterization is complete; G1 is next.
 
 Research basis: [`REPOSITORY_UNDERSTANDING_RESEARCH.md`](./REPOSITORY_UNDERSTANDING_RESEARCH.md).
 
@@ -123,7 +123,7 @@ The implementation round is successful when:
 | RU-001 | DONE | Create characterization fixtures for current Spark evaluation behavior. | — | Fixtures cover localized workspace, downstream fan-out, generic root fallback, unmapped paths, sensitive paths, incomplete files, and unknown coverage without changing expected outputs. |
 | RU-002 | DONE | Add immutable Spark and Stint change fixtures from the research corpus. | RU-001 | Fixture provenance records commit/PR identity and contains only the metadata needed for deterministic tests. |
 | RU-003 | DONE | Catalogue every current consumer of `Project`, `directAreas`, `affectedAreas`, `sensitiveSurfaces`, evidence coverage, and analysis notes. | RU-001 | Consumer map covers core, GitHub Check, persistence, trajectory, contracts, CLI, and web with an owner migration state. |
-| RU-004 | READY | Establish compatibility snapshot and ordering rules. | RU-001, RU-003 | Tests specify stable labels, ordering, deduplication, repository-wide markers, and trajectory set behavior. |
+| RU-004 | DONE | Establish compatibility snapshot and ordering rules. | RU-001, RU-003 | Tests specify stable labels, ordering, deduplication, repository-wide markers, and trajectory set behavior. |
 
 ### G1 — Add the substrate and compatibility projector
 
@@ -238,6 +238,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-003 | ready -> in progress | Consumer search confirmed compatibility dependencies across core, GitHub, normalized storage, trajectory, contracts, CLI, and web. |
 | 2026-08-30 | RU-003 | in progress -> done | Compatibility map covers all required subsystems and records migration ownership, stability requirements, and six concrete risks. |
 | 2026-08-30 | RU-004 | backlog -> ready | Consumer invariants are explicit enough to encode as compatibility tests. |
+| 2026-08-30 | RU-004 | ready -> in progress | Compatibility labels, ordering, deduplication, repository-wide markers, evidence retention, and trajectory set behavior are being locked in S1. |
+| 2026-08-30 | RU-004 | in progress -> done | Core compatibility tests report 34 passing tests, trajectory tests report 12 passing tests, and repository typecheck passes. |
+| 2026-08-30 | G0 | in progress -> complete | RU-001 through RU-004 are committed as four bounded characterization and compatibility changes in S1. |
 
 ## Plan change log
 
