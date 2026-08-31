@@ -1,6 +1,6 @@
 # Repository Understanding Action Plan
 
-Status: active living plan. G0 characterization is complete; G1 is next.
+Status: active living plan. G0 and G1 are complete; G2 is next.
 
 Research basis: [`REPOSITORY_UNDERSTANDING_RESEARCH.md`](./REPOSITORY_UNDERSTANDING_RESEARCH.md).
 
@@ -129,12 +129,12 @@ The implementation round is successful when:
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| RU-101 | BACKLOG | Add provider-neutral observation types. | G0 | Types represent repository snapshot, change/artifact observations, evidence runs, and independent source completeness without semantic area conclusions. |
-| RU-102 | BACKLOG | Add claim-support types. | RU-101 | Provenance, derivation, categorical confidence, evidence references, and completeness are independent and validated. |
-| RU-103 | BACKLOG | Add Area, Membership, Relationship, Boundary, Attribution, and Expectation types. | RU-102 | Types support overlapping memberships, optional hierarchy, typed edges, boundaries without known connected areas, and claim support. |
-| RU-104 | BACKLOG | Define model invariants and deterministic normalization. | RU-103 | Duplicate IDs, dangling references, unstable ordering, and invalid confidence/completeness states have deterministic outcomes and tests. |
-| RU-105 | BACKLOG | Implement the compatibility projector. | RU-104 | Projects `Project[]`, direct/affected area strings, sensitive surfaces, legacy evidence coverage, and analysis completeness with documented loss. |
-| RU-106 | BACKLOG | Prove projector parity for current JS workspace scenarios. | RU-105 | G0 fixtures pass through both current and projected paths with intentional differences recorded as new tasks. |
+| RU-101 | DONE | Add provider-neutral observation types. | G0 | Types represent repository snapshot, change/artifact observations, evidence runs, and independent source completeness without semantic area conclusions. |
+| RU-102 | DONE | Add claim-support types. | RU-101 | Provenance, derivation, categorical confidence, evidence references, and completeness are independent and validated. |
+| RU-103 | DONE | Add Area, Membership, Relationship, Boundary, Attribution, and Expectation types. | RU-102 | Types support overlapping memberships, optional hierarchy, typed edges, boundaries without known connected areas, and claim support. |
+| RU-104 | DONE | Define model invariants and deterministic normalization. | RU-103 | Duplicate IDs, dangling references, unstable ordering, and invalid confidence/completeness states have deterministic outcomes and tests. |
+| RU-105 | DONE | Implement the compatibility projector. | RU-104 | Projects `Project[]`, direct/affected area strings, sensitive surfaces, legacy evidence coverage, and analysis completeness with documented loss. |
+| RU-106 | DONE | Prove projector parity for current JS workspace scenarios. | RU-105 | G0 fixtures pass through both current and projected paths with intentional differences recorded as new tasks. |
 
 ### G2 — Build repository-native analysis
 
@@ -217,7 +217,8 @@ Each branch targets the branch immediately above it in the stack. Keep each PR b
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | S0 | `repository-understanding/0-research` | `dashboard/phase-6-graph-restoration` | Research, decisions, and living action plan | Planning foundation | [#49](https://github.com/Marguelgtz/spark-observability-test/pull/49) | 2 | Open |
 | S1 | `repository-understanding/1-characterization` | `repository-understanding/0-research` | Current behavior characterization | RU-001–RU-004 | [#50](https://github.com/Marguelgtz/spark-observability-test/pull/50) | 5 | Open |
-| S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | Pending | 4–10 planned | Planned |
+| S2 | `repository-understanding/2-substrate` | `repository-understanding/1-characterization` | Observations, claims, invariants, and compatibility projector | RU-101–RU-106 | [#51](https://github.com/Marguelgtz/spark-observability-test/pull/51) | 6 | Open |
+| S3 | `repository-understanding/3-native-analysis` | `repository-understanding/2-substrate` | Analyzer orchestration, generic structure, JS adapter, boundaries, and completeness | RU-201–RU-208 | Pending | 6–12 planned | Planned |
 
 Add later stack branches only when the preceding gate is sufficiently stable to define a reviewable target. If a planned branch approaches 20 commits or mixes independent rollback boundaries, split it before opening or updating the PR.
 
@@ -242,6 +243,25 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | RU-004 | in progress -> done | Core compatibility tests report 34 passing tests, trajectory tests report 12 passing tests, and repository typecheck passes. |
 | 2026-08-30 | G0 | in progress -> complete | RU-001 through RU-004 are committed as four bounded characterization and compatibility changes in S1. |
 | 2026-08-30 | S1 | preparing -> open | Characterization gate opened as PR #50 against S0 with five commits including this stack-ledger update. |
+| 2026-08-30 | RU-101 | backlog -> in progress | G0 is complete and S2 was created from S1; provider-neutral observations are the active task. |
+| 2026-08-30 | RU-101 | in progress -> done | Provider-neutral snapshot, change, artifact, evidence-run, and source-completeness types pass 35 core tests and repository typecheck. |
+| 2026-08-30 | RU-102 | backlog -> ready | The observation layer now provides stable evidence-reference targets for independent claim support. |
+| 2026-08-30 | RU-102 | ready -> in progress | Independent claim-support axes are being encoded before semantic claims consume them. |
+| 2026-08-30 | RU-102 | in progress -> done | Claim support separately represents provenance, derivation, categorical confidence, evidence references, and bounded completeness. |
+| 2026-08-30 | RU-103 | backlog -> ready | Claim support is defined and can be attached consistently to semantic claim types. |
+| 2026-08-30 | RU-103 | ready -> in progress | Area, membership, relationship, boundary, attribution, expectation, and completeness-assessment claims are being added. |
+| 2026-08-30 | RU-103 | in progress -> done | Type tests cover overlapping memberships, optional hierarchy, built-in and extensible values, and boundaries without connected areas. |
+| 2026-08-30 | RU-104 | backlog -> ready | The complete observation and claim vocabulary is available for invariant enforcement. |
+| 2026-08-30 | RU-104 | ready -> in progress | Canonical ordering and explicit duplicate, dangling-reference, and invalid-state repair rules are being implemented. |
+| 2026-08-30 | RU-104 | in progress -> done | Normalization tests cover first-wins duplicate IDs, dangling-reference repair, stable ordering, truthful enum fallbacks, immutability, 41 passing core tests, and repository typecheck. |
+| 2026-08-30 | RU-105 | backlog -> ready | Normalized observations and claims now provide deterministic projector input. |
+| 2026-08-30 | RU-105 | ready -> in progress | The explicit model-to-legacy projection seam and its information-loss inventory are being implemented. |
+| 2026-08-30 | RU-105 | in progress -> done | Projector tests cover projects, reverse dependencies, markers, boundaries, duplicate runs, attribution coverage, completeness, and explicit losses with 43 passing core tests and repository typecheck. |
+| 2026-08-30 | RU-106 | backlog -> ready | The projector and G0 exact-output fixtures are available for dual-path parity comparison. |
+| 2026-08-30 | RU-106 | ready -> in progress | Every G0 scenario is being evaluated through both the current and projected compatibility paths. |
+| 2026-08-30 | RU-106 | in progress -> done | All seven G0 exact-output scenarios match through both paths; the full repository suite reports 213 passing tests and repository typecheck passes. |
+| 2026-08-30 | G1 | in progress -> complete | Provider-neutral observations, supported claims, semantic vocabulary, normalization, legacy projection, and dual-path parity are complete in five S2 commits. |
+| 2026-08-30 | S2 | preparing -> open | Substrate gate opened as PR #51 against S1 with six commits including this stack-ledger update. |
 
 ## Plan change log
 
