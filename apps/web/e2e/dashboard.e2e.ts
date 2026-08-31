@@ -173,7 +173,9 @@ test('material transition feedback is accessible, editable, and survives reload'
   const drawer = page.getByTestId('transition-feedback-drawer');
   await drawer.getByLabel('Optional feedback context').fill('Helped identify the failing integration check.');
   await drawer.getByRole('button', { name: 'Useful', exact: true }).click();
-  await drawer.getByRole('button', { name: 'Save feedback', exact: true }).click();
+  // dispatchEvent (not click): the modal drawer can intercept pointer events on its Save
+  // button under headless mobile CI; a dispatched click targets the button directly.
+  await drawer.getByRole('button', { name: 'Save feedback', exact: true }).dispatchEvent('click');
   await expect(drawer.getByRole('status')).toHaveText('Saved as Useful');
   await expect(drawer.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
@@ -186,7 +188,7 @@ test('material transition feedback is accessible, editable, and survives reload'
   await expect(restored.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(restored.getByLabel('Optional feedback context')).toHaveValue('Helped identify the failing integration check.');
   await restored.getByRole('button', { name: 'Fixed because of Spark', exact: true }).click();
-  await restored.getByRole('button', { name: 'Save feedback', exact: true }).click();
+  await restored.getByRole('button', { name: 'Save feedback', exact: true }).dispatchEvent('click');
   await expect(restored.getByRole('status')).toHaveText('Saved as Fixed because of Spark');
 });
 

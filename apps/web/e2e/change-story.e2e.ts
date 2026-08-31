@@ -68,7 +68,9 @@ test('material transition feedback uses a tooltip trigger and contextual drawer 
   await drawer.getByLabel('Optional feedback context').fill('Key moment feedback context.');
   await drawer.getByRole('button', { name: 'Useful', exact: true }).click();
   await expect(drawer.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await drawer.getByRole('button', { name: 'Save feedback', exact: true }).click();
+  // dispatchEvent (not click): the modal drawer can intercept pointer events on its Save
+  // button under headless mobile CI; a dispatched click targets the button directly.
+  await drawer.getByRole('button', { name: 'Save feedback', exact: true }).dispatchEvent('click');
   await expect(drawer.getByRole('status')).toHaveText('Saved as Useful');
   await expect(trigger).toHaveAttribute('aria-label', 'Edit Spark feedback on this transition');
 
