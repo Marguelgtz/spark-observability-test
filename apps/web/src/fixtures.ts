@@ -8,6 +8,7 @@ import type {
   PullRequestHistoryResponseV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
+import type { ActivitySort } from './state';
 
 export const FIXTURE_NOW = Date.now();
 const minute = 60_000;
@@ -261,7 +262,31 @@ function activityFromLatest(latest: EvaluationSummaryV1): PullRequestActivityV1 
   };
 }
 
-export function buildFixtureActivity(query: ActivityQueryV1, now = FIXTURE_NOW): ActivityResponseV1 {
+const fixtureAttentionRank = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
+
+function compareFixtureActivity(sort: ActivitySort, a: EvaluationSummaryV1, b: EvaluationSummaryV1): number {
+  const recent = Date.parse(b.evaluatedAt) - Date.parse(a.evaluatedAt);
+  if (sort === 'attention') return fixtureAttentionRank[b.attention] - fixtureAttentionRank[a.attention] || recent;
+  if (sort === 'evaluations') {
+    const aRuns = fixtureAllRuns.filter((run) => pullRequestKey(run) === pullRequestKey(a)).length;
+    const bRuns = fixtureAllRuns.filter((run) => pullRequestKey(run) === pullRequestKey(b)).length;
+    return bRuns - aRuns || recent;
+  }
+  if (sort === 'repository') {
+    const aName = `${a.repository.owner}/${a.repository.name}`;
+    const bName = `${b.repository.owner}/${b.repository.name}`;
+    return aName.localeCompare(bName, undefined, { sensitivity: 'base' }) || recent;
+  }
+  return recent;
+}
+
+function fixtureSortOffset(cursor: string | null | undefined, sort: ActivitySort): number {
+  if (!cursor) return 0;
+  const match = /^fixture-sort:([^:]+):(\d+)$/.exec(cursor);
+  return match && match[1] === sort ? Number(match[2]) : 0;
+}
+
+export function buildFixtureActivity(query: ActivityQueryV1 & { sort?: ActivitySort }, now = FIXTURE_NOW): ActivityResponseV1 {
   const latest = latestPullRequests();
   const inWindow = latest.filter((item) => now - Date.parse(item.evaluatedAt) <= windowMs(query.window));
   const observedRepositoryIds = new Set(latest.map((item) => item.repository.id));
@@ -293,11 +318,23 @@ export function buildFixtureActivity(query: ActivityQueryV1, now = FIXTURE_NOW):
   const favoriteScoped = query.favoritesOnly
     ? searchScoped.filter((item) => favoriteKeys.has(`${item.repository.id}:${item.pullRequest.number}`))
     : searchScoped;
-  const cursorScoped = query.cursor ? favoriteScoped.filter((item) => item.evaluatedAt < query.cursor!) : favoriteScoped;
-  const sorted = [...cursorScoped].sort((a, b) => Date.parse(b.evaluatedAt) - Date.parse(a.evaluatedAt));
+  const sort = query.sort ?? 'recent';
   const limit = Math.max(1, Math.min(query.limit ?? 25, 50));
-  const page = sorted.slice(0, limit);
-  const nextCursor = sorted.length > limit ? page[page.length - 1].evaluatedAt : null;
+
+  let page: EvaluationSummaryV1[];
+  let nextCursor: string | null;
+  if (sort === 'recent') {
+    const cursorScoped = query.cursor ? favoriteScoped.filter((item) => item.evaluatedAt < query.cursor!) : favoriteScoped;
+    const sorted = [...cursorScoped].sort((a, b) => compareFixtureActivity('recent', a, b));
+    page = sorted.slice(0, limit);
+    nextCursor = sorted.length > limit ? page[page.length - 1].evaluatedAt : null;
+  } else {
+    const sorted = [...favoriteScoped].sort((a, b) => compareFixtureActivity(sort, a, b));
+    const offset = fixtureSortOffset(query.cursor, sort);
+    page = sorted.slice(offset, offset + limit);
+    const nextOffset = offset + page.length;
+    nextCursor = nextOffset < sorted.length ? `fixture-sort:${sort}:${nextOffset}` : null;
+  }
 
   return {
     version: 1,
