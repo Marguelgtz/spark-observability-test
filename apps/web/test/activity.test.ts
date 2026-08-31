@@ -52,6 +52,37 @@ describe('fixture activity', () => {
     expect(timestamps).toEqual([...timestamps].sort((a, b) => b - a));
   });
 
+  it('sorts attention HIGH to LOW while retaining recent tie breaks', () => {
+    const response = buildFixtureActivity({ ...query({ window: '30d' }), sort: 'attention' }, FIXTURE_NOW);
+    const rank = { LOW: 0, MEDIUM: 1, HIGH: 2 } as const;
+    const ranks = response.pullRequests.map((item) => rank[item.latest.attention]);
+    expect(ranks).toEqual([...ranks].sort((a, b) => b - a));
+  });
+
+  it('sorts by most evaluations first', () => {
+    const response = buildFixtureActivity({ ...query({ window: '30d' }), sort: 'evaluations' }, FIXTURE_NOW);
+    expect(response.pullRequests[0].pullRequest.number).toBe(42);
+    expect(response.pullRequests[0].history.runCount).toBe(3);
+    const counts = response.pullRequests.map((item) => item.history.runCount);
+    expect(counts).toEqual([...counts].sort((a, b) => b - a));
+  });
+
+  it('sorts repositories alphabetically', () => {
+    const response = buildFixtureActivity({ ...query({ window: '30d' }), sort: 'repository' }, FIXTURE_NOW);
+    const names = response.pullRequests.map((item) => `${item.repository.owner}/${item.repository.name}`);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })));
+  });
+
+  it('keeps alternate sort order stable across pagination', () => {
+    const base = { ...query({ window: '30d', limit: 2 }), sort: 'repository' as const };
+    const full = buildFixtureActivity({ ...base, limit: 25 }, FIXTURE_NOW);
+    const first = buildFixtureActivity(base, FIXTURE_NOW);
+    const second = buildFixtureActivity({ ...base, cursor: first.pagination.nextCursor }, FIXTURE_NOW);
+    const combined = [...first.pullRequests, ...second.pullRequests].map((item) => `${item.repository.id}:${item.pullRequest.number}`);
+    const expected = full.pullRequests.slice(0, 4).map((item) => `${item.repository.id}:${item.pullRequest.number}`);
+    expect(combined).toEqual(expected);
+  });
+
   it('keeps multiple evaluations grouped under one pull request history', () => {
     const response = buildFixtureActivity(query({ window: '24h' }), FIXTURE_NOW);
     const auth = response.pullRequests.find((item) => item.pullRequest.number === 42);
