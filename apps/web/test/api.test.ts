@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpDashboardApi, SettingsConflictError, UnauthorizedError } from '../src/api';
+import { HttpDashboardApi, SettingsConflictError, SettingsRequestError, UnauthorizedError } from '../src/api';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -253,5 +253,22 @@ describe('HttpDashboardApi', () => {
       collapseSecondarySections: true,
       defaultRepositoryId: null,
     }, '"settings-1"')).rejects.toBeInstanceOf(SettingsConflictError);
+  });
+
+  it('preserves settings failure status and reason for actionable UI feedback', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'untrusted origin' }), {
+      status: 403,
+      headers: { 'content-type': 'application/json' },
+    })));
+    const api = new HttpDashboardApi('https://spark.test');
+    const error = await api.replaceSettings({
+      defaultWindow: '7d',
+      previewSize: 15,
+      density: 'COMFORTABLE',
+      collapseSecondarySections: true,
+      defaultRepositoryId: null,
+    }, '"settings-0"').catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(SettingsRequestError);
+    expect(error).toMatchObject({ status: 403, reason: 'untrusted origin' });
   });
 });

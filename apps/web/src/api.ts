@@ -63,6 +63,22 @@ export class SettingsConflictError extends Error {
   }
 }
 
+export class SettingsRequestError extends Error {
+  constructor(readonly status: number, readonly reason?: string) {
+    super(`Settings request failed (${status})${reason ? `: ${reason}` : ''}`);
+    this.name = 'SettingsRequestError';
+  }
+}
+
+async function settingsRequestError(response: Response): Promise<SettingsRequestError> {
+  try {
+    const body = await response.json() as { error?: unknown };
+    return new SettingsRequestError(response.status, typeof body.error === 'string' ? body.error : undefined);
+  } catch {
+    return new SettingsRequestError(response.status);
+  }
+}
+
 function settingsEtag(response: Response, settings: DashboardSettingsV1): string {
   return response.headers.get('etag') ?? `"settings-${settings.revision}"`;
 }
@@ -162,7 +178,7 @@ export class HttpDashboardApi implements DashboardApi {
       headers: { accept: 'application/json' },
     });
     if (response.status === 401) throw new UnauthorizedError();
-    if (!response.ok) throw new Error(`Settings API request failed (${response.status})`);
+    if (!response.ok) throw await settingsRequestError(response);
     const settings = await response.json() as DashboardSettingsV1;
     return { settings, etag: settingsEtag(response, settings) };
   }
@@ -176,7 +192,7 @@ export class HttpDashboardApi implements DashboardApi {
     });
     if (response.status === 401) throw new UnauthorizedError();
     if (response.status === 412) throw new SettingsConflictError();
-    if (!response.ok) throw new Error(`Settings API request failed (${response.status})`);
+    if (!response.ok) throw await settingsRequestError(response);
     const saved = await response.json() as DashboardSettingsV1;
     return { settings: saved, etag: settingsEtag(response, saved) };
   }

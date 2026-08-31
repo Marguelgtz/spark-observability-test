@@ -197,6 +197,20 @@ function settingsEtag(revision: number): string {
   return `"settings-${revision}"`;
 }
 
+function trustedSettingsOrigin(request: Request, env: Env): boolean {
+  const origin = request.headers.get('origin');
+  if (!origin) return false;
+  const allowed = new Set([new URL(request.url).origin]);
+  if (env.SPARK_PUBLIC_ORIGIN) {
+    try {
+      allowed.add(new URL(env.SPARK_PUBLIC_ORIGIN).origin);
+    } catch {
+      // Invalid deployment configuration must not broaden write access.
+    }
+  }
+  return allowed.has(origin);
+}
+
 const FEEDBACK_CLASSIFICATIONS: TrajectoryFeedbackClassificationV1[] = [
   'USEFUL',
   'EXPECTED',
@@ -253,7 +267,7 @@ async function handleDashboardRequest(
       return json(settings, 200, { etag: settingsEtag(settings.revision) });
     }
     if (request.method === 'PUT') {
-      if (request.headers.get('origin') !== url.origin) return json({ error: 'forbidden' }, 403);
+      if (!trustedSettingsOrigin(request, env)) return json({ error: 'untrusted origin' }, 403);
       const expectedRevision = settingsRevision(request);
       if (expectedRevision === undefined) return json({ error: 'invalid If-Match' }, 400);
       const input = await parseSettings(request);

@@ -5,7 +5,7 @@ import type {
   PreviewSize,
 } from '@spark/dashboard-contracts';
 import type { LoadedDashboardSettings } from './api';
-import { SettingsConflictError } from './api';
+import { SettingsConflictError, SettingsRequestError } from './api';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -184,7 +184,17 @@ export function renderSettings(
         return;
       }
       status.classList.add('is-error');
-      status.textContent = 'Preferences could not be saved. Your current form values are unchanged.';
+      if (error instanceof SettingsRequestError && error.status === 403) {
+        status.textContent = 'Preferences were rejected by the deployment origin check. Reload Spark from its published URL and try again. Your form values are unchanged.';
+      } else if (error instanceof SettingsRequestError && error.status === 404) {
+        status.textContent = 'The selected default repository is no longer available to this session. Choose All observed repositories and try again.';
+      } else if (error instanceof SettingsRequestError && error.status === 400) {
+        status.textContent = 'Preferences were rejected as invalid. Reload the page and try again. Your form values are unchanged.';
+      } else if (error instanceof SettingsRequestError) {
+        status.textContent = `Preferences could not be saved because the settings service returned ${error.status}. Your form values are unchanged.`;
+      } else {
+        status.textContent = 'Preferences could not be saved because the settings service could not be reached. Your form values are unchanged.';
+      }
     }).finally(() => {
       save.disabled = false;
     });
