@@ -76,7 +76,7 @@ The base for the whole stack is the tip of the dashboard signal-placement stack,
 | ID | Decision | Recommendation | Owner |
 | --- | --- | --- | --- |
 | D1 | Where should the `account` back-link go, and what label | Target `/app`, relabel to "Dashboard" (it is a top-level page, not a queue item) | product |
-| D2 | `cursor`/`limit` URL policy | (a) serialize `cursor` so result pages are shareable/bookmarkable, or (b) stop reading them and document pagination as intentionally non-persistent | product + eng |
+| D2 | `cursor`/`limit` URL policy | **Resolved (PR 4)**: `cursor` is not read from the URL (opaque, stale token - not URL-owned); `limit` is read as a per-load page-size hint but neither is serialized, so pagination is not URL-persistent (the URL owns only the filters). Locked by `state` + `preferences` unit tests. | product + eng |
 | D3 | Signed-out nav | Hide or disable the Dashboard/Activity/Settings links when signed out | product |
 | D4 | Detail back-link referer-awareness | PR 2 makes the back-link correct + consistent; defer true referer-awareness (return to the exact list you came from) to PR 7 | eng |
 

@@ -69,4 +69,32 @@ describe('activity URL state', () => {
     expect(search).not.toContain('repositoryId=');
     expect(parseActivityState(`?${search}`, defaults).repositoryId).toBe(303);
   });
+
+  it('preserves attention/query/favorites when window or repository changes (dashboard parity, R4.1)', () => {
+    const base = parseActivityState('?window=7d&attention=HIGH&repositoryId=202&fixture=normal&q=checkout&favorites=1');
+    expect(withActivityState(base, { window: '24h' })).toMatchObject({ window: '24h', attention: 'HIGH', repositoryId: 202, query: 'checkout', favoritesOnly: true });
+    expect(withActivityState(base, { repositoryId: null })).toMatchObject({ window: '7d', attention: 'HIGH', query: 'checkout', favoritesOnly: true });
+    const toRepository = withActivityState(base, { repositoryId: 303 });
+    expect(toRepository).toMatchObject({ attention: 'HIGH', query: 'checkout', favoritesOnly: true });
+    expect(toRepository.repositorySelection).toEqual({ kind: 'repository', id: 303 });
+  });
+
+  it('round-trips filters through serialize/parse without losing them (R4.3)', () => {
+    const value = serializeActivityState(parseActivityState('?window=24h&attention=HIGH&repositoryId=101&fixture=abnormal&q=deploy&favorites=1'));
+    expect(value).toContain('window=24h');
+    expect(value).toContain('attention=HIGH');
+    expect(value).toContain('repositoryId=101');
+    expect(value).toContain('fixture=abnormal');
+    expect(value).toContain('q=deploy');
+    expect(value).toContain('favorites=1');
+  });
+
+  it('does not read cursor/limit from the URL and never re-serializes them (pagination is not URL-owned, D2/R4.2)', () => {
+    const parsed = parseActivityState('?window=7d&attention=HIGH&cursor=opaque-cursor&limit=40');
+    expect(parsed.cursor).toBeNull();
+    expect(parsed.limit).toBe(40);
+    const value = serializeActivityState(parsed);
+    expect(value).not.toContain('cursor=');
+    expect(value).not.toContain('limit=');
+  });
 });

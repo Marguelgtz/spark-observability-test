@@ -43,15 +43,19 @@ export function parseActivityState(search: string, defaults: ActivityStateDefaul
     : repositorySelection.kind === 'all'
       ? null
       : defaults.defaultRepositoryId;
+  // D2: `cursor` is intentionally NOT read from the URL - it is an opaque, stale
+  // pagination token and is not URL-owned (load-more generates cursors client-side;
+  // the saved preview size + the fetch override drive the API). `limit` is read as a
+  // per-load page-size hint (kept separate from the saved progressive-list preview)
+  // but, like cursor, is never serialized, so pagination is not URL-persistent.
   const limitValue = params.get('limit');
   const parsedLimit = limitValue && /^\d+$/.test(limitValue) ? Number(limitValue) : undefined;
-
   return {
     window: windowValue && WINDOWS.has(windowValue) ? windowValue : defaults.defaultWindow,
     attention: attentionValue && ATTENTION.has(attentionValue) ? attentionValue : 'ALL',
     repositoryId,
     repositorySelection,
-    cursor: params.get('cursor'),
+    cursor: null,
     limit: parsedLimit && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 25,
     fixture: params.get('fixture') ?? undefined,
     query: params.get('q')?.trim().slice(0, 100) || undefined,
@@ -69,6 +73,8 @@ export function serializeActivityState(state: ActivityUrlState): string {
   if (state.fixture) params.set('fixture', state.fixture);
   if (state.query) params.set('q', state.query);
   if (state.favoritesOnly) params.set('favorites', '1');
+  // D2: cursor/limit are deliberately omitted here - they are not URL-owned (pagination
+  // is client-side). The URL round-trips filters only.
   return params.toString();
 }
 
