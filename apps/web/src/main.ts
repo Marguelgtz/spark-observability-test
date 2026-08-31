@@ -142,6 +142,14 @@ function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
+// R7.1: single source of truth for "is this effect still bound to the current route?".
+// A stale route (superseded by a newer render) or an aborted controller means the
+// in-flight work must be dropped. Bundling the guard here keeps every effect callback
+// (dashboard fillers, detail enhancers, error handlers) consistent.
+function isCurrent(generation: number, signal: AbortSignal): boolean {
+  return generation === routeGeneration && !signal.aborted;
+}
+
 type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
 function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
@@ -176,7 +184,7 @@ function activityView(
       navigate(`${routeBase}?${serializeActivityState(next)}`);
     },
     setRepository(value) {
-      const next = withActivityState(state, { repositoryId: value });
+      const next = withActivityState(state, { repositorySelection: value == null ? { kind: 'all' } : { kind: 'repository', id: value } });
       navigate(`${routeBase}?${serializeActivityState(next)}`);
     },
     showAllAttention() {
@@ -240,14 +248,12 @@ async function render(): Promise<void> {
 
   try {
     const settingsResult = await settingsTask;
-    if (generation !== routeGeneration || signal.aborted) return;
+    if (!isCurrent(generation, signal)) return;
     const loadedSettings = activateSettings(settingsResult, route.kind !== 'settings');
     const { settings: preferences, state } = resolvePreferences(window.location.search, loadedSettings.settings);
 
     if (route.kind === 'dashboard') {
       const dashboardTask = abortable(getOperationalDashboard(state), signal);
-      const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
-      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state), signal));
       void favoritesTask.catch(() => undefined);
 
       const [viewer, account, dashboard] = await Promise.all([
@@ -255,37 +261,50 @@ async function render(): Promise<void> {
         accountTask,
         dashboardTask,
       ]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
 
       shell.setViewer(viewer);
-      const view = renderOperationalDashboard(account, dashboard, state, {
+      const dashboardView = renderOperationalDashboard(account, dashboard, state, {
+        // R4.1: patch-only via the shared withActivityState applier so the dashboard
+        // mutates list state identically to the activity route. Changing the window or
+        // repository no longer silently resets attention/query/favorites (parity).
         setWindow(value) {
-          const next = withActivityState(state, { window: value, attention: 'ALL', cursor: null, query: undefined, favoritesOnly: false });
+          const next = withActivityState(state, { window: value });
           navigate(`/app?${serializeActivityState(next)}`);
         },
         setRepository(value) {
-          const next = withActivityState(state, { repositoryId: value, attention: 'ALL', cursor: null, query: undefined, favoritesOnly: false });
+          const next = withActivityState(state, { repositorySelection: value == null ? { kind: 'all' } : { kind: 'repository', id: value } });
           navigate(`/app?${serializeActivityState(next)}`);
         },
       }, preferences.previewSize, preferences.collapseSecondarySections);
-      shell.show(view);
+      shell.show(dashboardView.root);
+
+      // R7.3: in the empty (no repositories / no history) states the dashboard renders
+      // no recent/signals sections, so the recent/insights/merged filler requests are
+      // skipped entirely (no wasted calls).
+      if (dashboardView.recentContent === null || dashboardView.signalsContent === null) return;
+      // R7.2: hand each filler its exact target node from the view handle instead of
+      // re-querying the outlet by data-testid.
+      const recentContent = dashboardView.recentContent;
+      const recentCount = dashboardView.recentCount;
+      const signalsContent = dashboardView.signalsContent;
 
       let insightsLoaded = false;
       let insightsLoading = false;
       const loadInsights = () => {
         if (insightsLoaded || insightsLoading || signal.aborted) return;
         insightsLoading = true;
-        renderDashboardInsightsLoading(shell.outlet);
+        renderDashboardInsightsLoading(signalsContent);
         void abortable(getDashboardInsights(state), signal)
           .then((insights) => {
-            if (generation !== routeGeneration || signal.aborted) return;
+            if (!isCurrent(generation, signal)) return;
             insightsLoaded = true;
-            renderDashboardInsights(shell.outlet, dashboard, insights, state);
+            renderDashboardInsights(signalsContent, dashboard, insights, state);
           })
           .catch((error: unknown) => {
-            if (generation !== routeGeneration || signal.aborted || isAbort(error)) return;
+            if (!isCurrent(generation, signal) || isAbort(error)) return;
             const source = error instanceof DashboardInsightsError ? error.source : 'evaluation trends';
-            renderDashboardInsightsError(shell.outlet, source, loadInsights);
+            renderDashboardInsightsError(signalsContent, source, loadInsights);
           })
           .finally(() => {
             insightsLoading = false;
@@ -293,16 +312,18 @@ async function render(): Promise<void> {
       };
       loadInsights();
 
+      const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
+      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state), signal));
       void recentTask.then(async (result) => {
-        if (generation !== routeGeneration || signal.aborted) return;
+        if (!isCurrent(generation, signal)) return;
         if (!result.ok) {
-          if (!isAbort(result.error)) renderDashboardRecentActivityError(shell.outlet);
+          if (!isAbort(result.error)) renderDashboardRecentActivityError(recentContent);
           return;
         }
-        renderDashboardRecentActivity(shell.outlet, result.value, state);
+        renderDashboardRecentActivity(recentContent, recentCount, result.value, state);
         const mergeResult = await mergeOverviewTask;
-        if (generation !== routeGeneration || signal.aborted) return;
-        if (mergeResult.ok) markDashboardMergedUnresolved(shell.outlet, mergeResult.value);
+        if (!isCurrent(generation, signal)) return;
+        if (mergeResult.ok) markDashboardMergedUnresolved(recentContent, mergeResult.value);
       });
 
       return;
@@ -322,7 +343,7 @@ async function render(): Promise<void> {
         favoritesTask,
         activityTask,
       ]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
       shell.show(activityView(viewer, activity, state, favorites, '/app/activity', preferences.previewSize));
       return;
     }
@@ -350,7 +371,7 @@ async function render(): Promise<void> {
         companionTask,
         behaviorPatternsTask,
       ]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
       const overviewView = renderOverviewDrilldown(
         viewer,
         overview,
@@ -387,7 +408,7 @@ async function render(): Promise<void> {
         viewerTask,
         repositoriesTask,
       ]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
       shell.setViewer(viewer);
       const warnings: string[] = [];
       if (!settingsResult.ok) warnings.push('Saved preferences could not be loaded. Safe defaults are shown for now.');
@@ -415,7 +436,7 @@ async function render(): Promise<void> {
 
     if (route.kind === 'account') {
       const [viewer, account] = await Promise.all([viewerTask, accountTask, favoritesTask]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
       shell.setViewer(viewer);
       shell.show(renderAccountPage(account, () => {
         void api.logout().then(() => {
@@ -435,7 +456,7 @@ async function render(): Promise<void> {
         trajectoryTask,
         behaviorTask,
       ]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
       const activitySearch = serializeActivityState(state);
       const saveFeedback = (transitionId: string, input: Parameters<typeof api.saveTrajectoryFeedback>[3]) => api.saveTrajectoryFeedback(
         route.repositoryId,
@@ -460,14 +481,14 @@ async function render(): Promise<void> {
     if (route.kind === 'run') {
       const runTask = abortable(api.getRun(route.repositoryId, route.runId), signal);
       const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, runTask]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
       void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number), signal)
         .then((pullRequest) => {
-          if (generation !== routeGeneration || signal.aborted) return;
+          if (!isCurrent(generation, signal)) return;
           enhanceEvaluationWithPullRequestContext(
             shell.root,
             pullRequest,
@@ -482,14 +503,14 @@ async function render(): Promise<void> {
     if (route.kind === 'evaluation') {
       const evaluationTask = abortable(api.getEvaluation(route.repositoryId, route.headSha), signal);
       const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, evaluationTask]);
-      if (generation !== routeGeneration || signal.aborted) return;
+      if (!isCurrent(generation, signal)) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
       void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number), signal)
         .then((pullRequest) => {
-          if (generation !== routeGeneration || signal.aborted) return;
+          if (!isCurrent(generation, signal)) return;
           enhanceEvaluationWithPullRequestContext(shell.root, pullRequest, { headSha: route.headSha }, activitySearch);
         })
         .catch(() => undefined);
@@ -497,10 +518,10 @@ async function render(): Promise<void> {
     }
 
     const [viewer] = await Promise.all([viewerTask, accountTask, favoritesTask]);
-    if (generation !== routeGeneration || signal.aborted) return;
+    if (!isCurrent(generation, signal)) return;
     shell.show(renderNotFound(viewer));
   } catch (error) {
-    if (generation !== routeGeneration || signal.aborted || isAbort(error)) return;
+    if (!isCurrent(generation, signal) || isAbort(error)) return;
     if (error instanceof UnauthorizedError) {
       showSignedOut();
       return;

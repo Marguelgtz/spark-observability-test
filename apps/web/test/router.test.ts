@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { legacyActivityRedirect, parseRoute } from '../src/router';
+import { evaluationHref } from '../src/pr-ui';
 
 describe('dashboard router', () => {
   it('splits dashboard, activity, settings, and account routes', () => {
@@ -51,5 +52,11 @@ describe('dashboard router', () => {
       repositoryId: 101,
       headSha: 'a42c11e7',
     });
+  });
+
+  it('re-parses every evaluation href the builder produces, including non-hex ids (R6.1/R6.2)', () => {
+    expect(parseRoute(evaluationHref(101, 'a42c11e7', ''))).toEqual({ kind: 'evaluation', repositoryId: 101, headSha: 'a42c11e7' });
+    // A non-hex / arbitrary id must re-parse (never silently 404): the builder and parser share one id grammar.
+    expect(parseRoute(evaluationHref(101, 'not-a-hex-sha', ''))).toEqual({ kind: 'evaluation', repositoryId: 101, headSha: 'not-a-hex-sha' });
   });
 });
