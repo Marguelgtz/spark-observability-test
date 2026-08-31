@@ -11,7 +11,7 @@ export interface ActivityUrlState extends ActivityQueryV1 {
   fixture?: string;
   query?: string;
   favoritesOnly?: boolean;
-  sort: ActivitySort;
+  sort?: ActivitySort;
 }
 
 export type RepositorySelection =
@@ -80,7 +80,7 @@ export function serializeActivityState(state: ActivityUrlState): string {
   if (state.fixture) params.set('fixture', state.fixture);
   if (state.query) params.set('q', state.query);
   if (state.favoritesOnly) params.set('favorites', '1');
-  if (state.sort !== 'recent') params.set('sort', state.sort);
+  if (state.sort && state.sort !== 'recent') params.set('sort', state.sort);
   // D2: cursor/limit are deliberately omitted here - they are not URL-owned (pagination
   // is client-side). The URL round-trips filters and list ordering only.
   return params.toString();
