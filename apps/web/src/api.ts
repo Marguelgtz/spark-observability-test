@@ -20,11 +20,14 @@ import type {
 } from '@spark/dashboard-contracts';
 import { DASHBOARD_SETTINGS_DEFAULTS } from '@spark/dashboard-contracts';
 import { buildFixtureActivity, fixtureViewer, getFixtureEvaluation, getFixturePullRequestHistory } from './fixtures';
+import type { ActivitySort } from './state';
+
+export type SortableActivityQuery = ActivityQueryV1 & { sort?: ActivitySort };
 
 export interface DashboardApi {
   getViewer(): Promise<ViewerV1>;
   getAccount(): Promise<AccountV1>;
-  getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1>;
+  getActivity(query: SortableActivityQuery): Promise<ActivityResponseV1>;
   getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1>;
   getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1>;
   saveTrajectoryFeedback(
@@ -108,13 +111,14 @@ export class HttpDashboardApi implements DashboardApi {
     return this.request('/api/account');
   }
 
-  getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1> {
+  getActivity(query: SortableActivityQuery): Promise<ActivityResponseV1> {
     const params = new URLSearchParams({ window: query.window, attention: query.attention });
     if (query.repositoryId !== null) params.set('repositoryId', String(query.repositoryId));
     if (query.cursor) params.set('cursor', query.cursor);
     if (query.limit !== undefined) params.set('limit', String(query.limit));
     if (query.q) params.set('q', query.q);
     if (query.favoritesOnly) params.set('favorites', '1');
+    if (query.sort && query.sort !== 'recent') params.set('sort', query.sort);
     return this.request(`/api/activity?${params.toString()}`);
   }
 
@@ -469,7 +473,7 @@ export class FixtureDashboardApi implements DashboardApi {
     };
   }
 
-  async getActivity(query: ActivityQueryV1): Promise<ActivityResponseV1> {
+  async getActivity(query: SortableActivityQuery): Promise<ActivityResponseV1> {
     if (this.mode === 'loading') return new Promise<ActivityResponseV1>(() => undefined);
     if (this.mode === 'error') throw new Error('Synthetic fixture failure');
     if (this.mode === 'empty') {
