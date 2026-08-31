@@ -259,12 +259,15 @@ async function render(): Promise<void> {
 
       shell.setViewer(viewer);
       const view = renderOperationalDashboard(account, dashboard, state, {
+        // R4.1: patch-only via the shared withActivityState applier so the dashboard
+        // mutates list state identically to the activity route. Changing the window or
+        // repository no longer silently resets attention/query/favorites (parity).
         setWindow(value) {
-          const next = withActivityState(state, { window: value, attention: 'ALL', cursor: null, query: undefined, favoritesOnly: false });
+          const next = withActivityState(state, { window: value });
           navigate(`/app?${serializeActivityState(next)}`);
         },
         setRepository(value) {
-          const next = withActivityState(state, { repositoryId: value, attention: 'ALL', cursor: null, query: undefined, favoritesOnly: false });
+          const next = withActivityState(state, { repositoryId: value });
           navigate(`/app?${serializeActivityState(next)}`);
         },
       }, preferences.previewSize, preferences.collapseSecondarySections);
