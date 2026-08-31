@@ -10,6 +10,10 @@ test.beforeEach(async ({ page }) => {
 
 test('settings use defaults, save explicitly, and persist after reload', async ({ page }) => {
   await expect(page.getByTestId('settings-view')).toBeVisible();
+  // R8.2: settings has a back link (consistent with the other top-level pages) and the
+  // Settings nav item is active.
+  await expect(page.getByRole('link', { name: '← Dashboard' })).toHaveAttribute('href', '/app');
+  await expect(page.locator('a.shell-nav-link[data-nav="settings"]')).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('settings-default-window-7d')).toBeChecked();
   await expect(page.getByTestId('settings-preview-size-15')).toBeChecked();
   await expect(page.getByTestId('settings-density-comfortable')).toBeChecked();

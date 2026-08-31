@@ -6,6 +6,7 @@ import type {
 } from '@spark/dashboard-contracts';
 import type { LoadedDashboardSettings } from './api';
 import { SettingsConflictError, SettingsRequestError } from './api';
+import { dashboardRouteHref } from './route-links';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -55,6 +56,12 @@ export function renderSettings(
 ): HTMLElement {
   const main = node('main', 'settings-page');
   main.dataset.testid = 'settings-view';
+
+  // R8.2: give settings the same back-link affordance as the other top-level pages.
+  const back = node('a', 'back-link', '← Dashboard') as HTMLAnchorElement;
+  back.href = dashboardRouteHref();
+  back.dataset.routerLink = 'true';
+  main.append(back);
 
   const heading = node('header', 'settings-heading');
   heading.append(
