@@ -31,7 +31,7 @@ test('routes use analytics, standard, and reading rails without viewport overflo
   await expectNoViewportOverflow(page);
 });
 
-test('dashboard moves from operational work to a signal canvas and recent activity', async ({ page }) => {
+test('dashboard keeps its signal canvas ahead of variable-length work queues', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
   const order = await page.getByTestId('dashboard-view').evaluate((element) => {
     const children = [...element.children];
@@ -43,7 +43,7 @@ test('dashboard moves from operational work to a signal canvas and recent activi
       recent: index('recent-activity'),
     };
   });
-  expect(order.attention).toBeLessThan(order.signals);
-  expect(order.signals).toBeLessThan(order.active);
+  expect(order.signals).toBeLessThan(order.attention);
+  expect(order.attention).toBeLessThan(order.active);
   expect(order.active).toBeLessThan(order.recent);
 });

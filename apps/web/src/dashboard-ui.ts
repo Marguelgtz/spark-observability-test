@@ -329,8 +329,8 @@ export function renderOperationalDashboard(
   main.append(
     repositoryControl(response, state, handlers.setRepository),
     renderOverview(response, state),
-    renderNeedsAttention(response, state, previewSize),
     renderSignalsShell(state),
+    renderNeedsAttention(response, state, previewSize),
     renderActiveChanges(response, state, previewSize),
     renderRecentShell(state, !collapseSecondarySections),
   );

@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('dashboard leads with action-oriented operational queues', async ({ page }) => {
+test('dashboard exposes operational metrics, signals, and action queues', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
 
   const overview = page.getByTestId('change-overview');

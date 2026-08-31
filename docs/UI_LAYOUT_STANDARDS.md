@@ -72,7 +72,7 @@ New components should use these values before introducing an exception.
 
 ### Dashboard
 
-Page controls, operational metrics, needs-attention work, one persistent tabbed Operational signals canvas, active changes, and recent activity. The dashboard canvas offers Flow, Attention, Iteration, and Behavior summaries; full comparative chart collections remain in their overview drilldowns.
+Page controls, operational metrics, one persistent tabbed Operational signals canvas, needs-attention work, active changes, and recent activity. The signal canvas stays ahead of variable-length work queues so its graphs remain discoverable regardless of queue size. It offers Flow, Attention, Iteration, and Behavior summaries; full comparative chart collections remain in their overview drilldowns.
 
 ### Activity
 
