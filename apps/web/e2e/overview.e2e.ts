@@ -53,7 +53,13 @@ for (const [metric, heading] of metrics) {
 test('drilldown canvases pair graph forms to the metric context', async ({ page }) => {
   await page.goto('/app/overview/pull-requests?window=7d&attention=ALL');
   let charts = page.getByTestId('overview-charts');
+  await expect(page.getByTestId('insight-canvas-pull-request-flow')).toBeVisible();
+  const pullRequestFlow = page.getByTestId('pull-request-flow-trend');
+  await expect(pullRequestFlow).toHaveAttribute('data-scale-mode', 'dual');
+  await expect(pullRequestFlow.locator('.insight-line-axis-title.series-1')).toHaveText('Evaluations');
+  await expect(pullRequestFlow.locator('.insight-line-axis-title.series-2')).toHaveText('PRs observed');
   await expect(page.getByTestId('insight-canvas-portfolio-shape')).toBeVisible();
+  await expect(charts.locator('[data-chart-kind="line"]')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toHaveCount(2);
   await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(page.getByTestId('notable-transition-mix')).toBeVisible();

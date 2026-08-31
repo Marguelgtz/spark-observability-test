@@ -151,6 +151,20 @@ export function renderOverviewInsightCanvases(
   const stack = canvasStack('overview-charts');
 
   if (response.metric === 'pull-requests') {
+    if (companion?.metric === 'evaluations') {
+      const flow = lineChart(companion.trend, 'Evaluation and PR flow', [
+        { label: 'Evaluations', read: (point) => point.evaluations },
+        { label: 'PRs observed', read: (point) => point.observedPRs },
+      ], state.window, { dualScale: true });
+      flow.dataset.testid = 'pull-request-flow-trend';
+      stack.append(insightCanvas({
+        id: 'pull-request-flow',
+        title: 'Evaluation flow',
+        description: 'Evaluation volume and distinct observed pull requests use independent scales.',
+        primary: flow,
+        interpretation: `${companion.total} evaluation${companion.total === 1 ? '' : 's'} across ${response.total} observed PR${response.total === 1 ? '' : 's'} in ${state.window}.`,
+      }));
+    }
     stack.append(insightCanvas({
       id: 'portfolio-shape',
       title: 'Observed change shape',

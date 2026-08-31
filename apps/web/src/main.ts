@@ -342,8 +342,13 @@ async function render(): Promise<void> {
     if (route.kind === 'overview') {
       const overviewTask = abortable(getOverviewDrilldown(route.metric, state, undefined, preferences.previewSize), signal);
       const transitionsTask = abortable(getNotableTransitionInsights(state), signal);
-      const companionTask = route.metric === 'evaluations'
-        ? abortable(getOverviewDrilldown('pull-requests', state, undefined, preferences.previewSize), signal)
+      const companionMetric = route.metric === 'evaluations'
+        ? 'pull-requests'
+        : route.metric === 'pull-requests'
+          ? 'evaluations'
+          : undefined;
+      const companionTask = companionMetric
+        ? abortable(getOverviewDrilldown(companionMetric, state, undefined, preferences.previewSize), signal)
         : Promise.resolve(undefined);
       const behaviorPatternsTask = route.metric === 'merged-unresolved'
         ? abortable(getBehaviorPatterns(state), signal).catch(() => undefined)
