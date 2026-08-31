@@ -15,6 +15,7 @@ import type { FavoriteStore } from './favorites';
 import { evidenceLabel, relativeTime, shortSha, trustedGitHubUrl } from './format';
 import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
 import { evaluationTarget, favoriteButton } from './ui';
+import { activityRouteHref } from './route-links';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -437,7 +438,7 @@ export function renderPullRequest(
   const { root, main } = shell(viewer);
   main.dataset.testid = 'pull-request-detail';
   const back = node('a', 'back-link', '← Activity') as HTMLAnchorElement;
-  back.href = `/app${activitySearch ? `?${activitySearch}` : ''}`;
+  back.href = activityRouteHref(activitySearch);
   back.dataset.routerLink = 'true';
   main.append(back);
 

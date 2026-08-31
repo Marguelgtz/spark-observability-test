@@ -158,16 +158,6 @@ function activateSettings(result: Settled<LoadedDashboardSettings>, showWarning:
   return loaded;
 }
 
-function activityPath(search: string): string {
-  return `/app/activity${search ? `?${search}` : ''}`;
-}
-
-function pointBackToActivity(view: HTMLElement, activitySearch: string): void {
-  const back = view.querySelector<HTMLAnchorElement>('.back-link');
-  if (!back || !back.textContent?.includes('Activity')) return;
-  back.href = activityPath(activitySearch);
-}
-
 function activityView(
   viewer: ViewerV1,
   response: ActivityResponseV1,
@@ -463,7 +453,6 @@ async function render(): Promise<void> {
       );
       enhancePullRequestWithSeverityTimeline(pullRequestView, trajectory, activitySearch, saveFeedback);
       if (behavior) enhancePullRequestWithBehavior(pullRequestView, behavior);
-      pointBackToActivity(pullRequestView, activitySearch);
       shell.show(pullRequestView);
       return;
     }
@@ -474,7 +463,6 @@ async function render(): Promise<void> {
       if (generation !== routeGeneration || signal.aborted) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
-      pointBackToActivity(evaluationView, activitySearch);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
       void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number), signal)
@@ -497,7 +485,6 @@ async function render(): Promise<void> {
       if (generation !== routeGeneration || signal.aborted) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
-      pointBackToActivity(evaluationView, activitySearch);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
       void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number), signal)

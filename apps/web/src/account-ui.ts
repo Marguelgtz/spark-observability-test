@@ -1,4 +1,5 @@
 import type { AccountV1 } from '@spark/dashboard-contracts';
+import { dashboardRouteHref } from './route-links';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -36,8 +37,8 @@ export function renderAccountPage(account: AccountV1, onLogout: () => void): HTM
   header.append(brand, identity);
 
   const main = node('main', 'main-column account-page');
-  const back = node('a', 'back-link', '← Activity');
-  back.href = '/app';
+  const back = node('a', 'back-link', '← Dashboard');
+  back.href = dashboardRouteHref();
   back.dataset.routerLink = 'true';
   main.append(back);
 

@@ -13,6 +13,7 @@ import { FavoriteStore, type FavoriteTarget } from './favorites';
 import { changeLabel, evidenceLabel, relativeTime, shortSha, trustedGitHubUrl } from './format';
 import { serializeActivityState } from './state';
 import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
+import { activityRouteHref } from './route-links';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -512,7 +513,7 @@ function detailSection(title: string, values: string[], emptyLabel = 'None obser
 function availableDetail(detail: EvaluationDetailV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const fragment = node('div', 'detail-content');
   const back = node('a', 'back-link', '← Activity');
-  back.href = `/app${activitySearch ? `?${activitySearch}` : ''}`;
+  back.href = activityRouteHref(activitySearch);
   back.dataset.routerLink = 'true';
   fragment.append(back);
 
@@ -591,7 +592,7 @@ export function renderEvaluation(viewer: ViewerV1, response: EvaluationDetailRes
   }
 
   const back = node('a', 'back-link', '← Activity');
-  back.href = `/app${activitySearch ? `?${activitySearch}` : ''}`;
+  back.href = activityRouteHref(activitySearch);
   back.dataset.routerLink = 'true';
   const unavailable = node('section', 'status-state unavailable-state');
   unavailable.dataset.testid = 'detail-unavailable';

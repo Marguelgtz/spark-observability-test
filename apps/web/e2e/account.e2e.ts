@@ -7,6 +7,7 @@ test('account view exposes GitHub access management', async ({ page }) => {
   await expect(page.getByText('App installations')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Refresh GitHub access' })).toHaveAttribute('href', '/auth/github?return_to=%2Fapp%2Faccount');
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '← Dashboard' })).toHaveAttribute('href', '/app');
 });
 
 test('viewer identity opens account management', async ({ page }) => {
