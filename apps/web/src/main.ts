@@ -176,7 +176,7 @@ function activityView(
       navigate(`${routeBase}?${serializeActivityState(next)}`);
     },
     setRepository(value) {
-      const next = withActivityState(state, { repositoryId: value });
+      const next = withActivityState(state, { repositorySelection: value == null ? { kind: 'all' } : { kind: 'repository', id: value } });
       navigate(`${routeBase}?${serializeActivityState(next)}`);
     },
     showAllAttention() {
@@ -267,7 +267,7 @@ async function render(): Promise<void> {
           navigate(`/app?${serializeActivityState(next)}`);
         },
         setRepository(value) {
-          const next = withActivityState(state, { repositoryId: value });
+          const next = withActivityState(state, { repositorySelection: value == null ? { kind: 'all' } : { kind: 'repository', id: value } });
           navigate(`/app?${serializeActivityState(next)}`);
         },
       }, preferences.previewSize, preferences.collapseSecondarySections);

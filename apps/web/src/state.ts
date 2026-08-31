@@ -69,7 +69,8 @@ export function serializeActivityState(state: ActivityUrlState): string {
   params.set('attention', state.attention);
   if (state.repositorySelection?.kind === 'all') params.set('repositoryId', 'all');
   else if (state.repositorySelection?.kind === 'repository') params.set('repositoryId', String(state.repositorySelection.id));
-  else if (!state.repositorySelection && state.repositoryId !== null) params.set('repositoryId', String(state.repositoryId));
+  // R5.1: no legacy repositoryId fallback - parse always sets repositorySelection, and
+  // an 'absent' selection intentionally serializes no repositoryId (the saved default applies).
   if (state.fixture) params.set('fixture', state.fixture);
   if (state.query) params.set('q', state.query);
   if (state.favoritesOnly) params.set('favorites', '1');
@@ -84,10 +85,11 @@ export function withActivityState(current: ActivityUrlState, patch: Partial<Acti
     ...patch,
     cursor: null
   };
-  if (Object.prototype.hasOwnProperty.call(patch, 'repositoryId') && !patch.repositorySelection) {
-    next.repositorySelection = patch.repositoryId === null
-      ? { kind: 'all' }
-      : { kind: 'repository', id: patch.repositoryId! };
+  // R5.1: repositorySelection is canonical; repositoryId is derived from it. A patched
+  // selection (repository | all) re-derives repositoryId; absent is only a parse-time
+  // state (its repositoryId is already the saved default) and is never introduced by a patch.
+  if (patch.repositorySelection) {
+    next.repositoryId = patch.repositorySelection.kind === 'repository' ? patch.repositorySelection.id : null;
   }
   return next;
 }
