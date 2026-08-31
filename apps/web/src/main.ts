@@ -373,6 +373,10 @@ async function render(): Promise<void> {
       );
       if (behaviorPatterns) enhanceOverviewWithBehaviorPatterns(overviewView, behaviorPatterns, state);
       shell.show(overviewView);
+      if (window.location.hash) {
+        const targetId = decodeURIComponent(window.location.hash.slice(1));
+        requestAnimationFrame(() => shell.outlet.querySelector<HTMLElement>(`#${CSS.escape(targetId)}`)?.scrollIntoView({ block: 'start' }));
+      }
       return;
     }
 

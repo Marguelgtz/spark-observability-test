@@ -9,7 +9,7 @@ test('dashboard leads with action-oriented operational queues', async ({ page })
   await expect(overview.getByText('Active changes', { exact: true })).toBeVisible();
   await expect(overview.getByText('Merged unresolved', { exact: true })).toBeVisible();
   await expect(overview.getByText('Recent recoveries', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('dashboard-card-recoveries')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
+  await expect(page.getByTestId('dashboard-card-recoveries')).toHaveAttribute('href', /#outcome-stabilization$/);
 
   const queue = page.getByTestId('needs-attention');
   await expect(queue).toBeVisible();

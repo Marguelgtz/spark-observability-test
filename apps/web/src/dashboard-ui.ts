@@ -27,6 +27,10 @@ function overviewHref(metric: OverviewMetricV1, state: ActivityUrlState): string
   return stateHref(`/app/overview/${metric}`, state);
 }
 
+function recoveryHref(state: ActivityUrlState): string {
+  return `${overviewHref('merged-unresolved', state)}#outcome-stabilization`;
+}
+
 function activityHref(state: ActivityUrlState): string {
   return stateHref('/app/activity', state);
 }
@@ -61,8 +65,8 @@ function renderOverview(response: OperationalDashboardResponseV1, state: Activit
   metrics.append(
     metric('Needs attention', response.needsAttention.total, 'dashboard-card-attention', 'Open HIGH / MEDIUM', overviewHref('attention', state)),
     metric('Active changes', response.activeChanges.total, 'dashboard-card-active', 'Open observed PRs', overviewHref('pull-requests', state)),
-    metric('Merged unresolved', response.overview.mergedUnresolved, 'dashboard-card-merged-unresolved', undefined, overviewHref('merged-unresolved', state)),
-    metric('Recent recoveries', response.overview.recovery.recoveredPRs, 'dashboard-card-recoveries', `in ${state.window}`, overviewHref('merged-unresolved', state)),
+    metric('Merged unresolved', response.overview.mergedUnresolved, 'dashboard-card-merged-unresolved', 'At merge', overviewHref('merged-unresolved', state)),
+    metric('Recent recoveries', response.overview.recovery.recoveredPRs, 'dashboard-card-recoveries', `PRs in ${state.window}`, recoveryHref(state)),
   );
   section.append(metrics);
   return section;

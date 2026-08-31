@@ -22,6 +22,7 @@ export interface InsightCanvasConfig {
 
 export function insightCanvas(config: InsightCanvasConfig): HTMLElement {
   const section = node('section', `insight-canvas${config.compact ? ' is-compact' : ''}`);
+  section.id = config.id;
   section.dataset.testid = `insight-canvas-${config.id}`;
 
   const heading = node('div', 'insight-canvas-heading');

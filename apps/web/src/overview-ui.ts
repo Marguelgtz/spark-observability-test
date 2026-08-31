@@ -158,7 +158,9 @@ export function renderOverviewDrilldown(
   const config = metricConfig[response.metric];
   const outcome = response.metric === 'merged-unresolved' ? outcomeOverview(response, transitions, state) : undefined;
   const headlineTotal = outcome?.complete ? outcome.data.merges.total : response.total;
-  const headlineQualifier = outcome && !outcome.complete ? `unresolved in ${state.window}` : `in ${state.window}`;
+  const headlineQualifier = outcome
+    ? `${outcome.complete ? 'merge outcomes' : 'unresolved merges'} in ${state.window}`
+    : `in ${state.window}`;
   const heading = node('header', 'overview-detail-heading');
   const copy = node('div', 'overview-detail-heading-copy');
   copy.append(node('p', 'eyebrow', response.metric === 'merged-unresolved' ? 'OUTCOME INTELLIGENCE' : 'CHANGE OVERVIEW'), node('h1', undefined, config.title), node('p', 'state-copy', config.description));
@@ -171,7 +173,9 @@ export function renderOverviewDrilldown(
     main.append(node('p', 'overview-chart-note', 'The headline count is the current active queue. Transition charts show notable changes observed during the selected window, not historical queue snapshots.'));
   }
   if (outcome && !outcome.complete) {
-    main.append(node('p', 'overview-chart-note', 'This compatibility view only knows unresolved merges. Full resolved and unavailable merge denominators are supplied by the Phase 4 outcome aggregate.'));
+    main.append(node('p', 'overview-chart-note', 'The dashboard “Merged unresolved” card and this compatibility headline both count unresolved merges. Full resolved and unavailable merge denominators are supplied by the Phase 4 outcome aggregate; recovery metrics appear under Trajectory stabilization.'));
+  } else if (outcome) {
+    main.append(node('p', 'overview-chart-note', `The dashboard “Merged unresolved” card counts ${outcome.data.merges.unresolved} unresolved merge${outcome.data.merges.unresolved === 1 ? '' : 's'}. This page headline counts all ${outcome.data.merges.total} observed merge outcome${outcome.data.merges.total === 1 ? '' : 's'}; recovery metrics appear under Trajectory stabilization.`));
   }
 
   const section = node('section', 'overview-list-section');

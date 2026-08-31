@@ -13,7 +13,7 @@ test('dashboard metrics drill into existing views and insights stay secondary', 
   await expect(page.getByTestId('dashboard-card-attention')).toHaveAttribute('href', /\/app\/overview\/attention/);
   await expect(page.getByTestId('dashboard-card-active')).toHaveAttribute('href', /\/app\/overview\/pull-requests/);
   await expect(page.getByTestId('dashboard-card-merged-unresolved')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
-  await expect(page.getByTestId('dashboard-card-recoveries')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
+  await expect(page.getByTestId('dashboard-card-recoveries')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved.*#outcome-stabilization/);
 
   const mergedRecent = page.getByTestId('recent-change-101-42');
   await expect(mergedRecent).toBeVisible();
@@ -96,12 +96,22 @@ test('drilldown canvases pair graph forms to the metric context', async ({ page 
   await expect(page.getByTestId('insight-canvas-outcome-pre-merge-state')).toBeVisible();
   await expect(page.getByTestId('insight-canvas-outcome-stabilization')).toBeVisible();
   await expect(page.getByTestId('insight-canvas-outcome-feedback')).toBeVisible();
+  await expect(page.getByTestId('insight-canvas-outcome-stabilization')).toHaveAttribute('id', 'outcome-stabilization');
   await expect(charts.locator('[data-chart-kind="stacked-bar"]')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="line"]')).toBeVisible();
   await expect(charts.locator('[data-chart-kind="donut"]')).toHaveCount(3);
   await expect(charts.locator('[data-chart-kind="horizontal-bar"]')).toHaveCount(3);
   await expect(page.getByRole('heading', { name: 'Unresolved merges', exact: true })).toBeVisible();
   await expect(page.getByText(/Full resolved and unavailable merge denominators/)).toBeVisible();
+});
+
+test('recovery metric enters the recovery section without conflating merge totals', async ({ page }) => {
+  await page.goto('/app?window=7d&attention=ALL');
+  await expect(page.getByTestId('dashboard-card-recoveries')).toContainText('PRs in 7d');
+  await page.getByTestId('dashboard-card-recoveries').click();
+  await expect(page).toHaveURL(/\/app\/overview\/merged-unresolved.*#outcome-stabilization/);
+  await expect(page.getByTestId('insight-canvas-outcome-stabilization')).toBeInViewport();
+  await expect(page.getByText(/dashboard “Merged unresolved” card/)).toBeVisible();
 });
 
 test('overview drilldowns retain time-window navigation', async ({ page }) => {
