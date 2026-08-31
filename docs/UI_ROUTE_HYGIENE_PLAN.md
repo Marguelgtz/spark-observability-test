@@ -68,8 +68,10 @@ The base for the whole stack is the tip of the dashboard signal-placement stack,
 | 4 | `ui/15-list-state-consistency` | PR 3 | fix(web): align dashboard/activity filter state | MERGED |
 | 5 | `ui/16-repository-selection-canonical` | PR 4 | refactor(web): canonicalize repository selection state | MERGED |
 | 6 | `ui/17-runs-evaluations-grammar` | PR 5 | fix(web): align runs/evaluations id grammar | MERGED |
-| 7 | `ui/18-scoped-route-effects` | PR 6 | refactor(web): scoped, generation-guarded route effects | IN PROGRESS |
-| 8 | `ui/19-route-hygiene-sweep` | PR 7 | fix(web): route hygiene sweep (nav, back-links, legacy) | OPEN |
+| 7 | `ui/18-scoped-route-effects` | PR 6 | refactor(web): scoped, generation-guarded route effects | MERGED |
+| 8 | `ui/19-route-hygiene-sweep` | PR 7 | fix(web): route hygiene sweep (nav, back-links, legacy) | MERGED |
+
+> **Stack landed.** All 8 route-hygiene PRs have merged on the test repo (base chain ends at `ui/19-route-hygiene-sweep`). This stack still bases on `ui/12-dashboard-signal-placement`; when that lands on `main`, rebase onto `main` and retarget.
 
 ## Decisions needed (product/eng calls)
 
