@@ -23,6 +23,7 @@ test('dashboard, activity, and settings are distinct primary routes', async ({ p
   await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByTestId('activity-search')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Recent activity', exact: true })).toBeVisible();
+  await page.getByTestId('recent-activity').locator('summary').click();
   await expect(page.getByRole('link', { name: 'View all activity →', exact: true })).toBeVisible();
 
   await page.getByRole('link', { name: 'Activity', exact: true }).click();
