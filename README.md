@@ -168,15 +168,14 @@ Spark deploys the dashboard and API together as a Cloudflare Worker with a D1 bi
 
 1. Create the D1 database and set its ID in `apps/api/wrangler.toml`.
 2. Configure the GitHub App, OAuth, webhook, and public-contact secrets with Wrangler.
-3. Apply migrations before deploying code that depends on them.
-4. Deploy from the workspace root.
+3. Deploy from the workspace root. The deployment script applies pending remote D1 migrations before building and publishing the Worker.
 
 ```bash
-pnpm run db:migrate:remote
 pnpm run deploy
 ```
 
 Use `pnpm run deploy` explicitly: `pnpm deploy` invokes pnpm's unrelated built-in deployment command.
+To inspect or apply migrations without deploying, use `pnpm run db:migrate:remote` directly.
 
 The permanent dashboard/Worker verification workflow covers workspace typechecking, unit tests, a production dashboard build, local D1 migrations, a Worker/static-assets dry run, and Playwright acceptance on desktop and mobile.
 
