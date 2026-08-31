@@ -69,7 +69,7 @@ The base for the whole stack is the tip of the dashboard signal-placement stack,
 | 5 | `ui/16-repository-selection-canonical` | PR 4 | refactor(web): canonicalize repository selection state | MERGED |
 | 6 | `ui/17-runs-evaluations-grammar` | PR 5 | fix(web): align runs/evaluations id grammar | MERGED |
 | 7 | `ui/18-scoped-route-effects` | PR 6 | refactor(web): scoped, generation-guarded route effects | IN PROGRESS |
-| 8 | `ui/19-route-hygiene-sweep` | PR 7 | fix(web): route hygiene sweep (nav, back-links, legacy) | BACKLOG |
+| 8 | `ui/19-route-hygiene-sweep` | PR 7 | fix(web): route hygiene sweep (nav, back-links, legacy) | OPEN |
 
 ## Decisions needed (product/eng calls)
 
@@ -142,9 +142,11 @@ Acceptance: no filler relies on a raw `querySelector('[data-testid=...]')` acros
 
 | Status | ID | Task | Evidence |
 | --- | --- | --- | --- |
-| TODO | R8.1 | Signed-out nav per D3: hide/disable Dashboard/Activity/Settings when signed out (`main.ts:218-224`) | dashboard.e2e signed-out test |
-| TODO | R8.2 | Give `settings` a back link; ensure a nav item is active on `account` / `not-found` (`app-shell.ts:65-70` `primaryRoute`); align the `account` back-label if D1 changes it | e2e |
-| TODO | R8.3 | Decide + document the `legacyActivityRedirect` asymmetry (window/repo-only legacy bookmarks) - either extend it or leave it with a comment (`router.ts:44-51`, `main.ts:239-240`) | router test |
+| DONE | R8.1 | Signed-out nav per D3: hide the Dashboard/Activity/Settings nav when signed out (`app-shell.ts` `setViewer` sets `nav.style.display='none'`; the `hidden` attribute alone is ineffective because `.shell-nav` sets `display: flex`) | dashboard.e2e signed-out test asserts `nav.shell-nav` is hidden |
+| DONE | R8.2 | `settings` gains a "← Dashboard" back link via `dashboardRouteHref()` (`settings-ui.ts`); `primaryRoute` now returns `'dashboard'` for `account`/`not-found` so the Dashboard nav item stays active instead of the nav being unhighlighted; the `account` back-label already reads "← Dashboard" (aligned with D1) | settings/account/not-found e2e assert the back link + active nav item |
+| DONE | R8.3 | Keep `legacyActivityRedirect` as-is and document why: window/repo are native dashboard filters, so a window- or repo-only `/app` bookmark is a valid dashboard view and correctly stays on `/app`; only a non-ALL attention filter or a list-only param (cursor/q/favorites/limit) redirects to `/app/activity` | router test locks window/repo-only staying on `/app` and the attention-only redirect |
+
+Acceptance: a signed-out visitor sees no authenticated nav links; `settings`, `account`, and `not-found` each keep a live back link and an active Dashboard/Settings nav item; the legacy-redirect asymmetry is documented and locked by a router test.
 
 ## Verification & workflow
 

@@ -62,11 +62,13 @@ function loadingContent(kind: DashboardRoute['kind']): HTMLElement {
   return wrap;
 }
 
-function primaryRoute(kind: DashboardRoute['kind']): 'dashboard' | 'activity' | 'settings' | undefined {
+function primaryRoute(kind: DashboardRoute['kind']): 'dashboard' | 'activity' | 'settings' {
   if (kind === 'dashboard' || kind === 'overview') return 'dashboard';
   if (kind === 'activity' || kind === 'pull-request' || kind === 'run' || kind === 'evaluation') return 'activity';
   if (kind === 'settings') return 'settings';
-  return undefined;
+  // R8.2: account and not-found are top-level/fallback pages (not queue items), so the
+  // Dashboard (home) nav item is active on them instead of leaving the nav unhighlighted.
+  return 'dashboard';
 }
 
 export interface PersistentAppShell {
@@ -119,6 +121,11 @@ export function createPersistentAppShell(): PersistentAppShell {
 
   function setViewer(viewer?: ViewerV1): void {
     identitySlot.replaceChildren();
+    // R8.1 (D3): when signed out, the Dashboard/Activity/Settings nav is hidden - those
+    // destinations all require an authenticated account, so a signed-out visitor has nowhere
+    // to go. `display` (not the `hidden` attribute) is used because .shell-nav sets
+    // `display: flex` in CSS, which would otherwise override [hidden]'s default display.
+    nav.style.display = viewer ? '' : 'none';
     if (!viewer) return;
     const identity = node('a', 'viewer viewer-link');
     identity.href = '/app/account';

@@ -10,6 +10,9 @@ test('signed-out state', async ({ page }) => {
   await page.goto('/app?fixture=signed-out');
   await expect(page.getByTestId('signed-out')).toBeVisible();
   await expect(page.getByTestId('sign-in')).toHaveText('Sign in with GitHub');
+  // R8.1 (D3): a signed-out visitor has no authenticated destinations, so the
+  // Dashboard/Activity/Settings nav is hidden rather than showing dead links.
+  await expect(page.locator('nav.shell-nav')).toBeHidden();
 });
 
 test('loading state has stable shell', async ({ page }) => {

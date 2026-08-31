@@ -23,6 +23,18 @@ describe('dashboard router', () => {
     expect(legacyActivityRedirect('/app/activity', '?attention=HIGH')).toBeNull();
   });
 
+  it('leaves window- and repository-only dashboard bookmarks on /app (R8.3: native dashboard filters)', () => {
+    // window alone, repository alone, and window+repository are valid operational
+    // dashboard views - they stay on /app and are NOT redirected to /app/activity.
+    expect(legacyActivityRedirect('/app', '?window=30d')).toBeNull();
+    expect(legacyActivityRedirect('/app', '?repositoryId=101')).toBeNull();
+    expect(legacyActivityRedirect('/app', '?window=30d&repositoryId=101')).toBeNull();
+    // A non-ALL attention filter is an activity-list filter, so it redirects even alongside a window.
+    expect(legacyActivityRedirect('/app', '?window=30d&repositoryId=101&attention=HIGH')).toBe(
+      '/app/activity?window=30d&repositoryId=101&attention=HIGH',
+    );
+  });
+
   it('parses overview drilldown routes', () => {
     expect(parseRoute('/app/overview/pull-requests')).toEqual({ kind: 'overview', metric: 'pull-requests' });
     expect(parseRoute('/app/overview/evaluations')).toEqual({ kind: 'overview', metric: 'evaluations' });

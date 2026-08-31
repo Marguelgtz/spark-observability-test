@@ -46,6 +46,15 @@ export function parseRoute(pathname: string): DashboardRoute {
 }
 
 export function legacyActivityRedirect(pathname: string, search: string): string | null {
+  // R8.3 (C1): redirects legacy bookmarks that pointed activity-shaped filters at the
+  // dashboard (/app) over to the activity list. It fires only for a non-ALL attention
+  // filter or one of the list-only params (cursor, q, favorites, limit).
+  //
+  // Deliberate asymmetry: window and repository are *native dashboard filters* (the
+  // operational dashboard renders its overview for a chosen window + repository), so a
+  // window- or repo-only /app bookmark is a valid *dashboard* view and intentionally
+  // stays on /app rather than redirecting to /app/activity. Do not "fix" this by
+  // extending the redirect to window/repo-only params; it is locked by router tests.
   if (pathname !== '/app' && pathname !== '/app/') return null;
   const params = new URLSearchParams(search);
   const hasAttentionFilter = params.has('attention') && params.get('attention')?.toUpperCase() !== 'ALL';
