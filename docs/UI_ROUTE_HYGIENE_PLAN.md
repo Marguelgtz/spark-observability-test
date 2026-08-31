@@ -115,9 +115,9 @@ Acceptance: changing window/repo on the dashboard no longer silently wipes `atte
 
 | Status | ID | Task | Evidence |
 | --- | --- | --- | --- |
-| TODO | R5.1 | Make `repositorySelection` canonical and derive a read-only `repositoryId` where needed; drop the dual write path in `withActivityState` (`state.ts:81-85`) and the legacy serialize fallback (`state.ts:68`) | unit tests |
-| TODO | R5.2 | Update all consumers (dashboard/activity handlers, api calls) to the canonical field | typecheck |
-| TODO | R5.3 | Add serialization tests for absent / all / repository | `pnpm test` |
+| DONE | R5.1 | Make `repositorySelection` canonical and derive a read-only `repositoryId` where needed; drop the dual write path in `withActivityState` (`state.ts:81-85`) and the legacy serialize fallback (`state.ts:68`) | unit tests |
+| DONE | R5.2 | Update all consumers (dashboard/activity handlers, api calls) to the canonical field | typecheck |
+| DONE | R5.3 | Add serialization tests for absent / all / repository | `pnpm test` |
 
 ## PR 6 - `ui/17-runs-evaluations-grammar`
 
