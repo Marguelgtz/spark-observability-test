@@ -2,12 +2,16 @@ import type { ActivityQueryV1, ActivityWindowV1, AttentionFilterV1 } from '@spar
 
 const WINDOWS = new Set<ActivityWindowV1>(['24h', '7d', '30d']);
 const ATTENTION = new Set<AttentionFilterV1>(['ALL', 'LOW', 'MEDIUM', 'HIGH']);
+export const ACTIVITY_SORTS = ['recent', 'attention', 'evaluations', 'repository'] as const;
+export type ActivitySort = typeof ACTIVITY_SORTS[number];
+const SORTS = new Set<ActivitySort>(ACTIVITY_SORTS);
 
 export interface ActivityUrlState extends ActivityQueryV1 {
   repositorySelection?: RepositorySelection;
   fixture?: string;
   query?: string;
   favoritesOnly?: boolean;
+  sort: ActivitySort;
 }
 
 export type RepositorySelection =
@@ -37,6 +41,7 @@ export function parseActivityState(search: string, defaults: ActivityStateDefaul
   const params = new URLSearchParams(search);
   const windowValue = params.get('window') as ActivityWindowV1 | null;
   const attentionValue = params.get('attention') as AttentionFilterV1 | null;
+  const sortValue = params.get('sort') as ActivitySort | null;
   const repositorySelection = parseRepositorySelection(params);
   const repositoryId = repositorySelection.kind === 'repository'
     ? repositorySelection.id
@@ -59,7 +64,8 @@ export function parseActivityState(search: string, defaults: ActivityStateDefaul
     limit: parsedLimit && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 25,
     fixture: params.get('fixture') ?? undefined,
     query: params.get('q')?.trim().slice(0, 100) || undefined,
-    favoritesOnly: params.get('favorites') === '1'
+    favoritesOnly: params.get('favorites') === '1',
+    sort: sortValue && SORTS.has(sortValue) ? sortValue : 'recent',
   };
 }
 
@@ -74,8 +80,9 @@ export function serializeActivityState(state: ActivityUrlState): string {
   if (state.fixture) params.set('fixture', state.fixture);
   if (state.query) params.set('q', state.query);
   if (state.favoritesOnly) params.set('favorites', '1');
+  if (state.sort !== 'recent') params.set('sort', state.sort);
   // D2: cursor/limit are deliberately omitted here - they are not URL-owned (pagination
-  // is client-side). The URL round-trips filters only.
+  // is client-side). The URL round-trips filters and list ordering only.
   return params.toString();
 }
 
