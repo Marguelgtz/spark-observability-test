@@ -31,6 +31,34 @@ export const DASHBOARD_SETTINGS_DEFAULTS: Readonly<DashboardSettingsInputV1> = {
   defaultRepositoryId: null,
 };
 
+const DASHBOARD_SETTINGS_INPUT_KEYS = new Set<keyof DashboardSettingsInputV1>([
+  'defaultWindow',
+  'previewSize',
+  'density',
+  'collapseSecondarySections',
+  'defaultRepositoryId',
+]);
+
+export function parseDashboardSettingsInputV1(value: unknown): DashboardSettingsInputV1 | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).length !== DASHBOARD_SETTINGS_INPUT_KEYS.size
+    || Object.keys(input).some((key) => !DASHBOARD_SETTINGS_INPUT_KEYS.has(key as keyof DashboardSettingsInputV1))) return undefined;
+  if (input.defaultWindow !== '24h' && input.defaultWindow !== '7d' && input.defaultWindow !== '30d') return undefined;
+  if (input.previewSize !== 5 && input.previewSize !== 10 && input.previewSize !== 15) return undefined;
+  if (input.density !== 'COMFORTABLE' && input.density !== 'COMPACT') return undefined;
+  if (typeof input.collapseSecondarySections !== 'boolean') return undefined;
+  if (input.defaultRepositoryId !== null
+    && (!Number.isSafeInteger(input.defaultRepositoryId) || Number(input.defaultRepositoryId) <= 0)) return undefined;
+  return {
+    defaultWindow: input.defaultWindow,
+    previewSize: input.previewSize,
+    density: input.density,
+    collapseSecondarySections: input.collapseSecondarySections,
+    defaultRepositoryId: input.defaultRepositoryId === null ? null : Number(input.defaultRepositoryId),
+  };
+}
+
 export interface ViewerV1 {
   version: 1;
   id: number;

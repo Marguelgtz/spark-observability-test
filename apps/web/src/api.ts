@@ -80,7 +80,9 @@ async function settingsRequestError(response: Response): Promise<SettingsRequest
 }
 
 function settingsEtag(response: Response, settings: DashboardSettingsV1): string {
-  return response.headers.get('etag') ?? `"settings-${settings.revision}"`;
+  const header = response.headers.get('etag');
+  const revision = header?.match(/settings-(\d+)/)?.[1];
+  return `"settings-${revision ?? settings.revision}"`;
 }
 
 export class HttpDashboardApi implements DashboardApi {
@@ -192,7 +194,11 @@ export class HttpDashboardApi implements DashboardApi {
     });
     if (response.status === 401) throw new UnauthorizedError();
     if (response.status === 412) throw new SettingsConflictError();
-    if (!response.ok) throw await settingsRequestError(response);
+    if (!response.ok) {
+      const error = await settingsRequestError(response);
+      if (error.status === 400 && error.reason === 'invalid If-Match') throw new SettingsConflictError();
+      throw error;
+    }
     const saved = await response.json() as DashboardSettingsV1;
     return { settings: saved, etag: settingsEtag(response, saved) };
   }

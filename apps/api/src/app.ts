@@ -9,6 +9,7 @@ import type {
   SaveTrajectoryFeedbackV1,
   TrajectoryFeedbackClassificationV1,
 } from '@spark/dashboard-contracts';
+import { parseDashboardSettingsInputV1 } from '@spark/dashboard-contracts';
 import { createInstallationToken, GitHubApiClient, routeGitHubEvent, verifyWebhookSignature } from '@spark/github';
 import type { DashboardAuthorizer, DashboardPrincipal } from './dashboard-access';
 import { D1DashboardReader, type DashboardReader } from './dashboard-reader';
@@ -153,14 +154,6 @@ async function parseFavorite(request: Request): Promise<DashboardFavoriteV1 | un
   };
 }
 
-const SETTINGS_KEYS = [
-  'collapseSecondarySections',
-  'defaultRepositoryId',
-  'defaultWindow',
-  'density',
-  'previewSize',
-];
-
 async function parseSettings(request: Request): Promise<DashboardSettingsInputV1 | undefined> {
   let value: unknown;
   try {
@@ -168,28 +161,13 @@ async function parseSettings(request: Request): Promise<DashboardSettingsInputV1
   } catch {
     return undefined;
   }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-  const input = value as Record<string, unknown>;
-  if (Object.keys(input).sort().join(',') !== SETTINGS_KEYS.join(',')) return undefined;
-  if (input.defaultWindow !== '24h' && input.defaultWindow !== '7d' && input.defaultWindow !== '30d') return undefined;
-  if (input.previewSize !== 5 && input.previewSize !== 10 && input.previewSize !== 15) return undefined;
-  if (input.density !== 'COMFORTABLE' && input.density !== 'COMPACT') return undefined;
-  if (typeof input.collapseSecondarySections !== 'boolean') return undefined;
-  if (input.defaultRepositoryId !== null
-    && (!Number.isSafeInteger(input.defaultRepositoryId) || Number(input.defaultRepositoryId) <= 0)) return undefined;
-  return {
-    defaultWindow: input.defaultWindow,
-    previewSize: input.previewSize,
-    density: input.density,
-    collapseSecondarySections: input.collapseSecondarySections,
-    defaultRepositoryId: input.defaultRepositoryId === null ? null : Number(input.defaultRepositoryId),
-  };
+  return parseDashboardSettingsInputV1(value);
 }
 
 function settingsRevision(request: Request): number | undefined {
-  const match = /^"settings-(\d+)"$/.exec(request.headers.get('if-match') ?? '');
+  const match = /^(?:W\/)?(?:"settings-(\d+)"|settings-(\d+))$/.exec((request.headers.get('if-match') ?? '').trim());
   if (!match) return undefined;
-  const revision = Number(match[1]);
+  const revision = Number(match[1] ?? match[2]);
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : undefined;
 }
 

@@ -221,7 +221,7 @@ describe('HttpDashboardApi', () => {
     const saved = { ...current, revision: 3, defaultWindow: '24h' as const };
     const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => new Response(
       JSON.stringify(init?.method === 'PUT' ? saved : current),
-      { status: 200, headers: { 'content-type': 'application/json', etag: init?.method === 'PUT' ? '"settings-3"' : '"settings-2"' } },
+      { status: 200, headers: { 'content-type': 'application/json', etag: init?.method === 'PUT' ? '"settings-3"' : 'W/"settings-2"' } },
     ));
     vi.stubGlobal('fetch', fetcher);
     const api = new HttpDashboardApi('https://spark.test');

@@ -315,6 +315,20 @@ describe('dashboard read API', () => {
     expect(dashboardSettingsStore.replace).toHaveBeenCalledWith(7, 0, settingsInput);
   });
 
+  it('normalizes equivalent settings revision preconditions', async () => {
+    for (const ifMatch of ['settings-0', 'W/"settings-0"']) {
+      const saved = { ...settingsInput, version: 1 as const, revision: 1, updatedAt: '2026-08-29T12:00:00.000Z' };
+      const dashboardSettingsStore = settingsStore(undefined, saved);
+      const response = await handleRequest(new Request('https://spark.test/api/settings', {
+        method: 'PUT',
+        headers: { origin: 'https://spark.test', 'content-type': 'application/json', 'if-match': ifMatch },
+        body: JSON.stringify(settingsInput),
+      }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardSettingsStore });
+      expect(response.status).toBe(200);
+      expect(dashboardSettingsStore.replace).toHaveBeenCalledWith(7, 0, settingsInput);
+    }
+  });
+
   it('lists favorites for the authenticated viewer and current repository scope', async () => {
     const dashboardFavoriteStore = favoriteStore();
     const response = await handleRequest(

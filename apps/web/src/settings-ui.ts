@@ -189,7 +189,7 @@ export function renderSettings(
       } else if (error instanceof SettingsRequestError && error.status === 404) {
         status.textContent = 'The selected default repository is no longer available to this session. Choose All observed repositories and try again.';
       } else if (error instanceof SettingsRequestError && error.status === 400) {
-        status.textContent = 'Preferences were rejected as invalid. Reload the page and try again. Your form values are unchanged.';
+        status.textContent = `Preferences were rejected by settings validation${error.reason ? ` (${error.reason})` : ''}. Reload the page and try again. Your form values are unchanged.`;
       } else if (error instanceof SettingsRequestError) {
         status.textContent = `Preferences could not be saved because the settings service returned ${error.status}. Your form values are unchanged.`;
       } else {
