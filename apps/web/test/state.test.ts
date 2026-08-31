@@ -3,22 +3,24 @@ import { parseActivityState, serializeActivityState, withActivityState } from '.
 
 describe('activity URL state', () => {
   it('uses safe defaults for invalid parameters', () => {
-    expect(parseActivityState('?window=year&attention=CRITICAL&repositoryId=nope')).toMatchObject({
+    expect(parseActivityState('?window=year&attention=CRITICAL&repositoryId=nope&sort=random')).toMatchObject({
       window: '7d',
       attention: 'ALL',
       repositoryId: null,
-      limit: 25
+      limit: 25,
+      sort: 'recent',
     });
   });
 
   it('parses valid filters', () => {
-    expect(parseActivityState('?window=24h&attention=HIGH&repositoryId=202&fixture=normal&q=checkout&favorites=1')).toMatchObject({
+    expect(parseActivityState('?window=24h&attention=HIGH&repositoryId=202&fixture=normal&q=checkout&favorites=1&sort=attention')).toMatchObject({
       window: '24h',
       attention: 'HIGH',
       repositoryId: 202,
       fixture: 'normal',
       query: 'checkout',
       favoritesOnly: true,
+      sort: 'attention',
     });
   });
 
@@ -27,6 +29,7 @@ describe('activity URL state', () => {
       window: '24h',
       repositoryId: 303,
       repositorySelection: { kind: 'absent' },
+      sort: 'recent',
     });
   });
 
@@ -44,15 +47,28 @@ describe('activity URL state', () => {
   });
 
   it('serializes refresh-safe filter state', () => {
-    const value = serializeActivityState({ window: '30d', attention: 'MEDIUM', repositoryId: 303, repositorySelection: { kind: 'repository', id: 303 }, fixture: 'error', query: 'deploy', favoritesOnly: true });
+    const value = serializeActivityState({ window: '30d', attention: 'MEDIUM', repositoryId: 303, repositorySelection: { kind: 'repository', id: 303 }, fixture: 'error', query: 'deploy', favoritesOnly: true, sort: 'repository' });
     const parsed = parseActivityState(`?${value}`);
-    expect(parsed).toMatchObject({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error', query: 'deploy', favoritesOnly: true });
+    expect(parsed).toMatchObject({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error', query: 'deploy', favoritesOnly: true, sort: 'repository' });
+  });
+
+  it('omits the default recent sort while persisting alternate sorts', () => {
+    const recent = serializeActivityState(parseActivityState('?sort=recent'));
+    expect(recent).not.toContain('sort=');
+    const evaluations = serializeActivityState(parseActivityState('?sort=evaluations'));
+    expect(evaluations).toContain('sort=evaluations');
   });
 
   it('clears pagination when filters change', () => {
     const next = withActivityState({ window: '7d', attention: 'ALL', repositoryId: null, cursor: 'cursor', limit: 25 }, { attention: 'LOW' });
     expect(next.cursor).toBeNull();
     expect(next.attention).toBe('LOW');
+  });
+
+  it('clears pagination when sort changes', () => {
+    const next = withActivityState({ window: '7d', attention: 'ALL', repositoryId: null, cursor: 'cursor', limit: 25, sort: 'recent' }, { sort: 'attention' });
+    expect(next.cursor).toBeNull();
+    expect(next.sort).toBe('attention');
   });
 
   it('serializes a user-selected All repositories override', () => {
@@ -70,32 +86,35 @@ describe('activity URL state', () => {
     expect(parseActivityState(`?${search}`, defaults).repositoryId).toBe(303);
   });
 
-  it('preserves attention/query/favorites when window or repository changes (dashboard parity, R4.1)', () => {
-    const base = parseActivityState('?window=7d&attention=HIGH&repositoryId=202&fixture=normal&q=checkout&favorites=1');
-    expect(withActivityState(base, { window: '24h' })).toMatchObject({ window: '24h', attention: 'HIGH', repositoryId: 202, query: 'checkout', favoritesOnly: true });
-    expect(withActivityState(base, { repositorySelection: { kind: 'all' } })).toMatchObject({ window: '7d', attention: 'HIGH', query: 'checkout', favoritesOnly: true });
+  it('preserves attention/query/favorites/sort when window or repository changes (dashboard parity, R4.1)', () => {
+    const base = parseActivityState('?window=7d&attention=HIGH&repositoryId=202&fixture=normal&q=checkout&favorites=1&sort=evaluations');
+    expect(withActivityState(base, { window: '24h' })).toMatchObject({ window: '24h', attention: 'HIGH', repositoryId: 202, query: 'checkout', favoritesOnly: true, sort: 'evaluations' });
+    expect(withActivityState(base, { repositorySelection: { kind: 'all' } })).toMatchObject({ window: '7d', attention: 'HIGH', query: 'checkout', favoritesOnly: true, sort: 'evaluations' });
     const toRepository = withActivityState(base, { repositorySelection: { kind: 'repository', id: 303 } });
-    expect(toRepository).toMatchObject({ attention: 'HIGH', query: 'checkout', favoritesOnly: true });
+    expect(toRepository).toMatchObject({ attention: 'HIGH', query: 'checkout', favoritesOnly: true, sort: 'evaluations' });
     expect(toRepository.repositorySelection).toEqual({ kind: 'repository', id: 303 });
   });
 
   it('round-trips filters through serialize/parse without losing them (R4.3)', () => {
-    const value = serializeActivityState(parseActivityState('?window=24h&attention=HIGH&repositoryId=101&fixture=abnormal&q=deploy&favorites=1'));
+    const value = serializeActivityState(parseActivityState('?window=24h&attention=HIGH&repositoryId=101&fixture=abnormal&q=deploy&favorites=1&sort=repository'));
     expect(value).toContain('window=24h');
     expect(value).toContain('attention=HIGH');
     expect(value).toContain('repositoryId=101');
     expect(value).toContain('fixture=abnormal');
     expect(value).toContain('q=deploy');
     expect(value).toContain('favorites=1');
+    expect(value).toContain('sort=repository');
   });
 
   it('does not read cursor/limit from the URL and never re-serializes them (pagination is not URL-owned, D2/R4.2)', () => {
-    const parsed = parseActivityState('?window=7d&attention=HIGH&cursor=opaque-cursor&limit=40');
+    const parsed = parseActivityState('?window=7d&attention=HIGH&cursor=opaque-cursor&limit=40&sort=attention');
     expect(parsed.cursor).toBeNull();
     expect(parsed.limit).toBe(40);
+    expect(parsed.sort).toBe('attention');
     const value = serializeActivityState(parsed);
     expect(value).not.toContain('cursor=');
     expect(value).not.toContain('limit=');
+    expect(value).toContain('sort=attention');
   });
 
   it('serializes repository selection for absent / all / repository (R5.3)', () => {
