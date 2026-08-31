@@ -148,17 +148,18 @@ function renderNeedsAttention(response: OperationalDashboardResponseV1, state: A
   return section;
 }
 
-function disclosure(title: string, testId: string, open: boolean, count?: string): { details: HTMLDetailsElement; content: HTMLElement } {
+function disclosure(title: string, testId: string, open: boolean, count?: string): { details: HTMLDetailsElement; content: HTMLElement; count: HTMLElement | null } {
   const details = node('details', 'dashboard-disclosure') as HTMLDetailsElement;
   details.open = open;
   details.dataset.testid = testId;
   const summary = node('summary', 'dashboard-disclosure-summary');
   const heading = node('h2', undefined, title);
   summary.append(heading);
-  if (count) summary.append(node('span', 'home-section-count', count));
+  const countNode = count ? node('span', 'home-section-count', count) : null;
+  if (countNode) summary.append(countNode);
   const content = node('div', 'dashboard-disclosure-content');
   details.append(summary, content);
-  return { details, content };
+  return { details, content, count: countNode };
 }
 
 function renderActiveChanges(response: OperationalDashboardResponseV1, state: ActivityUrlState, previewSize: PreviewSize): HTMLElement {
@@ -176,8 +177,10 @@ function renderActiveChanges(response: OperationalDashboardResponseV1, state: Ac
   return details;
 }
 
-function renderRecentShell(state: ActivityUrlState, open: boolean): HTMLElement {
-  const { details, content } = disclosure('Recent activity', 'recent-activity', open, '…');
+function renderRecentShell(state: ActivityUrlState, open: boolean): { section: HTMLElement; content: HTMLElement; count: HTMLElement | null } {
+  // R7.2: expose the section plus the filler target nodes (content + count) so the
+  // dashboard can hand each filler its exact element instead of re-querying by testid.
+  const { details, content, count } = disclosure('Recent activity', 'recent-activity', open, '…');
   content.dataset.testid = 'dashboard-recent-content';
   const loading = node('p', 'dashboard-section-status', 'Loading recent activity…');
   loading.setAttribute('role', 'status');
@@ -186,10 +189,10 @@ function renderRecentShell(state: ActivityUrlState, open: boolean): HTMLElement 
   link.href = activityHref(state);
   link.dataset.routerLink = 'true';
   details.append(link);
-  return details;
+  return { section: details, content, count };
 }
 
-function renderSignalsShell(state: ActivityUrlState): HTMLElement {
+function renderSignalsShell(state: ActivityUrlState): { section: HTMLElement; content: HTMLElement } {
   const section = node('section', 'dashboard-signals');
   section.dataset.testid = 'dashboard-signals';
   const heading = node('div', 'dashboard-signals-heading');
@@ -205,7 +208,7 @@ function renderSignalsShell(state: ActivityUrlState): HTMLElement {
   loading.setAttribute('role', 'status');
   content.append(loading);
   section.append(heading, content);
-  return section;
+  return { section, content };
 }
 
 function githubLink(label: string, href: string, className: string): HTMLAnchorElement {
@@ -300,6 +303,13 @@ export interface DashboardHandlers {
   setRepository(value: number | null): void;
 }
 
+export interface OperationalDashboardView {
+  root: HTMLElement;
+  recentContent: HTMLElement | null;
+  recentCount: HTMLElement | null;
+  signalsContent: HTMLElement | null;
+}
+
 export function renderOperationalDashboard(
   account: AccountV1,
   response: OperationalDashboardResponseV1,
@@ -307,7 +317,7 @@ export function renderOperationalDashboard(
   handlers: DashboardHandlers,
   previewSize: PreviewSize = DEFAULT_PREVIEW_SIZE,
   collapseSecondarySections = true,
-): HTMLElement {
+): OperationalDashboardView {
   const main = node('main', 'dashboard-page');
   main.dataset.testid = 'dashboard-view';
 
@@ -317,32 +327,36 @@ export function renderOperationalDashboard(
   heading.append(copy, windowControls(state, handlers.setWindow));
   main.append(heading);
 
+  // R7.2/R7.3: empty states render no recent/signals sections, so the filler target
+  // handles are null and the dashboard skips the filler requests entirely.
   if (account.repositoryCount === 0) {
     main.append(renderNoRepositories(account));
-    return main;
+    return { root: main, recentContent: null, recentCount: null, signalsContent: null };
   }
   if (!response.hasObservedHistory) {
     main.append(renderNoHistory(account));
-    return main;
+    return { root: main, recentContent: null, recentCount: null, signalsContent: null };
   }
 
+  const signalsShell = renderSignalsShell(state);
+  const recentShell = renderRecentShell(state, !collapseSecondarySections);
   main.append(
     repositoryControl(response, state, handlers.setRepository),
     renderOverview(response, state),
-    renderSignalsShell(state),
+    signalsShell.section,
     renderNeedsAttention(response, state, previewSize),
     renderActiveChanges(response, state, previewSize),
-    renderRecentShell(state, !collapseSecondarySections),
+    recentShell.section,
   );
-  return main;
+  return { root: main, recentContent: recentShell.content, recentCount: recentShell.count, signalsContent: signalsShell.content };
 }
 
-export function renderDashboardRecentActivity(root: HTMLElement, response: ActivityResponseV1, state: ActivityUrlState): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-recent-content"]');
+// R7.2: takes the filler target nodes (content + count) directly from the dashboard
+// handle instead of re-querying the outlet by testid.
+export function renderDashboardRecentActivity(content: HTMLElement | null, count: HTMLElement | null, response: ActivityResponseV1, state: ActivityUrlState): void {
   if (!content) return;
   const total = response.counts.LOW + response.counts.MEDIUM + response.counts.HIGH;
-  const summaryCount = root.querySelector<HTMLElement>('[data-testid="recent-activity"] .home-section-count');
-  if (summaryCount) summaryCount.textContent = String(total);
+  if (count) count.textContent = String(total);
   if (!response.pullRequests.length) {
     content.replaceChildren(node('p', 'home-clear-state', 'No recent activity in this view.'));
     return;
@@ -350,8 +364,7 @@ export function renderDashboardRecentActivity(root: HTMLElement, response: Activ
   content.replaceChildren(changeList(response.pullRequests.slice(0, 5), state, 'recent-change'));
 }
 
-export function renderDashboardRecentActivityError(root: HTMLElement): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-recent-content"]');
+export function renderDashboardRecentActivityError(content: HTMLElement | null): void {
   if (!content) return;
   const status = node('p', 'dashboard-section-error', 'Recent activity could not be loaded. The operational summary above is still current.');
   status.setAttribute('role', 'status');
@@ -359,12 +372,11 @@ export function renderDashboardRecentActivityError(root: HTMLElement): void {
 }
 
 export function renderDashboardInsights(
-  root: HTMLElement,
+  content: HTMLElement | null,
   response: OperationalDashboardResponseV1,
   insights: DashboardInsightsData,
   state: ActivityUrlState,
 ): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-signals-content"]');
   if (!content) return;
   const activityLike: ActivityResponseV1 = {
     version: 1,
@@ -382,8 +394,7 @@ export function renderDashboardInsights(
   content.replaceChildren(renderDashboardSignalCanvas(activityLike, insights.evaluations, insights.transitions, state));
 }
 
-export function renderDashboardInsightsLoading(root: HTMLElement): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-signals-content"]');
+export function renderDashboardInsightsLoading(content: HTMLElement | null): void {
   if (!content) return;
   const status = node('p', 'dashboard-section-status', 'Loading supporting insights…');
   status.setAttribute('role', 'status');
@@ -391,11 +402,10 @@ export function renderDashboardInsightsLoading(root: HTMLElement): void {
 }
 
 export function renderDashboardInsightsError(
-  root: HTMLElement,
+  content: HTMLElement | null,
   source: DashboardInsightSource,
   retry: () => void,
 ): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-signals-content"]');
   if (!content) return;
   const status = node('p', 'dashboard-section-error', `Operational signals could not be loaded because ${source} are unavailable. Operational queues are unaffected.`);
   status.setAttribute('role', 'status');
@@ -405,13 +415,14 @@ export function renderDashboardInsightsError(
   content.replaceChildren(status, button);
 }
 
-export function markDashboardMergedUnresolved(root: HTMLElement, overview: OverviewDrilldownResponseV1): void {
+export function markDashboardMergedUnresolved(content: HTMLElement | null, overview: OverviewDrilldownResponseV1): void {
+  if (!content) return;
   const merged = new Set(
     overview.items
       .filter((item) => item.kind === 'merge')
       .map((item) => `${item.repository.id}:${item.pullRequest.number}`),
   );
-  for (const row of root.querySelectorAll<HTMLElement>('[data-testid^="recent-change-"]')) {
+  for (const row of content.querySelectorAll<HTMLElement>('[data-testid^="recent-change-"]')) {
     if (!row.dataset.prKey || !merged.has(row.dataset.prKey)) continue;
     const title = row.querySelector<HTMLElement>('.dashboard-change-title');
     if (!title || title.querySelector('.merge-unresolved-badge')) continue;

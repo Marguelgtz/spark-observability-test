@@ -254,8 +254,6 @@ async function render(): Promise<void> {
 
     if (route.kind === 'dashboard') {
       const dashboardTask = abortable(getOperationalDashboard(state), signal);
-      const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
-      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state), signal));
       void favoritesTask.catch(() => undefined);
 
       const [viewer, account, dashboard] = await Promise.all([
@@ -266,7 +264,7 @@ async function render(): Promise<void> {
       if (!isCurrent(generation, signal)) return;
 
       shell.setViewer(viewer);
-      const view = renderOperationalDashboard(account, dashboard, state, {
+      const dashboardView = renderOperationalDashboard(account, dashboard, state, {
         // R4.1: patch-only via the shared withActivityState applier so the dashboard
         // mutates list state identically to the activity route. Changing the window or
         // repository no longer silently resets attention/query/favorites (parity).
@@ -279,24 +277,34 @@ async function render(): Promise<void> {
           navigate(`/app?${serializeActivityState(next)}`);
         },
       }, preferences.previewSize, preferences.collapseSecondarySections);
-      shell.show(view);
+      shell.show(dashboardView.root);
+
+      // R7.3: in the empty (no repositories / no history) states the dashboard renders
+      // no recent/signals sections, so the recent/insights/merged filler requests are
+      // skipped entirely (no wasted calls).
+      if (dashboardView.recentContent === null || dashboardView.signalsContent === null) return;
+      // R7.2: hand each filler its exact target node from the view handle instead of
+      // re-querying the outlet by data-testid.
+      const recentContent = dashboardView.recentContent;
+      const recentCount = dashboardView.recentCount;
+      const signalsContent = dashboardView.signalsContent;
 
       let insightsLoaded = false;
       let insightsLoading = false;
       const loadInsights = () => {
         if (insightsLoaded || insightsLoading || signal.aborted) return;
         insightsLoading = true;
-        renderDashboardInsightsLoading(shell.outlet);
+        renderDashboardInsightsLoading(signalsContent);
         void abortable(getDashboardInsights(state), signal)
           .then((insights) => {
             if (!isCurrent(generation, signal)) return;
             insightsLoaded = true;
-            renderDashboardInsights(shell.outlet, dashboard, insights, state);
+            renderDashboardInsights(signalsContent, dashboard, insights, state);
           })
           .catch((error: unknown) => {
             if (!isCurrent(generation, signal) || isAbort(error)) return;
             const source = error instanceof DashboardInsightsError ? error.source : 'evaluation trends';
-            renderDashboardInsightsError(shell.outlet, source, loadInsights);
+            renderDashboardInsightsError(signalsContent, source, loadInsights);
           })
           .finally(() => {
             insightsLoading = false;
@@ -304,16 +312,18 @@ async function render(): Promise<void> {
       };
       loadInsights();
 
+      const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
+      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state), signal));
       void recentTask.then(async (result) => {
         if (!isCurrent(generation, signal)) return;
         if (!result.ok) {
-          if (!isAbort(result.error)) renderDashboardRecentActivityError(shell.outlet);
+          if (!isAbort(result.error)) renderDashboardRecentActivityError(recentContent);
           return;
         }
-        renderDashboardRecentActivity(shell.outlet, result.value, state);
+        renderDashboardRecentActivity(recentContent, recentCount, result.value, state);
         const mergeResult = await mergeOverviewTask;
         if (!isCurrent(generation, signal)) return;
-        if (mergeResult.ok) markDashboardMergedUnresolved(shell.outlet, mergeResult.value);
+        if (mergeResult.ok) markDashboardMergedUnresolved(recentContent, mergeResult.value);
       });
 
       return;
