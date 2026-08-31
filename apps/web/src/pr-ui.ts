@@ -47,13 +47,9 @@ function attentionClass(attention: string): string {
   return `attention attention-${attention.toLowerCase()}`;
 }
 
-export function pullRequestHref(repositoryId: number, pullRequestNumber: number, activitySearch = ''): string {
-  const base = `/app/repositories/${repositoryId}/pulls/${pullRequestNumber}`;
-  return activitySearch ? `${base}?${activitySearch}` : base;
-}
-
-function evaluationHref(repositoryId: number, headSha: string, activitySearch: string): string {
-  const base = `/app/evaluations/${repositoryId}/${headSha}`;
+export function evaluationHref(repositoryId: number, headSha: string, activitySearch: string): string {
+  // R6.1: encode the id so it re-parses through the router's shared (non-slash) id grammar.
+  const base = `/app/evaluations/${repositoryId}/${encodeURIComponent(headSha)}`;
   return activitySearch ? `${base}?${activitySearch}` : base;
 }
 
@@ -477,12 +473,9 @@ export function enhanceEvaluationWithPullRequestContext(
 ): void {
   const main = root.querySelector<HTMLElement>('main[data-testid="evaluation-detail"]');
   if (!main) return;
-  const existingBack = main.querySelector<HTMLAnchorElement>('.back-link');
-  if (existingBack) {
-    existingBack.textContent = `← PR #${detail.pullRequest.number}`;
-    existingBack.href = pullRequestHref(detail.repository.id, detail.pullRequest.number, activitySearch);
-  }
 
+  // R7.4: the back-link slot is reserved by the base view (correct PR target) before
+  // this async enhancement runs, so we only append the PR-context section — no flip.
   const index = identity.runId
     ? detail.runs.findIndex(run => run.runId === identity.runId)
     : detail.runs.findIndex(run => run.headSha === identity.headSha);

@@ -44,7 +44,7 @@ describe('activity URL state', () => {
   });
 
   it('serializes refresh-safe filter state', () => {
-    const value = serializeActivityState({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error', query: 'deploy', favoritesOnly: true });
+    const value = serializeActivityState({ window: '30d', attention: 'MEDIUM', repositoryId: 303, repositorySelection: { kind: 'repository', id: 303 }, fixture: 'error', query: 'deploy', favoritesOnly: true });
     const parsed = parseActivityState(`?${value}`);
     expect(parsed).toMatchObject({ window: '30d', attention: 'MEDIUM', repositoryId: 303, fixture: 'error', query: 'deploy', favoritesOnly: true });
   });
@@ -57,7 +57,7 @@ describe('activity URL state', () => {
 
   it('serializes a user-selected All repositories override', () => {
     const current = parseActivityState('', { defaultWindow: '7d', defaultRepositoryId: 303 });
-    const next = withActivityState(current, { repositoryId: null });
+    const next = withActivityState(current, { repositorySelection: { kind: 'all' } });
     expect(next.repositorySelection).toEqual({ kind: 'all' });
     expect(serializeActivityState(next)).toContain('repositoryId=all');
   });
@@ -73,8 +73,8 @@ describe('activity URL state', () => {
   it('preserves attention/query/favorites when window or repository changes (dashboard parity, R4.1)', () => {
     const base = parseActivityState('?window=7d&attention=HIGH&repositoryId=202&fixture=normal&q=checkout&favorites=1');
     expect(withActivityState(base, { window: '24h' })).toMatchObject({ window: '24h', attention: 'HIGH', repositoryId: 202, query: 'checkout', favoritesOnly: true });
-    expect(withActivityState(base, { repositoryId: null })).toMatchObject({ window: '7d', attention: 'HIGH', query: 'checkout', favoritesOnly: true });
-    const toRepository = withActivityState(base, { repositoryId: 303 });
+    expect(withActivityState(base, { repositorySelection: { kind: 'all' } })).toMatchObject({ window: '7d', attention: 'HIGH', query: 'checkout', favoritesOnly: true });
+    const toRepository = withActivityState(base, { repositorySelection: { kind: 'repository', id: 303 } });
     expect(toRepository).toMatchObject({ attention: 'HIGH', query: 'checkout', favoritesOnly: true });
     expect(toRepository.repositorySelection).toEqual({ kind: 'repository', id: 303 });
   });
@@ -96,5 +96,14 @@ describe('activity URL state', () => {
     const value = serializeActivityState(parsed);
     expect(value).not.toContain('cursor=');
     expect(value).not.toContain('limit=');
+  });
+
+  it('serializes repository selection for absent / all / repository (R5.3)', () => {
+    const defaults = { defaultWindow: '7d' as const, defaultRepositoryId: 303 };
+    const absent = serializeActivityState(parseActivityState('', defaults));
+    expect(absent).not.toContain('repositoryId=');
+    expect(parseActivityState(`?${absent}`, defaults).repositoryId).toBe(303);
+    expect(serializeActivityState(parseActivityState('?repositoryId=all', defaults))).toContain('repositoryId=all');
+    expect(serializeActivityState(parseActivityState('?repositoryId=202', defaults))).toContain('repositoryId=202');
   });
 });

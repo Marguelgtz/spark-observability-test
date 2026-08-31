@@ -36,8 +36,12 @@ export function parseRoute(pathname: string): DashboardRoute {
       runId: decodeURIComponent(runMatch[2]),
     };
   }
-  const evaluationMatch = pathname.match(/^\/app\/evaluations\/(\d+)\/([a-f0-9]{7,64})\/?$/i);
-  if (evaluationMatch) return { kind: 'evaluation', repositoryId: Number(evaluationMatch[1]), headSha: evaluationMatch[2] };
+  // R6.1: run and evaluation detail routes share one id grammar - an encoded, non-slash
+  // segment - so every href the builders emit re-parses to the same route. R6.3: /runs/
+  // is the current detail route; /evaluations/ is the legacy spelling kept for existing
+  // bookmarks, to be retired once links move to /runs/.
+  const evaluationMatch = pathname.match(/^\/app\/evaluations\/(\d+)\/([^/]+)\/?$/i);
+  if (evaluationMatch) return { kind: 'evaluation', repositoryId: Number(evaluationMatch[1]), headSha: decodeURIComponent(evaluationMatch[2]) };
   return { kind: 'not-found' };
 }
 

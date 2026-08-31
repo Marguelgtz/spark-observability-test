@@ -62,13 +62,13 @@ The base for the whole stack is the tip of the dashboard signal-placement stack,
 
 | PR | Branch | Base | Title | Status |
 | --- | --- | --- | --- | --- |
-| 1 | `docs/ui-route-hygiene-plan` | `ui/12-dashboard-signal-placement` | docs: add UI route-hygiene action plan & stack tracker | IN PROGRESS |
-| 2 | `ui/13-back-link-unification` | PR 1 | fix(web): unify detail back-link target & label | BACKLOG |
-| 3 | `ui/14-drop-dead-home-ui` | PR 2 | refactor(web): remove dead home-ui renderer | BACKLOG |
-| 4 | `ui/15-list-state-consistency` | PR 3 | fix(web): align dashboard/activity filter state | BACKLOG |
-| 5 | `ui/16-repository-selection-canonical` | PR 4 | refactor(web): canonicalize repository selection state | BACKLOG |
-| 6 | `ui/17-runs-evaluations-grammar` | PR 5 | fix(web): align runs/evaluations id grammar | BACKLOG |
-| 7 | `ui/18-scoped-route-effects` | PR 6 | refactor(web): scoped, generation-guarded route effects | BACKLOG |
+| 1 | `docs/ui-route-hygiene-plan` | `ui/12-dashboard-signal-placement` | docs: add UI route-hygiene action plan & stack tracker | MERGED |
+| 2 | `ui/13-back-link-unification` | PR 1 | fix(web): unify detail back-link target & label | MERGED |
+| 3 | `ui/14-drop-dead-home-ui` | PR 2 | refactor(web): remove dead home-ui renderer | MERGED |
+| 4 | `ui/15-list-state-consistency` | PR 3 | fix(web): align dashboard/activity filter state | MERGED |
+| 5 | `ui/16-repository-selection-canonical` | PR 4 | refactor(web): canonicalize repository selection state | MERGED |
+| 6 | `ui/17-runs-evaluations-grammar` | PR 5 | fix(web): align runs/evaluations id grammar | MERGED |
+| 7 | `ui/18-scoped-route-effects` | PR 6 | refactor(web): scoped, generation-guarded route effects | IN PROGRESS |
 | 8 | `ui/19-route-hygiene-sweep` | PR 7 | fix(web): route hygiene sweep (nav, back-links, legacy) | BACKLOG |
 
 ## Decisions needed (product/eng calls)
@@ -115,26 +115,26 @@ Acceptance: changing window/repo on the dashboard no longer silently wipes `atte
 
 | Status | ID | Task | Evidence |
 | --- | --- | --- | --- |
-| TODO | R5.1 | Make `repositorySelection` canonical and derive a read-only `repositoryId` where needed; drop the dual write path in `withActivityState` (`state.ts:81-85`) and the legacy serialize fallback (`state.ts:68`) | unit tests |
-| TODO | R5.2 | Update all consumers (dashboard/activity handlers, api calls) to the canonical field | typecheck |
-| TODO | R5.3 | Add serialization tests for absent / all / repository | `pnpm test` |
+| DONE | R5.1 | Make `repositorySelection` canonical and derive a read-only `repositoryId` where needed; drop the dual write path in `withActivityState` (`state.ts:81-85`) and the legacy serialize fallback (`state.ts:68`) | unit tests |
+| DONE | R5.2 | Update all consumers (dashboard/activity handlers, api calls) to the canonical field | typecheck |
+| DONE | R5.3 | Add serialization tests for absent / all / repository | `pnpm test` |
 
 ## PR 6 - `ui/17-runs-evaluations-grammar`
 
 | Status | ID | Task | Evidence |
 | --- | --- | --- | --- |
-| TODO | R6.1 | Define one id grammar for detail routes; make the `/evaluations/` parser and the href builders agree (validate or broaden `router.ts:39`) so every produced href re-parses to the same route | router unit test |
-| TODO | R6.2 | Add a regression test: a non-hex `headSha` (or otherwise invalid id) must not silently 404 - it must parse or fail loudly | router test |
-| TODO | R6.3 | Document the `/runs/` (new) vs `/evaluations/` (legacy) end-state and the plan to retire the legacy route | doc note |
+| DONE | R6.1 | Define one id grammar for detail routes; make the `/evaluations/` parser and the href builders agree (validate or broaden `router.ts:39`) so every produced href re-parses to the same route | router unit test |
+| DONE | R6.2 | Add a regression test: a non-hex `headSha` (or otherwise invalid id) must not silently 404 - it must parse or fail loudly | router test |
+| DONE | R6.3 | Document the `/runs/` (new) vs `/evaluations/` (legacy) end-state and the plan to retire the legacy route | doc note |
 
 ## PR 7 - `ui/18-scoped-route-effects`
 
 | Status | ID | Task | Evidence |
 | --- | --- | --- | --- |
-| TODO | R7.1 | Add a small scoped-effect helper (bundles the `generation !== routeGeneration \|\| signal.aborted` guard, e.g. via an AbortController-scoped callback) and use it for the dashboard fillers (`main.ts:283-316`) and the detail enhancers (`pr-ui.ts` run/evaluation PR-context) | review + e2e |
-| TODO | R7.2 | Replace the cross-file testid coupling in the dashboard fillers with an explicit handle/registry (the shell hands each filler its target node) so a rename cannot silently no-op | dashboard e2e: recent/insights/merged sections fill |
-| TODO | R7.3 | Skip the recent/insights/merged requests in the `no-repositories` / `no-history` dashboard states (`dashboard-ui.ts:320-327`) | e2e: no wasted filler calls in empty states |
-| TODO | R7.4 | Fix the back-link flicker (C3) by reserving the back-link slot and setting label + href once the PR-context resolves (builds on PR 2; covers D4) | e2e |
+| DONE | R7.1 | Add a small scoped-effect helper (bundles the `generation !== routeGeneration \|\| signal.aborted` guard, e.g. via an AbortController-scoped callback) and use it for the dashboard fillers (`main.ts:283-316`) and the detail enhancers (`pr-ui.ts` run/evaluation PR-context) | review + e2e |
+| DONE | R7.2 | Replace the cross-file testid coupling in the dashboard fillers with an explicit handle/registry (the shell hands each filler its target node) so a rename cannot silently no-op | dashboard e2e: recent/insights/merged sections fill |
+| DONE | R7.3 | Skip the recent/insights/merged requests in the `no-repositories` / `no-history` dashboard states (`dashboard-ui.ts:320-327`) | e2e: no wasted filler calls in empty states |
+| DONE | R7.4 | Fix the back-link flicker (C3) by reserving the back-link slot and setting label + href once the PR-context resolves (builds on PR 2; covers D4) | e2e |
 
 Acceptance: no filler relies on a raw `querySelector('[data-testid=...]')` across files; fast navigation never paints a stale route; empty dashboard states make no filler requests.
 
