@@ -13,7 +13,7 @@ import { FavoriteStore, type FavoriteTarget } from './favorites';
 import { changeLabel, evidenceLabel, relativeTime, shortSha, trustedGitHubUrl } from './format';
 import { serializeActivityState } from './state';
 import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
-import { activityRouteHref } from './route-links';
+import { pullRequestHref } from './route-links';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -512,8 +512,10 @@ function detailSection(title: string, values: string[], emptyLabel = 'None obser
 
 function availableDetail(detail: EvaluationDetailV1, activitySearch: string, favorites: FavoriteStore): HTMLElement {
   const fragment = node('div', 'detail-content');
-  const back = node('a', 'back-link', '← Activity');
-  back.href = activityRouteHref(activitySearch);
+  // R7.4: reserve the back-link slot in the base view (run/evaluation detail is
+  // PR-backed) so the async PR-context enhancement never flips the label/href.
+  const back = node('a', 'back-link', `← PR #${detail.pullRequest.number}`) as HTMLAnchorElement;
+  back.href = pullRequestHref(detail.repository.id, detail.pullRequest.number, activitySearch);
   back.dataset.routerLink = 'true';
   fragment.append(back);
 
@@ -591,8 +593,10 @@ export function renderEvaluation(viewer: ViewerV1, response: EvaluationDetailRes
     return root;
   }
 
-  const back = node('a', 'back-link', '← Activity');
-  back.href = activityRouteHref(activitySearch);
+  // R7.4: reserve the back-link slot (PR target) so the async PR-context enhancement
+  // never flips the label/href on the unavailable detail state.
+  const back = node('a', 'back-link', `← PR #${response.summary.pullRequest.number}`) as HTMLAnchorElement;
+  back.href = pullRequestHref(response.summary.repository.id, response.summary.pullRequest.number, activitySearch);
   back.dataset.routerLink = 'true';
   const unavailable = node('section', 'status-state unavailable-state');
   unavailable.dataset.testid = 'detail-unavailable';

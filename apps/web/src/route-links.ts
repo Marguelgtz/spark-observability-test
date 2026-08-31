@@ -11,3 +11,8 @@ export function activityRouteHref(search?: string): string {
 export function dashboardRouteHref(search?: string): string {
   return `/app${search ? `?${search}` : ''}`;
 }
+
+export function pullRequestHref(repositoryId: number, pullRequestNumber: number, activitySearch = ''): string {
+  const base = `/app/repositories/${repositoryId}/pulls/${pullRequestNumber}`;
+  return activitySearch ? `${base}?${activitySearch}` : base;
+}
