@@ -2,7 +2,7 @@ import type { AccountV1, ActivityResponseV1, PullRequestActivityV1 } from '@spar
 import type { OperationalDashboardResponseV1 } from '@spark/dashboard-contracts/dashboard';
 import { evidenceLabel, relativeTime } from './format';
 import { renderHomeInsightCanvases } from './insight-canvases';
-import type { DashboardInsightsData } from './dashboard-api';
+import type { DashboardInsightsData, DashboardInsightSource } from './dashboard-api';
 import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
 import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
@@ -382,12 +382,27 @@ export function renderDashboardInsights(
   content.replaceChildren(renderHomeInsightCanvases(activityLike, insights.evaluations, insights.transitions, state));
 }
 
-export function renderDashboardInsightsError(root: HTMLElement): void {
+export function renderDashboardInsightsLoading(root: HTMLElement): void {
   const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
   if (!content) return;
-  const status = node('p', 'dashboard-section-error', 'Supporting insights could not be loaded. Needs attention and active-change data are unaffected.');
+  const status = node('p', 'dashboard-section-status', 'Loading supporting insights…');
   status.setAttribute('role', 'status');
   content.replaceChildren(status);
+}
+
+export function renderDashboardInsightsError(
+  root: HTMLElement,
+  source: DashboardInsightSource,
+  retry: () => void,
+): void {
+  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
+  if (!content) return;
+  const status = node('p', 'dashboard-section-error', `Supporting insights could not be loaded because ${source} are unavailable. Operational queues are unaffected.`);
+  status.setAttribute('role', 'status');
+  const button = node('button', 'secondary-button dashboard-insights-retry', 'Retry supporting insights') as HTMLButtonElement;
+  button.type = 'button';
+  button.addEventListener('click', retry);
+  content.replaceChildren(status, button);
 }
 
 export function markDashboardMergedUnresolved(root: HTMLElement, overview: OverviewDrilldownResponseV1): void {

@@ -15,11 +15,12 @@ import { createPersistentAppShell } from './app-shell';
 import { getBehaviorPatterns, getChangeBehavior } from './behavior-api';
 import { enhanceOverviewWithBehaviorPatterns, enhancePullRequestWithBehavior } from './behavior-ui';
 import { enhancePullRequestWithSeverityTimeline } from './context-insight-enhancers';
-import { getDashboardInsights, getDashboardRecentActivity, getOperationalDashboard } from './dashboard-api';
+import { DashboardInsightsError, getDashboardInsights, getDashboardRecentActivity, getOperationalDashboard } from './dashboard-api';
 import {
   markDashboardMergedUnresolved,
   renderDashboardInsights,
   renderDashboardInsightsError,
+  renderDashboardInsightsLoading,
   renderDashboardRecentActivity,
   renderDashboardRecentActivityError,
   renderOperationalDashboard,
@@ -256,7 +257,6 @@ async function render(): Promise<void> {
     if (route.kind === 'dashboard') {
       const dashboardTask = abortable(getOperationalDashboard(state), signal);
       const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
-      const insightsTask = settle(abortable(getDashboardInsights(state), signal));
       const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state), signal));
       void favoritesTask.catch(() => undefined);
 
@@ -280,6 +280,31 @@ async function render(): Promise<void> {
       }, preferences.previewSize, preferences.collapseSecondarySections);
       shell.show(view);
 
+      const insightsDisclosure = shell.outlet.querySelector<HTMLDetailsElement>('[data-testid="dashboard-insights"]');
+      let insightsLoaded = false;
+      let insightsLoading = false;
+      const loadInsights = () => {
+        if (!insightsDisclosure?.open || insightsLoaded || insightsLoading || signal.aborted) return;
+        insightsLoading = true;
+        renderDashboardInsightsLoading(shell.outlet);
+        void abortable(getDashboardInsights(state), signal)
+          .then((insights) => {
+            if (generation !== routeGeneration || signal.aborted) return;
+            insightsLoaded = true;
+            renderDashboardInsights(shell.outlet, dashboard, insights, state);
+          })
+          .catch((error: unknown) => {
+            if (generation !== routeGeneration || signal.aborted || isAbort(error)) return;
+            const source = error instanceof DashboardInsightsError ? error.source : 'evaluation trends';
+            renderDashboardInsightsError(shell.outlet, source, loadInsights);
+          })
+          .finally(() => {
+            insightsLoading = false;
+          });
+      };
+      insightsDisclosure?.addEventListener('toggle', loadInsights);
+      loadInsights();
+
       void recentTask.then(async (result) => {
         if (generation !== routeGeneration || signal.aborted) return;
         if (!result.ok) {
@@ -292,14 +317,6 @@ async function render(): Promise<void> {
         if (mergeResult.ok) markDashboardMergedUnresolved(shell.outlet, mergeResult.value);
       });
 
-      void insightsTask.then((result) => {
-        if (generation !== routeGeneration || signal.aborted) return;
-        if (!result.ok) {
-          if (!isAbort(result.error)) renderDashboardInsightsError(shell.outlet);
-          return;
-        }
-        renderDashboardInsights(shell.outlet, dashboard, result.value, state);
-      });
       return;
     }
 

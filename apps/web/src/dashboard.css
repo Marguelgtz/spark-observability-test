@@ -57,6 +57,7 @@
 .dashboard-section-error { margin: 0; padding: 16px 0; border-top: 1px solid #e7e7e2; }
 .dashboard-section-error { font-weight: 600; }
 .dashboard-section-link { display: inline-block; margin: 14px 0 2px; font-size: 12px; }
+.dashboard-insights-retry { margin: 2px 0 16px; }
 .dashboard-disclosure[data-testid='dashboard-insights'] .insight-canvas-stack { margin-top: 0; }
 
 .dashboard-trend-link {

@@ -131,11 +131,28 @@ export interface DashboardInsightsData {
   transitions: NotableTransitionInsightsV1;
 }
 
+export type DashboardInsightSource = 'evaluation trends' | 'transition insights';
+
+export class DashboardInsightsError extends Error {
+  constructor(readonly source: DashboardInsightSource, options?: ErrorOptions) {
+    super(`${source} could not be loaded`, options);
+    this.name = 'DashboardInsightsError';
+  }
+}
+
+async function insightRequest<T>(source: DashboardInsightSource, request: Promise<T>): Promise<T> {
+  try {
+    return await request;
+  } catch (cause) {
+    throw new DashboardInsightsError(source, { cause });
+  }
+}
+
 export async function getDashboardInsights(state: ActivityUrlState): Promise<DashboardInsightsData> {
-  if (__SPARK_FIXTURE_API__ && dashboardFailure() === 'insights') throw new Error('Synthetic dashboard insights failure');
+  if (__SPARK_FIXTURE_API__ && dashboardFailure() === 'insights') throw new DashboardInsightsError('evaluation trends');
   const [evaluations, transitions] = await Promise.all([
-    getOverviewDrilldown('evaluations', state),
-    getNotableTransitionInsights(state),
+    insightRequest('evaluation trends', getOverviewDrilldown('evaluations', state)),
+    insightRequest('transition insights', getNotableTransitionInsights(state)),
   ]);
   return { evaluations, transitions };
 }
