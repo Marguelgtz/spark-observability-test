@@ -13,7 +13,7 @@ test('dashboard metrics drill into existing views and insights stay secondary', 
   await expect(page.getByTestId('dashboard-card-attention')).toHaveAttribute('href', /\/app\/overview\/attention/);
   await expect(page.getByTestId('dashboard-card-active')).toHaveAttribute('href', /\/app\/overview\/pull-requests/);
   await expect(page.getByTestId('dashboard-card-merged-unresolved')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
-  await expect(page.getByTestId('dashboard-card-recoveries')).not.toHaveAttribute('href');
+  await expect(page.getByTestId('dashboard-card-recoveries')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
 
   const mergedRecent = page.getByTestId('recent-change-101-42');
   await expect(mergedRecent).toBeVisible();

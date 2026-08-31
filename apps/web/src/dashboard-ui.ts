@@ -62,7 +62,7 @@ function renderOverview(response: OperationalDashboardResponseV1, state: Activit
     metric('Needs attention', response.needsAttention.total, 'dashboard-card-attention', 'Open HIGH / MEDIUM', overviewHref('attention', state)),
     metric('Active changes', response.activeChanges.total, 'dashboard-card-active', 'Open observed PRs', overviewHref('pull-requests', state)),
     metric('Merged unresolved', response.overview.mergedUnresolved, 'dashboard-card-merged-unresolved', undefined, overviewHref('merged-unresolved', state)),
-    metric('Recent recoveries', response.overview.recovery.recoveredPRs, 'dashboard-card-recoveries', `in ${state.window}`),
+    metric('Recent recoveries', response.overview.recovery.recoveredPRs, 'dashboard-card-recoveries', `in ${state.window}`, overviewHref('merged-unresolved', state)),
   );
   section.append(metrics);
   return section;
