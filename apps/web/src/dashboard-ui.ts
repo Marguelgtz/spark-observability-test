@@ -1,7 +1,7 @@
 import type { AccountV1, ActivityResponseV1, PullRequestActivityV1 } from '@spark/dashboard-contracts';
 import type { OperationalDashboardResponseV1 } from '@spark/dashboard-contracts/dashboard';
 import { evidenceLabel, relativeTime } from './format';
-import { renderHomeInsightCanvases } from './insight-canvases';
+import { renderDashboardSignalCanvas } from './insight-canvases';
 import type { DashboardInsightsData, DashboardInsightSource } from './dashboard-api';
 import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
@@ -176,8 +176,8 @@ function renderActiveChanges(response: OperationalDashboardResponseV1, state: Ac
   return details;
 }
 
-function renderRecentShell(state: ActivityUrlState): HTMLElement {
-  const { details, content } = disclosure('Recent activity', 'recent-activity', true, '…');
+function renderRecentShell(state: ActivityUrlState, open: boolean): HTMLElement {
+  const { details, content } = disclosure('Recent activity', 'recent-activity', open, '…');
   content.dataset.testid = 'dashboard-recent-content';
   const loading = node('p', 'dashboard-section-status', 'Loading recent activity…');
   loading.setAttribute('role', 'status');
@@ -189,26 +189,23 @@ function renderRecentShell(state: ActivityUrlState): HTMLElement {
   return details;
 }
 
-function renderTrendLink(state: ActivityUrlState): HTMLElement {
-  const section = node('section', 'dashboard-trend-link');
-  section.dataset.testid = 'dashboard-trend-link';
-  const copy = node('div', 'dashboard-trend-link-copy');
-  copy.append(node('h2', undefined, 'Trend analysis'), node('p', 'muted', 'Evaluation flow, attention composition, and iteration density.'));
-  const link = node('a', 'secondary-link', 'Open evaluation trends →') as HTMLAnchorElement;
+function renderSignalsShell(state: ActivityUrlState): HTMLElement {
+  const section = node('section', 'dashboard-signals');
+  section.dataset.testid = 'dashboard-signals';
+  const heading = node('div', 'dashboard-signals-heading');
+  const copy = node('div');
+  copy.append(node('h2', undefined, 'Operational signals'), node('p', 'muted', 'Move between flow, attention, iteration, and change behavior without leaving the dashboard.'));
+  const link = node('a', 'home-section-link', 'Open full evaluation trends →') as HTMLAnchorElement;
   link.href = overviewHref('evaluations', state);
   link.dataset.routerLink = 'true';
-  section.append(copy, link);
-  return section;
-}
-
-function renderInsightsShell(collapseSecondarySections: boolean): HTMLElement {
-  const { details, content } = disclosure('Insights', 'dashboard-insights', !collapseSecondarySections);
-  details.id = 'insights';
-  content.dataset.testid = 'dashboard-insights-content';
+  heading.append(copy, link);
+  const content = node('div', 'dashboard-signals-content');
+  content.dataset.testid = 'dashboard-signals-content';
   const loading = node('p', 'dashboard-section-status', 'Loading supporting insights…');
   loading.setAttribute('role', 'status');
   content.append(loading);
-  return details;
+  section.append(heading, content);
+  return section;
 }
 
 function githubLink(label: string, href: string, className: string): HTMLAnchorElement {
@@ -333,10 +330,9 @@ export function renderOperationalDashboard(
     repositoryControl(response, state, handlers.setRepository),
     renderOverview(response, state),
     renderNeedsAttention(response, state, previewSize),
+    renderSignalsShell(state),
     renderActiveChanges(response, state, previewSize),
-    renderTrendLink(state),
-    renderRecentShell(state),
-    renderInsightsShell(collapseSecondarySections),
+    renderRecentShell(state, !collapseSecondarySections),
   );
   return main;
 }
@@ -368,7 +364,7 @@ export function renderDashboardInsights(
   insights: DashboardInsightsData,
   state: ActivityUrlState,
 ): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
+  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-signals-content"]');
   if (!content) return;
   const activityLike: ActivityResponseV1 = {
     version: 1,
@@ -383,11 +379,11 @@ export function renderDashboardInsights(
     hasObservedHistory: response.hasObservedHistory,
     pagination: { nextCursor: null },
   };
-  content.replaceChildren(renderHomeInsightCanvases(activityLike, insights.evaluations, insights.transitions, state));
+  content.replaceChildren(renderDashboardSignalCanvas(activityLike, insights.evaluations, insights.transitions, state));
 }
 
 export function renderDashboardInsightsLoading(root: HTMLElement): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
+  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-signals-content"]');
   if (!content) return;
   const status = node('p', 'dashboard-section-status', 'Loading supporting insights…');
   status.setAttribute('role', 'status');
@@ -399,11 +395,11 @@ export function renderDashboardInsightsError(
   source: DashboardInsightSource,
   retry: () => void,
 ): void {
-  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
+  const content = root.querySelector<HTMLElement>('[data-testid="dashboard-signals-content"]');
   if (!content) return;
-  const status = node('p', 'dashboard-section-error', `Supporting insights could not be loaded because ${source} are unavailable. Operational queues are unaffected.`);
+  const status = node('p', 'dashboard-section-error', `Operational signals could not be loaded because ${source} are unavailable. Operational queues are unaffected.`);
   status.setAttribute('role', 'status');
-  const button = node('button', 'secondary-button dashboard-insights-retry', 'Retry supporting insights') as HTMLButtonElement;
+  const button = node('button', 'secondary-button dashboard-insights-retry', 'Retry operational signals') as HTMLButtonElement;
   button.type = 'button';
   button.addEventListener('click', retry);
   content.replaceChildren(status, button);

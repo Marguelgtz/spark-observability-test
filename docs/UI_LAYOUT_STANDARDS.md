@@ -72,7 +72,7 @@ New components should use these values before introducing an exception.
 
 ### Dashboard
 
-Page controls, operational metrics, needs-attention work, active changes, a compact route into dedicated trend analysis, recent activity, and optional supporting insight. Full comparative charts belong to their overview drilldown rather than the operational dashboard.
+Page controls, operational metrics, needs-attention work, one persistent tabbed Operational signals canvas, active changes, and recent activity. The dashboard canvas offers Flow, Attention, Iteration, and Behavior summaries; full comparative chart collections remain in their overview drilldowns.
 
 ### Activity
 

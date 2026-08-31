@@ -96,8 +96,8 @@ export function renderSettings(
   secondaryInput.dataset.testid = 'settings-collapse-secondary';
   const secondaryCopy = node('span', 'settings-choice-copy');
   secondaryCopy.append(
-    node('strong', undefined, 'Collapse secondary sections by default'),
-    node('span', 'muted', 'Keep supporting Insights out of the initial operational scan.'),
+    node('strong', undefined, 'Collapse recent activity by default'),
+    node('span', 'muted', 'Keep the historical activity list out of the initial operational scan.'),
   );
   secondary.append(secondaryInput, secondaryCopy);
 

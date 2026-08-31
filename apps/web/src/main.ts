@@ -280,11 +280,10 @@ async function render(): Promise<void> {
       }, preferences.previewSize, preferences.collapseSecondarySections);
       shell.show(view);
 
-      const insightsDisclosure = shell.outlet.querySelector<HTMLDetailsElement>('[data-testid="dashboard-insights"]');
       let insightsLoaded = false;
       let insightsLoading = false;
       const loadInsights = () => {
-        if (!insightsDisclosure?.open || insightsLoaded || insightsLoading || signal.aborted) return;
+        if (insightsLoaded || insightsLoading || signal.aborted) return;
         insightsLoading = true;
         renderDashboardInsightsLoading(shell.outlet);
         void abortable(getDashboardInsights(state), signal)
@@ -302,7 +301,6 @@ async function render(): Promise<void> {
             insightsLoading = false;
           });
       };
-      insightsDisclosure?.addEventListener('toggle', loadInsights);
       loadInsights();
 
       void recentTask.then(async (result) => {

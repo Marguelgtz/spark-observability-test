@@ -1,23 +1,19 @@
 import { expect, test } from '@playwright/test';
 
-test('preserves temporal volume bars and adds iteration density canvases', async ({ page }) => {
+test('dashboard signals expose flow and iteration in one canvas', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
   await expect(page.getByTestId('dashboard-trend-snapshot')).toHaveCount(0);
-  await expect(page.getByTestId('dashboard-trend-link')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Open evaluation trends →', exact: true })).toHaveAttribute('href', /\/app\/overview\/evaluations/);
-
-  const dashboardInsights = page.getByTestId('dashboard-insights');
-  await expect(dashboardInsights).not.toHaveAttribute('open', '');
-  await expect(page.getByTestId('home-charts')).not.toBeVisible();
-  await dashboardInsights.locator('summary').click();
-
-  const throughput = page.getByTestId('insight-canvas-throughput-iteration');
-  await expect(throughput).toBeVisible();
-  const homeVolume = page.getByTestId('home-evaluation-volume');
-  await expect(homeVolume).toBeVisible();
-  await expect(homeVolume).toHaveAttribute('data-chart-kind', 'bar');
-  await expect(page.getByTestId('iteration-density-histogram')).toHaveAttribute('data-chart-kind', 'histogram');
-  await expect(throughput.locator('.insight-canvas-interpretation')).toContainText('evaluations per PR');
+  await expect(page.getByRole('link', { name: 'Open full evaluation trends →', exact: true })).toHaveAttribute('href', /\/app\/overview\/evaluations/);
+  const signalCanvas = page.getByTestId('dashboard-signal-canvas');
+  const flowTab = signalCanvas.getByRole('tab', { name: 'Flow' });
+  await expect(flowTab).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('dashboard-signal-flow').locator('[data-chart-kind="line"]')).toHaveAttribute('data-scale-mode', 'dual');
+  await flowTab.focus();
+  await flowTab.press('ArrowRight');
+  await expect(signalCanvas.getByRole('tab', { name: 'Attention' })).toHaveAttribute('aria-selected', 'true');
+  await signalCanvas.getByRole('tab', { name: 'Iteration' }).click();
+  await expect(page.getByTestId('dashboard-signal-iteration').locator('[data-chart-kind="histogram"]')).toBeVisible();
+  await expect(page.getByTestId('dashboard-signal-iteration')).toContainText('evaluations per PR');
 
   await page.goto('/app/overview/evaluations?window=7d&attention=ALL');
   const evaluationVolume = page.getByTestId('overview-evaluation-volume');

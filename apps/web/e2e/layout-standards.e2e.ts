@@ -31,19 +31,19 @@ test('routes use analytics, standard, and reading rails without viewport overflo
   await expectNoViewportOverflow(page);
 });
 
-test('dashboard moves from operational work to trends, recent activity, and optional insight', async ({ page }) => {
+test('dashboard moves from operational work to a signal canvas and recent activity', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
   const order = await page.getByTestId('dashboard-view').evaluate((element) => {
     const children = [...element.children];
     const index = (testId: string) => children.findIndex(child => child.getAttribute('data-testid') === testId);
     return {
       attention: index('needs-attention'),
-      trends: index('dashboard-trend-link'),
+      signals: index('dashboard-signals'),
+      active: index('active-changes'),
       recent: index('recent-activity'),
-      insights: index('dashboard-insights'),
     };
   });
-  expect(order.attention).toBeLessThan(order.trends);
-  expect(order.trends).toBeLessThan(order.recent);
-  expect(order.recent).toBeLessThan(order.insights);
+  expect(order.attention).toBeLessThan(order.signals);
+  expect(order.signals).toBeLessThan(order.active);
+  expect(order.active).toBeLessThan(order.recent);
 });

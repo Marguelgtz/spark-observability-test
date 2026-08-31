@@ -28,7 +28,7 @@ test('plain routes use saved defaults at shared integration boundaries', async (
 
   await expect(page.getByTestId('window-24h')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('repository-select')).toHaveValue('303');
-  await expect(page.getByTestId('dashboard-insights')).toHaveAttribute('open', '');
+  await expect(page.getByTestId('recent-activity')).toHaveAttribute('open', '');
   await expect(page.getByTestId('app-shell')).toHaveAttribute('data-density', 'compact');
 
   await page.getByRole('link', { name: 'Activity', exact: true }).click();

@@ -7,7 +7,7 @@ const metrics = [
   ['merged-unresolved', 'Change outcomes'],
 ] as const;
 
-test('dashboard metrics drill into existing views and insights stay secondary', async ({ page }) => {
+test('dashboard metrics drill into existing views and operational signals stay in one canvas', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
 
   await expect(page.getByTestId('dashboard-card-attention')).toHaveAttribute('href', /\/app\/overview\/attention/);
@@ -15,24 +15,19 @@ test('dashboard metrics drill into existing views and insights stay secondary', 
   await expect(page.getByTestId('dashboard-card-merged-unresolved')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
   await expect(page.getByTestId('dashboard-card-recoveries')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved.*#outcome-stabilization/);
 
+  await page.getByTestId('recent-activity').locator('summary').click();
   const mergedRecent = page.getByTestId('recent-change-101-42');
   await expect(mergedRecent).toBeVisible();
   await expect(mergedRecent.getByText('Merged unresolved', { exact: true })).toBeVisible();
 
-  const insights = page.getByTestId('dashboard-insights');
-  await expect(page.getByTestId('home-charts')).not.toBeVisible();
-  await insights.locator('summary').click();
-
-  const homeCharts = page.getByTestId('home-charts');
-  await expect(homeCharts).toBeVisible();
-  await expect(page.getByTestId('insight-canvas-throughput-iteration')).toBeVisible();
-  await expect(page.getByTestId('insight-canvas-attention-health')).toBeVisible();
-  await expect(page.getByTestId('insight-canvas-notable-behavior')).toBeVisible();
-  await expect(homeCharts.locator('[data-chart-kind="bar"]')).toBeVisible();
-  await expect(homeCharts.locator('[data-chart-kind="histogram"]')).toBeVisible();
-  await expect(homeCharts.locator('[data-chart-kind="stacked-bar"]')).toBeVisible();
-  await expect(homeCharts.locator('[data-chart-kind="donut"]')).toBeVisible();
-  await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
+  const signals = page.getByTestId('dashboard-signal-canvas');
+  await expect(signals).toBeVisible();
+  await expect(page.getByTestId('dashboard-signal-flow')).toBeVisible();
+  await expect(page.getByTestId('dashboard-signal-flow').locator('[data-chart-kind="line"]')).toHaveAttribute('data-scale-mode', 'dual');
+  await signals.getByRole('tab', { name: 'Iteration' }).click();
+  await expect(page.getByTestId('dashboard-signal-iteration').locator('[data-chart-kind="histogram"]')).toBeVisible();
+  await signals.getByRole('tab', { name: 'Behavior' }).click();
+  await expect(page.getByTestId('dashboard-signal-behavior').locator('[data-chart-kind="horizontal-bar"]')).toBeVisible();
 
   await page.getByTestId('dashboard-card-attention').click();
   await expect(page).toHaveURL(/\/app\/overview\/attention\?window=7d/);

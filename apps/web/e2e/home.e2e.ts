@@ -22,12 +22,12 @@ test('dashboard leads with action-oriented operational queues', async ({ page })
   await expect(page.getByTestId('active-change-101-42')).toHaveCount(0);
 
   const recent = page.getByTestId('recent-activity');
-  await expect(recent).toHaveAttribute('open', '');
+  await expect(recent).not.toHaveAttribute('open', '');
+  await recent.locator('summary').click();
   await expect(page.getByRole('link', { name: 'View all activity →', exact: true })).toBeVisible();
 
-  const insights = page.getByTestId('dashboard-insights');
-  await expect(insights).not.toHaveAttribute('open', '');
-  await expect(page.getByTestId('home-charts')).not.toBeVisible();
+  await expect(page.getByTestId('dashboard-signals')).toBeVisible();
+  await expect(page.getByTestId('dashboard-signal-canvas')).toBeVisible();
 });
 
 test('dashboard filters update URL-owned operational context', async ({ page }) => {
@@ -49,19 +49,17 @@ test('recent activity failure does not blank the operational dashboard', async (
   await expect(page.getByTestId('change-overview')).toBeVisible();
   await expect(page.getByTestId('needs-attention')).toBeVisible();
   await expect(page.getByTestId('active-changes')).toBeVisible();
+  await page.getByTestId('recent-activity').locator('summary').click();
   await expect(page.getByText('Recent activity could not be loaded. The operational summary above is still current.')).toBeVisible();
 });
 
-test('insights failure remains isolated behind secondary disclosure', async ({ page }) => {
+test('signals failure remains isolated from operational queues', async ({ page }) => {
   await page.goto('/app?fixture=normal&dashboardFailure=insights&window=7d&attention=ALL');
   await expect(page.getByTestId('change-overview')).toBeVisible();
   await expect(page.getByTestId('needs-attention')).toBeVisible();
-  await expect(page.getByTestId('dashboard-trend-link')).toBeVisible();
-  const insights = page.getByTestId('dashboard-insights');
-  await expect(page.getByText(/Supporting insights could not be loaded/)).not.toBeVisible();
-  await insights.locator('summary').click();
-  await expect(page.getByText('Supporting insights could not be loaded because evaluation trends are unavailable. Operational queues are unaffected.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Retry supporting insights' })).toBeVisible();
+  await expect(page.getByTestId('dashboard-signals')).toBeVisible();
+  await expect(page.getByText('Operational signals could not be loaded because evaluation trends are unavailable. Operational queues are unaffected.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry operational signals' })).toBeVisible();
 });
 
 test('installed repositories with no observed activity show onboarding', async ({ page }) => {

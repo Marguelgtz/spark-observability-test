@@ -77,6 +77,106 @@ function canvasStack(testid: string): HTMLElement {
   return stack;
 }
 
+export function renderDashboardSignalCanvas(
+  activity: ActivityResponseV1,
+  evaluations: OverviewDrilldownResponseV1,
+  transitions: NotableTransitionInsightsV1,
+  state: ActivityUrlState,
+): HTMLElement {
+  const iteration = deriveIterationInsight(evaluations, activity.overview ? {
+    observedPRs: activity.overview.observedPRs,
+    totalEvaluations: activity.overview.totalEvaluations,
+  } : undefined);
+  const signals = [
+    {
+      id: 'flow',
+      label: 'Flow',
+      description: 'Evaluation volume and distinct observed pull requests use independent scales.',
+      chart: lineChart(evaluations.trend, 'Evaluations vs observed PRs', [
+        { label: 'Evaluations', read: (point) => point.evaluations },
+        { label: 'PRs observed', read: (point) => point.observedPRs },
+      ], state.window, { dualScale: true }),
+      interpretation: iterationInterpretation(iteration),
+    },
+    {
+      id: 'attention',
+      label: 'Attention',
+      description: 'How evaluation attention changed across the selected window.',
+      chart: stackedBarChart(evaluationAttentionTrend(evaluations), 'Evaluation attention', [
+        { label: 'LOW', read: (point) => point.low, tone: 'low' },
+        { label: 'MEDIUM', read: (point) => point.medium, tone: 'medium' },
+        { label: 'HIGH', read: (point) => point.high, tone: 'high' },
+      ], state.window),
+      interpretation: `${evaluations.trend.reduce((sum, point) => sum + point.attentionEvaluations, 0)} attention evaluations observed in ${state.window}.`,
+    },
+    {
+      id: 'iteration',
+      label: 'Iteration',
+      description: 'How evaluation activity is distributed across observed changes.',
+      chart: histogramChart('Evaluations per PR', 'Iteration distribution', iteration.histogram),
+      interpretation: iterationInterpretation(iteration),
+    },
+    {
+      id: 'behavior',
+      label: 'Behavior',
+      description: 'The material ways observed changes moved during the window.',
+      chart: horizontalBarChart('Notable transition mix', 'Across observed changes', transitionMix(transitions, 6)),
+      interpretation: transitionInterpretation(transitions),
+    },
+  ];
+
+  const canvas = node('section', 'dashboard-signal-canvas');
+  canvas.dataset.testid = 'dashboard-signal-canvas';
+  const tabs = node('div', 'dashboard-signal-tabs');
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'Operational signal');
+  const panels = node('div', 'dashboard-signal-panels');
+  const buttons: HTMLButtonElement[] = [];
+  const panelElements: HTMLElement[] = [];
+
+  const select = (index: number, focus = false) => {
+    buttons.forEach((button, buttonIndex) => {
+      const selected = buttonIndex === index;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      panelElements[buttonIndex].hidden = !selected;
+    });
+    if (focus) buttons[index].focus();
+  };
+
+  signals.forEach((signal, index) => {
+    const button = node('button', 'dashboard-signal-tab', signal.label) as HTMLButtonElement;
+    button.type = 'button';
+    button.id = `dashboard-signal-tab-${signal.id}`;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', `dashboard-signal-panel-${signal.id}`);
+    button.addEventListener('click', () => select(index));
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0
+        : event.key === 'End' ? buttons.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+      select(next, true);
+    });
+    buttons.push(button);
+    tabs.append(button);
+
+    const panel = node('section', 'dashboard-signal-panel');
+    panel.id = `dashboard-signal-panel-${signal.id}`;
+    panel.dataset.testid = `dashboard-signal-${signal.id}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', button.id);
+    panel.append(node('p', 'dashboard-signal-description', signal.description), signal.chart, node('p', 'dashboard-signal-interpretation', signal.interpretation));
+    panelElements.push(panel);
+    panels.append(panel);
+  });
+
+  select(0);
+  canvas.append(tabs, panels);
+  return canvas;
+}
+
 export function renderHomeInsightCanvases(
   activity: ActivityResponseV1,
   evaluations: OverviewDrilldownResponseV1,
