@@ -123,9 +123,9 @@ Acceptance: changing window/repo on the dashboard no longer silently wipes `atte
 
 | Status | ID | Task | Evidence |
 | --- | --- | --- | --- |
-| TODO | R6.1 | Define one id grammar for detail routes; make the `/evaluations/` parser and the href builders agree (validate or broaden `router.ts:39`) so every produced href re-parses to the same route | router unit test |
-| TODO | R6.2 | Add a regression test: a non-hex `headSha` (or otherwise invalid id) must not silently 404 - it must parse or fail loudly | router test |
-| TODO | R6.3 | Document the `/runs/` (new) vs `/evaluations/` (legacy) end-state and the plan to retire the legacy route | doc note |
+| DONE | R6.1 | Define one id grammar for detail routes; make the `/evaluations/` parser and the href builders agree (validate or broaden `router.ts:39`) so every produced href re-parses to the same route | router unit test |
+| DONE | R6.2 | Add a regression test: a non-hex `headSha` (or otherwise invalid id) must not silently 404 - it must parse or fail loudly | router test |
+| DONE | R6.3 | Document the `/runs/` (new) vs `/evaluations/` (legacy) end-state and the plan to retire the legacy route | doc note |
 
 ## PR 7 - `ui/18-scoped-route-effects`
 
