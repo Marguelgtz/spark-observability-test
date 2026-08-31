@@ -52,8 +52,9 @@ export function pullRequestHref(repositoryId: number, pullRequestNumber: number,
   return activitySearch ? `${base}?${activitySearch}` : base;
 }
 
-function evaluationHref(repositoryId: number, headSha: string, activitySearch: string): string {
-  const base = `/app/evaluations/${repositoryId}/${headSha}`;
+export function evaluationHref(repositoryId: number, headSha: string, activitySearch: string): string {
+  // R6.1: encode the id so it re-parses through the router's shared (non-slash) id grammar.
+  const base = `/app/evaluations/${repositoryId}/${encodeURIComponent(headSha)}`;
   return activitySearch ? `${base}?${activitySearch}` : base;
 }
 
