@@ -59,34 +59,28 @@
 .dashboard-section-link { display: inline-block; margin: 14px 0 2px; font-size: 12px; }
 .dashboard-disclosure[data-testid='dashboard-insights'] .insight-canvas-stack { margin-top: 0; }
 
-.dashboard-trend-snapshot {
+.dashboard-trend-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
   margin-top: 30px;
   border-top: 1px solid #d7d7d1;
-  padding-top: 24px;
+  border-bottom: 1px solid #e7e7e2;
+  padding: 24px 0;
 }
-.dashboard-trend-heading-copy { display: grid; gap: 4px; }
-.dashboard-trend-heading-copy h2,
-.dashboard-trend-heading-copy p { margin: 0; }
-.dashboard-trend-heading-copy h2 { font-size: 15px; }
-.dashboard-trend-heading-copy p { font-size: 12px; }
-.dashboard-trend-canvases {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 14px;
-}
-.dashboard-trend-canvases > :first-child { grid-column: span 2; }
-.dashboard-trend-canvases .insight-canvas + .insight-canvas { margin-top: 0; }
-.dashboard-trend-canvases .insight-canvas { min-width: 0; }
-.dashboard-trend-canvases .insight-canvas-heading { margin-bottom: 10px; }
-.dashboard-trend-canvases .insight-canvas .insight-chart { padding: 10px; }
-.dashboard-trend-canvases .insight-canvas-interpretation { margin-top: 10px; padding-top: 9px; }
+.dashboard-trend-link-copy { display: grid; gap: 4px; }
+.dashboard-trend-link-copy h2,
+.dashboard-trend-link-copy p { margin: 0; }
+.dashboard-trend-link-copy h2 { font-size: 15px; }
+.dashboard-trend-link-copy p { font-size: 12px; }
+.dashboard-trend-link .secondary-link { flex: 0 0 auto; }
 
 @media (max-width: 760px) {
   .dashboard-change-row { grid-template-columns: 70px minmax(0, 1fr); }
   .dashboard-change-time { grid-column: 2; }
-  .dashboard-trend-canvases { grid-template-columns: 1fr; }
-  .dashboard-trend-canvases > :first-child { grid-column: auto; }
+  .dashboard-trend-link { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .dashboard-trend-link .secondary-link { width: 100%; }
 }
 
 @media (max-width: 480px) {

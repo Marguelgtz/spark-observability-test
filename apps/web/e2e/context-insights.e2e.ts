@@ -2,16 +2,9 @@ import { expect, test } from '@playwright/test';
 
 test('preserves temporal volume bars and adds iteration density canvases', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
-  const snapshot = page.getByTestId('dashboard-trend-snapshot');
-  await expect(snapshot).toBeVisible();
-  await expect(page.getByTestId('dashboard-trend-charts')).toBeVisible();
-  await expect(page.getByTestId('insight-canvas-dashboard-volume')).toBeVisible();
-  await expect(page.getByTestId('insight-canvas-dashboard-attention')).toBeVisible();
-  await expect(page.getByTestId('insight-canvas-dashboard-movement')).toBeVisible();
-  await expect(page.getByTestId('dashboard-evaluation-volume')).toHaveAttribute('data-chart-kind', 'bar');
-  await expect(page.getByTestId('dashboard-current-attention')).toHaveAttribute('data-chart-kind', 'donut');
-  await expect(page.getByTestId('dashboard-transition-mix')).toHaveAttribute('data-chart-kind', 'horizontal-bar');
-  await expect(page.getByRole('link', { name: 'Explore trends →', exact: true })).toHaveAttribute('href', /\/app\/overview\/evaluations/);
+  await expect(page.getByTestId('dashboard-trend-snapshot')).toHaveCount(0);
+  await expect(page.getByTestId('dashboard-trend-link')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open evaluation trends →', exact: true })).toHaveAttribute('href', /\/app\/overview\/evaluations/);
 
   const dashboardInsights = page.getByTestId('dashboard-insights');
   await expect(dashboardInsights).not.toHaveAttribute('open', '');

@@ -72,7 +72,7 @@ New components should use these values before introducing an exception.
 
 ### Dashboard
 
-Page controls, operational metrics, needs-attention work, primary trend snapshot, recent activity, and optional supporting insight. Comparative charts use the analytics rail and a dominant-first grid rather than three equal narrow panels.
+Page controls, operational metrics, needs-attention work, active changes, a compact route into dedicated trend analysis, recent activity, and optional supporting insight. Full comparative charts belong to their overview drilldown rather than the operational dashboard.
 
 ### Activity
 

@@ -1,7 +1,7 @@
 import type { AccountV1, ActivityResponseV1, PullRequestActivityV1 } from '@spark/dashboard-contracts';
 import type { OperationalDashboardResponseV1 } from '@spark/dashboard-contracts/dashboard';
 import { evidenceLabel, relativeTime } from './format';
-import { renderDashboardTrendSnapshot, renderHomeInsightCanvases } from './insight-canvases';
+import { renderHomeInsightCanvases } from './insight-canvases';
 import type { DashboardInsightsData } from './dashboard-api';
 import type { OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
 import { serializeActivityState, type ActivityUrlState } from './state';
@@ -34,19 +34,22 @@ function activityHref(state: ActivityUrlState): string {
 function metric(
   label: string,
   value: number,
-  href: string,
   testId: string,
   detail?: string,
-  routerLink = true,
-): HTMLAnchorElement {
-  const card = node('a', 'home-metric home-metric-link') as HTMLAnchorElement;
-  card.href = href;
-  if (routerLink) card.dataset.routerLink = 'true';
+  href?: string,
+): HTMLElement {
+  const card = href
+    ? node('a', 'home-metric home-metric-link') as HTMLAnchorElement
+    : node('div', 'home-metric home-metric-static');
+  if (card instanceof HTMLAnchorElement) {
+    card.href = href!;
+    card.dataset.routerLink = 'true';
+  }
   card.dataset.testid = testId;
   card.setAttribute('aria-label', `${label}: ${value}`);
   card.append(node('strong', 'home-metric-value', String(value)), node('span', 'home-metric-label', label));
   if (detail) card.append(node('span', 'home-metric-detail', detail));
-  card.append(node('span', 'home-metric-arrow', '→'));
+  if (href) card.append(node('span', 'home-metric-arrow', '→'));
   return card;
 }
 
@@ -56,10 +59,10 @@ function renderOverview(response: OperationalDashboardResponseV1, state: Activit
   section.setAttribute('aria-label', 'Operational overview');
   const metrics = node('div', 'home-metrics');
   metrics.append(
-    metric('Needs attention', response.needsAttention.total, overviewHref('attention', state), 'dashboard-card-attention', 'Open HIGH / MEDIUM'),
-    metric('Active changes', response.activeChanges.total, '#active-changes', 'dashboard-card-active', 'Open observed PRs', false),
-    metric('Merged unresolved', response.overview.mergedUnresolved, overviewHref('merged-unresolved', state), 'dashboard-card-merged-unresolved'),
-    metric('Recent recoveries', response.overview.recovery.recoveredPRs, overviewHref('attention', state), 'dashboard-card-recoveries', `in ${state.window}`),
+    metric('Needs attention', response.needsAttention.total, 'dashboard-card-attention', 'Open HIGH / MEDIUM', overviewHref('attention', state)),
+    metric('Active changes', response.activeChanges.total, 'dashboard-card-active', 'Open observed PRs', overviewHref('pull-requests', state)),
+    metric('Merged unresolved', response.overview.mergedUnresolved, 'dashboard-card-merged-unresolved', undefined, overviewHref('merged-unresolved', state)),
+    metric('Recent recoveries', response.overview.recovery.recoveredPRs, 'dashboard-card-recoveries', `in ${state.window}`),
   );
   section.append(metrics);
   return section;
@@ -182,25 +185,15 @@ function renderRecentShell(state: ActivityUrlState): HTMLElement {
   return details;
 }
 
-function renderTrendSnapshotShell(state: ActivityUrlState): HTMLElement {
-  const section = node('section', 'dashboard-trend-snapshot');
-  section.dataset.testid = 'dashboard-trend-snapshot';
-  const heading = node('div', 'home-section-heading');
-  const copy = node('div', 'dashboard-trend-heading-copy');
-  copy.append(
-    node('h2', undefined, 'Trend snapshot'),
-    node('p', 'muted', 'Evaluation flow, current attention, and notable movement.'),
-  );
-  const link = node('a', 'home-section-link', 'Explore trends →') as HTMLAnchorElement;
+function renderTrendLink(state: ActivityUrlState): HTMLElement {
+  const section = node('section', 'dashboard-trend-link');
+  section.dataset.testid = 'dashboard-trend-link';
+  const copy = node('div', 'dashboard-trend-link-copy');
+  copy.append(node('h2', undefined, 'Trend analysis'), node('p', 'muted', 'Evaluation flow, attention composition, and iteration density.'));
+  const link = node('a', 'secondary-link', 'Open evaluation trends →') as HTMLAnchorElement;
   link.href = overviewHref('evaluations', state);
   link.dataset.routerLink = 'true';
-  heading.append(copy, link);
-  const content = node('div', 'dashboard-trend-content');
-  content.dataset.testid = 'dashboard-trend-content';
-  const loading = node('p', 'dashboard-section-status', 'Loading trend snapshot…');
-  loading.setAttribute('role', 'status');
-  content.append(loading);
-  section.append(heading, content);
+  section.append(copy, link);
   return section;
 }
 
@@ -337,7 +330,7 @@ export function renderOperationalDashboard(
     renderOverview(response, state),
     renderNeedsAttention(response, state, previewSize),
     renderActiveChanges(response, state, previewSize),
-    renderTrendSnapshotShell(state),
+    renderTrendLink(state),
     renderRecentShell(state),
     renderInsightsShell(collapseSecondarySections),
   );
@@ -372,8 +365,7 @@ export function renderDashboardInsights(
   state: ActivityUrlState,
 ): void {
   const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
-  const snapshot = root.querySelector<HTMLElement>('[data-testid="dashboard-trend-content"]');
-  if (!content && !snapshot) return;
+  if (!content) return;
   const activityLike: ActivityResponseV1 = {
     version: 1,
     selectedWindow: response.selectedWindow,
@@ -387,20 +379,15 @@ export function renderDashboardInsights(
     hasObservedHistory: response.hasObservedHistory,
     pagination: { nextCursor: null },
   };
-  snapshot?.replaceChildren(renderDashboardTrendSnapshot(activityLike, insights.evaluations, insights.transitions, state));
-  content?.replaceChildren(renderHomeInsightCanvases(activityLike, insights.evaluations, insights.transitions, state));
+  content.replaceChildren(renderHomeInsightCanvases(activityLike, insights.evaluations, insights.transitions, state));
 }
 
 export function renderDashboardInsightsError(root: HTMLElement): void {
   const content = root.querySelector<HTMLElement>('[data-testid="dashboard-insights-content"]');
-  const snapshot = root.querySelector<HTMLElement>('[data-testid="dashboard-trend-content"]');
-  if (!content && !snapshot) return;
+  if (!content) return;
   const status = node('p', 'dashboard-section-error', 'Supporting insights could not be loaded. Needs attention and active-change data are unaffected.');
   status.setAttribute('role', 'status');
-  content?.replaceChildren(status);
-  const snapshotStatus = node('p', 'dashboard-section-error', 'Trend graphs could not be loaded. Operational queues and recent activity are unaffected.');
-  snapshotStatus.setAttribute('role', 'status');
-  snapshot?.replaceChildren(snapshotStatus);
+  content.replaceChildren(status);
 }
 
 export function markDashboardMergedUnresolved(root: HTMLElement, overview: OverviewDrilldownResponseV1): void {

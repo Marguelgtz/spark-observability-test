@@ -55,8 +55,7 @@ test('insights failure remains isolated behind secondary disclosure', async ({ p
   await page.goto('/app?fixture=normal&dashboardFailure=insights&window=7d&attention=ALL');
   await expect(page.getByTestId('change-overview')).toBeVisible();
   await expect(page.getByTestId('needs-attention')).toBeVisible();
-  await expect(page.getByTestId('dashboard-trend-snapshot')).toBeVisible();
-  await expect(page.getByText('Trend graphs could not be loaded. Operational queues and recent activity are unaffected.')).toBeVisible();
+  await expect(page.getByTestId('dashboard-trend-link')).toBeVisible();
   const insights = page.getByTestId('dashboard-insights');
   await insights.locator('summary').click();
   await expect(page.getByText('Supporting insights could not be loaded. Needs attention and active-change data are unaffected.')).toBeVisible();

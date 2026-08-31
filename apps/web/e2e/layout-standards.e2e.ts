@@ -38,7 +38,7 @@ test('dashboard moves from operational work to trends, recent activity, and opti
     const index = (testId: string) => children.findIndex(child => child.getAttribute('data-testid') === testId);
     return {
       attention: index('needs-attention'),
-      trends: index('dashboard-trend-snapshot'),
+      trends: index('dashboard-trend-link'),
       recent: index('recent-activity'),
       insights: index('dashboard-insights'),
     };

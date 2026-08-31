@@ -138,58 +138,6 @@ export function renderHomeInsightCanvases(
   return stack;
 }
 
-export function renderDashboardTrendSnapshot(
-  activity: ActivityResponseV1,
-  evaluations: OverviewDrilldownResponseV1,
-  transitions: NotableTransitionInsightsV1,
-  state: ActivityUrlState,
-): HTMLElement {
-  const stack = canvasStack('dashboard-trend-charts');
-  stack.classList.add('dashboard-trend-canvases');
-
-  const evaluationVolume = timeBarChart(
-    evaluations.trend,
-    'Evaluation volume',
-    (point) => point.evaluations,
-    state.window,
-  );
-  evaluationVolume.dataset.testid = 'dashboard-evaluation-volume';
-  stack.append(insightCanvas({
-    id: 'dashboard-volume',
-    title: 'Evaluation flow',
-    description: `Observed evaluation volume across ${state.window}.`,
-    primary: evaluationVolume,
-    interpretation: `${evaluations.total} evaluation${evaluations.total === 1 ? '' : 's'} observed in this window.`,
-    compact: true,
-  }));
-
-  const attention = donutChart('Current attention', 'Latest observed PR state', currentAttentionMix(activity));
-  attention.dataset.testid = 'dashboard-current-attention';
-  const currentTotal = activity.counts.LOW + activity.counts.MEDIUM + activity.counts.HIGH;
-  const needsAttention = activity.counts.HIGH + activity.counts.MEDIUM;
-  stack.append(insightCanvas({
-    id: 'dashboard-attention',
-    title: 'Current attention',
-    description: 'The latest operational state of observed changes.',
-    primary: attention,
-    interpretation: `${needsAttention} of ${currentTotal} change${currentTotal === 1 ? '' : 's'} currently need attention.`,
-    compact: true,
-  }));
-
-  const movement = horizontalBarChart('Notable transition mix', 'Deterministic change behavior', transitionMix(transitions, 4));
-  movement.dataset.testid = 'dashboard-transition-mix';
-  stack.append(insightCanvas({
-    id: 'dashboard-movement',
-    title: 'Notable movement',
-    description: 'Material direction changes across evolving pull requests.',
-    primary: movement,
-    interpretation: transitionInterpretation(transitions),
-    compact: true,
-  }));
-
-  return stack;
-}
-
 export function renderOverviewInsightCanvases(
   response: OverviewDrilldownResponseV1,
   transitions: NotableTransitionInsightsV1,
