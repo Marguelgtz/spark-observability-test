@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0 through bounded G4 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark now retains exact-revision process-linked evidence facts, derives only supported attribution/expectation claims, keeps prior-revision success historical, and projects `MISSING` only after complete evidence acquisition. External actions, conditional/reusable/matrix/dynamic jobs, unsupported trigger patterns, and unavailable matrix coordinates reduce completeness instead of creating invented meaning; CI-306 remains explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-501 is **READY** next.
+Status: **active living plan.** G0 through bounded G5 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark now retains exact-revision process/evidence facts and supported claims, then derives a deterministic, explicitly bounded verification graph with developer inspection serialization. Unsupported expectations remain `UNKNOWN`; only supported expectations plus complete evidence acquisition become `NOT_OBSERVED`. CI-306 remains explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-601 is **READY** next for the persistence-boundary decision.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -273,11 +273,11 @@ Objective: connect change structure to verification process.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-501 | READY | Define the derived graph projection (`Change → Area → EvidenceExpectation → Job → Step → Result`). | G4 | Bounded projection derived from canonical observations/claims. |
-| CI-502 | BACKLOG | Debug/inspection serialization (observations, claims, provenance, completeness, relationships). | CI-501 | Reviewable serialization with explicit truncation, no frontend redesign. |
-| CI-503 | BACKLOG | Deterministic output (fixture-stable ordering and identity). | CI-502 | Identity/ordering stable across fixtures. |
+| CI-501 | DONE | Define the derived graph projection (`Change → Area → EvidenceExpectation → Job → Step → Result`). | G4 | Bounded projection derived from canonical observations/claims. |
+| CI-502 | DONE | Debug/inspection serialization (observations, claims, provenance, completeness, relationships). | CI-501 | Reviewable serialization with explicit truncation, no frontend redesign. |
+| CI-503 | DONE | Deterministic output (fixture-stable ordering and identity). | CI-502 | Identity/ordering stable across fixtures. |
 
-**G5 exit:** a developer can inspect exactly why Spark associates verification with an area or boundary.
+**G5 exit: DONE on the bounded shadow path.** A developer can inspect exactly why Spark associates verification with an area or boundary, including canonical IDs, claim provenance, process hierarchy, expectation state, completeness, and truncation. The boundary is recorded in [`CI_CD_VERIFICATION_GRAPH_DECISION.md`](./CI_CD_VERIFICATION_GRAPH_DECISION.md).
 
 ### G6 — Persistence and replay
 
@@ -285,7 +285,7 @@ Objective: make CI/CD process intelligence historically trustworthy.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-601 | BACKLOG | Decide persistence boundary (retain run/attempt/job/step summary, revision, timestamps, lifecycle/outcome, claim/version refs; raw logs stay external/on-demand). | G4 | Decision records retained vs external data. |
+| CI-601 | READY | Decide persistence boundary (retain run/attempt/job/step summary, revision, timestamps, lifecycle/outcome, claim/version refs; raw logs stay external/on-demand). | G4 | Decision records retained vs external data. |
 | CI-602 | BACKLOG | Distinguish event time vs observation time (provider event time, Spark ingestion time, backfill time). | CI-601 | Three time axes represented. |
 | CI-603 | BACKLOG | Idempotency (webhook retries do not create duplicate logical executions). | CI-601 | Retry of the same delivery is deduped. |
 | CI-604 | BACKLOG | Historical reconstruction (for a revision/time: what had executed, was running, was expected, was missing, and what Spark believed). | CI-601–603 | Point-in-time reconstruction from persisted state. |
@@ -495,6 +495,10 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | CI-403 + RU-304 | backlog -> done | Added exact expectation selectors and supported workflow/adapter/profile rule inputs. Conditional, reusable, matrix, dynamic-name, and incomplete jobs do not create missing claims. The projector emits `MISSING` only for supported complete rules after complete exact-revision Check acquisition. |
 | 2026-09-01 | CI-405 + RU-305 | backlog -> done | Added independent workflow/runtime/job/step/semantic completeness assessments and bounded Check Run totals/truncation. The existing normalizer and sole compatibility projector retain claims and compress limitations without a second evidence path. Full suite: 46 files / 314 tests; typecheck and diff checks pass. |
 | 2026-09-01 | CI-501 | backlog -> ready | G4 shadow evidence architecture is complete with explicit limitations. The next rollback boundary is a bounded graph projection derived only from canonical observations and claims. |
+| 2026-09-01 | CI-501 | ready -> done | Added provider-neutral verification graph nodes/edges derived from normalized observations and claims: change/artifact/area/boundary/relationship, expectation, definition/run/attempt/job/step, and result. Unsupported expectations remain `UNKNOWN`; supported unmatched expectations require complete Check acquisition before `NOT_OBSERVED`. |
+| 2026-09-01 | CI-502 | backlog -> done | Added versioned developer inspection summaries for observations, claims, provenance, evidence references, completeness, and graph relationships. Defaults bound nodes, edges, per-collection items, supports, and evidence references; every truncation is explicit. No raw logs or frontend contract were added. |
+| 2026-09-01 | CI-503 | backlog -> done | Canonical IDs plus fixed node/edge/collection ordering produce byte-stable formatted JSON across reordered equivalent inputs. Tests also establish input immutability, cross-revision link rejection, and deterministic bound behavior. Full suite: 47 files / 320 tests; typecheck and diff checks pass. |
+| 2026-09-01 | CI-601 | backlog -> ready | The bounded inspection representation makes the retained-vs-external persistence decision reviewable without prematurely writing process state. |
 
 ## Change log
 
@@ -509,6 +513,7 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | Completed bounded G3 declaration understanding; preserved CI-306 as an explicit provider limitation. | Read workflows at the evaluated SHA, parse only bounded declarations, correlate jobs/needs conservatively, and make unknown external/dynamic/matrix semantics visible rather than heuristic. |
 | 2026-09-01 | Started G4 with execution facts and stale-revision isolation. | Convert Check Runs into provider-neutral evidence observations before deriving meaning; preserve historical runs canonically while limiting compatibility output to the evaluated head. |
 | 2026-09-01 | Completed bounded G4 evidence architecture. | Keep execution, attribution, and expectation separate; require exact supported selectors and acquisition completeness before `MISSING`; retain per-dimension uncertainty on the shared CI/RU seam. |
+| 2026-09-01 | Completed bounded G5 verification graph and inspection. | Make cross-layer associations reviewable without another source of truth; preserve canonical traceability, deterministic identity/order, explicit truncation, and unknown expectation semantics. |
 
 ## Decision gates
 
@@ -518,4 +523,4 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 - **Gate D — Insight usefulness:** can deterministic CI/CD insights explain a change without attention or ML? Reassess the model if no.
 - **Gate E — Agent readiness:** can structured CI/CD context reliably answer what an agent needs without prescribing arbitrary code changes? Only after this should CI/CD join automatic-steering research.
 
-**Immediate execution order:** bounded G0–G4 **done** (CI-306 explicitly blocked/non-blocking) → **CI-501–503 (bounded derived verification graph)** → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). RU-306 corpus validation may proceed beside the next repository-understanding gate without weakening the CI-5 graph boundary. Do not begin with UI, agent integration, or historical ML.
+**Immediate execution order:** bounded G0–G5 **done** (CI-306 explicitly blocked/non-blocking) → **CI-601 persistence-boundary decision** → CI-602–605 (event/observation time, idempotency, replay, export) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). RU-306 corpus validation may proceed beside the next repository-understanding gate. Do not begin with UI, agent integration, or historical ML.
