@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0 through bounded G6 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark now retains exact-revision process/evidence facts and supported claims, derives a deterministic, explicitly bounded verification graph with developer inspection serialization, and can replay that state point-in-time from bounded, idempotent, versioned observation records with deterministic JSONL export. Unsupported expectations remain `UNKNOWN`; only supported expectations plus complete evidence acquisition become `NOT_OBSERVED`. CI-306 remains explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-701 (normal-CI lifecycle insight) is **READY** next for the deterministic process-insight work.
+Status: **active living plan.** G0 through bounded G7 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark now retains exact-revision process/evidence facts and supported claims, derives a deterministic verification graph, replays point-in-time state from bounded idempotent records, and produces bounded provenance-bearing process insights for normal activity, failure localization/domain, repository-backed reproduction, dependency blockage, matrix/retry behavior, missing expectations, verification gaps, and recovery. Unsupported expectations remain `UNKNOWN`; only supported expectations plus complete evidence acquisition become `NOT_OBSERVED`. CI-306 and deployment insight CI-710 remain explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-801 (runtime baselines) is **READY** next for historical process intelligence.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -299,19 +299,19 @@ Objective: useful intelligence without changing attention. No ML.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-701 | BACKLOG | Normal-CI lifecycle insight (fresh verification after revision change). | G4 | "Running, not regressing" derived deterministically. |
-| CI-702 | BACKLOG | Failure localization (workflow, job, step, annotations, area/boundary where supported). | G4 | Exact failing step returned. |
-| CI-703 | BACKLOG | Failure-domain classification (SETUP, DEPENDENCY_INSTALL, STATIC_ANALYSIS, BUILD, TEST, INTEGRATION, DEPLOYMENT, UNKNOWN). | CI-702 | Conservative classes; no over-claiming. |
-| CI-704 | BACKLOG | Reproduction candidates (repository-supported local verification commands). | G3 | Command + source + confidence + caveat. |
-| CI-705 | BACKLOG | Blocked downstream verification (why checks did not execute). | G2 | Dependency-based blockage explained. |
-| CI-706 | BACKLOG | Matrix-specific result (per-dimension differences preserved). | G2 | Per-dimension pass/fail retained. |
-| CI-707 | BACKLOG | Flake candidate (same SHA FAILED → PASSED via rerun). | CI-204 | Candidate flakiness labeled, not proven. |
-| CI-708 | BACKLOG | Missing expected verification (requires supported expectation). | CI-403 | Only from a supported `EvidenceExpectation`. |
-| CI-709 | BACKLOG | Verification gaps (changed areas/boundaries without attributed verification). | CI-402 | Gap identified, not itself a failure. |
-| CI-710 | BACKLOG | Deployment-state insight (waiting, running, failure, success). | G10 | Approval gates distinguished from failures. |
-| CI-711 | BACKLOG | Recovery insight (previously unresolved condition resolved). | G4 | Explicit recovery detection. |
+| CI-701 | DONE | Normal-CI lifecycle insight (fresh verification after revision change). | G4 | Complete acquisition supports "running, not regressing"; partial acquisition is `UNKNOWN`. |
+| CI-702 | DONE | Failure localization (workflow, job, step, annotations, area/boundary where supported). | G4 | Deepest observed failure plus supported attribution and provider URL returned. |
+| CI-703 | DONE | Failure-domain classification (SETUP, DEPENDENCY_INSTALL, STATIC_ANALYSIS, BUILD, TEST, INTEGRATION, DEPLOYMENT, UNKNOWN). | CI-702 | Conservative name rules are `HEURISTIC`; unmatched stays `UNKNOWN`. |
+| CI-704 | DONE | Reproduction candidates (repository-supported local verification commands). | G3 | Exact checked-in `DIRECT` command + source + caveat; wrappers/dynamic commands excluded. |
+| CI-705 | DONE | Blocked downstream verification (why checks did not execute). | G2 | Non-execution explained only by observed failed/skipped/cancelled dependencies. |
+| CI-706 | DONE | Matrix-specific result (per-dimension differences preserved). | G2 | Each retained execution carries its full matrix coordinates and result. |
+| CI-707 | DONE | Flake candidate (same SHA FAILED → PASSED via rerun). | CI-204 | Same-run/logical-job/matrix retry recovery is `TENTATIVE`, never proof. |
+| CI-708 | DONE | Missing expected verification (requires supported expectation). | CI-403 | Emitted only for supported expectations plus complete acquisition. |
+| CI-709 | DONE | Verification gaps (changed areas/boundaries without attributed verification). | CI-402 | Complete-acquisition gap identified explicitly as not a failure. |
+| CI-710 | BLOCKED | Deployment-state insight (waiting, running, failure, success). | G10 | Non-blocking: deployment/approval observations do not exist until G10. |
+| CI-711 | DONE | Recovery insight (previously unresolved condition resolved). | G4 | Two same-revision G6 reconstructions detect failed-job or missing-expectation recovery. |
 
-**G7 exit:** a bounded set of provenance-bearing CI/CD insights, without ML or attention-policy changes.
+**G7 exit: DONE on the bounded shadow path.** `process-insights/v1` deterministically derives CI-701–709 from normalized exact-revision state and CI-711 from two G6 reconstructions. Top-level and nested collections are explicitly bounded and report truncation; confidence, source completeness, observation/claim ids, areas, and boundaries remain attached. CI-710 is blocked on G10 rather than guessed. Full verification: 51 test files / 361 tests, TypeScript, and diff checks. No ML, frontend, ingestion, persistence, Check, or attention-policy changes.
 
 ### G8 — Historical process intelligence
 
@@ -319,7 +319,7 @@ Objective: use accumulated process history.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-801 | BACKLOG | Runtime baselines (median/p90 duration, success/failure/retry rates). | G6 | Denominators present; bounded by history. |
+| CI-801 | READY | Runtime baselines (median/p90 duration, success/failure/retry rates). | G6 | Denominators present; bounded by history. |
 | CI-802 | BACKLOG | Flake evidence (same-revision retry recovery with denominators). | CI-707 | Measured, not asserted. |
 | CI-803 | BACKLOG | Failure fingerprints (structured identities first). | G8 | Fingerprint recurrence tracked. |
 | CI-804 | BACKLOG | Area/process relationships (which workflows validate which regions). | CI-402 | Area→workflow and boundary→evidence measured. |

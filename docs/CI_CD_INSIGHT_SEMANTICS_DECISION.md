@@ -56,3 +56,7 @@ Live ingestion, `evaluation_runs`/`evaluation_details`, attention policy, the ne
 - Failure-domain classification is conservative by construction: unmatched names stay `UNKNOWN` rather than guessing.
 - Recovery and flake insights are bounded by retained observations; gaps between observations are not recoverable.
 - Insight summaries are deterministic English strings for V0 consumers; localization of the format is out of scope.
+
+## Implementation outcome
+
+G7 implements `process-insights/v1` as an on-demand `ProcessInsightSet`. CI-701–709 derive from one normalized exact-revision understanding; CI-711 compares two G6 point-in-time reconstructions. Insight identity/order and matrix serialization are deterministic. The set, supporting ids, attribution ids, completeness dimensions, provider URLs, blocker lists, matrix executions, and changed-artifact details all have explicit limits and truncation records. The focused G7 suite covers truthful partial acquisition, deepest failure localization, conservative domains, checked-in direct commands, dependency blockage, matrix-preserving retry candidates, supported missing expectations, non-failure gaps, deterministic bounds, and both recovery conditions.
