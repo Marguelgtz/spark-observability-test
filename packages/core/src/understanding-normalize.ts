@@ -207,7 +207,7 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
         return false;
     }).map(item => normalizeProcessState(item, `observations.pipelineAttempts.${item.id}`, issues));
     const pipelineAttemptIds = new Set(pipelineAttempts.map(item => item.id));
-    const pipelineJobs: PipelineJobObservation[] = uniqueById(
+    const processJobs: PipelineJobObservation[] = uniqueById(
         input.observations.pipelineJobs,
         'observations.pipelineJobs',
         issues,
@@ -220,7 +220,26 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
         });
         return false;
     }).map(item => normalizeProcessState(item, `observations.pipelineJobs.${item.id}`, issues));
-    const pipelineJobIds = new Set(pipelineJobs.map(item => item.id));
+    const pipelineJobIds = new Set(processJobs.map(item => item.id));
+    const processJobsById = new Map(processJobs.map(item => [item.id, item]));
+    const pipelineJobs: PipelineJobObservation[] = processJobs.map(item => {
+        const { blockedByPipelineJobIds: declaredBlockers, ...job } = item;
+        const blockedByPipelineJobIds = uniqueSorted((declaredBlockers ?? []).filter(id => {
+            const blocker = processJobsById.get(id);
+            if (blocker?.pipelineAttemptId === item.pipelineAttemptId) return true;
+            issues.push({
+                code: 'DANGLING_REFERENCE',
+                path: `observations.pipelineJobs.${item.id}.blockedByPipelineJobIds.${id}`,
+                detail: 'removed missing or cross-attempt blocking job reference',
+            });
+            return false;
+        }));
+        return {
+            ...job,
+            ...(item.needs ? { needs: uniqueSorted(item.needs) } : {}),
+            ...(blockedByPipelineJobIds.length > 0 ? { blockedByPipelineJobIds } : {}),
+        };
+    });
     const pipelineSteps: PipelineStepObservation[] = uniqueById(
         input.observations.pipelineSteps,
         'observations.pipelineSteps',

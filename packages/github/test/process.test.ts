@@ -140,7 +140,7 @@ describe('GitHub Actions process normalization', () => {
     expect(result.pipelineRuns).toHaveLength(1);
     expect(result.pipelineRuns[0]).toMatchObject({
       id: 'pipeline-run:github-actions:50040',
-      pipelineDefinitionId: 'pipeline-definition:github-actions:300',
+      pipelineDefinitionId: 'pipeline-definition:repository:acme/widgets:.github/workflows/verify.yml',
     });
     expect(result.pipelineAttempts.map(item => [item.attempt, item.lifecycle, item.outcome])).toEqual([
       [1, 'COMPLETED', 'FAILED'],
@@ -154,6 +154,7 @@ describe('GitHub Actions process normalization', () => {
     expect(result.pipelineSteps).toHaveLength(2);
     expect(result.crosswalks[0]).toMatchObject({
       providerWorkflowId: 300,
+      providerWorkflowPath: '.github/workflows/verify.yml',
       providerRunId: 50040,
       providerCheckSuiteId: 70040,
       providerCheckRunIds: [9041],

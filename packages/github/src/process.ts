@@ -44,6 +44,7 @@ export interface GitHubActionsRunCrosswalk {
   pipelineRunId: string;
   pipelineDefinitionId: string;
   providerWorkflowId: number;
+  providerWorkflowPath?: string;
   providerRunId: number;
   providerCheckSuiteId: number;
   /** Check runs supplied by the caller that belong to this workflow run's suite. */
@@ -113,8 +114,17 @@ function checkRunId(checkRunUrl: string | undefined): number | undefined {
   return Number.isSafeInteger(id) ? id : undefined;
 }
 
-function definitionId(workflowId: number): string {
-  return `pipeline-definition:github-actions:${workflowId}`;
+export function normalizeGitHubWorkflowPath(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  const match = path.match(/(?:^|\/)(\.github\/workflows\/[^@]+\.ya?ml)(?:@.*)?$/i);
+  return match?.[1];
+}
+
+export function githubWorkflowDefinitionId(repositoryId: string, path: string | undefined, workflowId?: number): string {
+  const normalizedPath = normalizeGitHubWorkflowPath(path);
+  return normalizedPath
+    ? `pipeline-definition:${repositoryId}:${normalizedPath}`
+    : `pipeline-definition:github-actions:${workflowId ?? 'unknown'}`;
 }
 
 function runId(providerRunId: number): string {
@@ -216,7 +226,7 @@ export async function acquireGitHubActionsProcess(
 
   for (const run of runs) {
     const canonicalRunId = runId(run.id);
-    const canonicalDefinitionId = definitionId(run.workflow_id);
+    const canonicalDefinitionId = githubWorkflowDefinitionId(input.repositoryId, run.path, run.workflow_id);
     pipelineRuns.push({
       kind: 'pipeline-run',
       id: canonicalRunId,
@@ -268,6 +278,7 @@ export async function acquireGitHubActionsProcess(
       pipelineRunId: canonicalRunId,
       pipelineDefinitionId: canonicalDefinitionId,
       providerWorkflowId: run.workflow_id,
+      ...(normalizeGitHubWorkflowPath(run.path) ? { providerWorkflowPath: normalizeGitHubWorkflowPath(run.path) } : {}),
       providerRunId: run.id,
       providerCheckSuiteId: run.check_suite_id,
       providerCheckRunIds: (input.checkRuns ?? [])

@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0, G1, and the bounded G2 runtime slice are **DONE**. Spark core represents provider-neutral pipeline definitions, logical runs, rerun attempts, jobs, and steps with independent lifecycle/outcome, and explicitly projects that richer state into the legacy evidence model. The GitHub Actions runtime adapter (CI-207 + CI-201–204 and CI-206) acquires and normalizes the run → attempt → job → step hierarchy with bounded acquisition, identity crosswalk, and explicit completeness. CI-205 moved behind G3 because runtime data alone cannot prove a skipped job was blocked by a declared dependency. Live ingestion and attention policy remain untouched. CI-301 is **READY** next.
+Status: **active living plan.** G0, G1, bounded G2 runtime, and bounded G3 declaration understanding are **DONE**. Spark now retains exact-revision workflow declarations and conservatively correlates exact job identities/`needs` to runtime observations; external actions, wrapper/dynamic commands, and unavailable matrix coordinates reduce completeness instead of creating invented meaning. CI-306 is explicitly **BLOCKED but non-blocking** because GitHub exposes declared matrices and distinct runtime jobs but no authoritative structured coordinate bridge. Live ingestion and attention policy remain untouched. CI-401 is **READY** next for the shared CI/RU evidence seam.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -243,15 +243,15 @@ Objective: understand what the repository declares should execute.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-301 | READY | Acquire workflow files at the evaluated revision (never assume default branch). | G2 | Workflow bytes read at the exact head SHA. |
-| CI-302 | BACKLOG | Parse bounded workflow structure (triggers, branch/path filters, jobs, `needs`, matrix, steps `uses`/`run`, environments). | CI-301 | Bounded parse with explicit coverage. |
-| CI-205 | BACKLOG | Job dependency handling (blocked/skipped downstream jobs). | CI-202, CI-302 | A skipped runtime job is described as blocked only when an unambiguous declared `needs` edge connects it to a failed upstream job; otherwise it remains skipped. |
-| CI-303 | BACKLOG | Explicit unresolved semantics (dynamic/external behavior lowers completeness). | CI-302 | No invented meaning; completeness reflects unresolved behavior. |
-| CI-304 | BACKLOG | Repository command references (strong commands vs wrapper scripts). | CI-302 | `pnpm --filter @spark/api test` strong; `./scripts/ci.sh` conservative. |
-| CI-305 | BACKLOG | Reusable workflow references. | CI-302 | Relationship + completeness represented even when expansion is unavailable. |
-| CI-306 | BACKLOG | Structured matrix coordinates and `needs` correlation from declaration to runtime jobs. | CI-302 | Declaration-parsed matrix/`needs` correlated to runtime job observations; provider limitation from CI-207 (no trustworthy runtime `needs`/matrix) resolved. |
+| CI-301 | DONE | Acquire workflow files at the evaluated revision (never assume default branch). | G2 | `acquireGitHubWorkflowDefinitions` reads tree + workflow content with the evaluated SHA; tests prove no default-branch substitution and cover count/byte/tree bounds. |
+| CI-302 | DONE | Parse bounded workflow structure (triggers, branch/path filters, jobs, `needs`, matrix, steps `uses`/`run`, environments). | CI-301 | Bounded YAML parse retains the declared fields with job/step/matrix/alias limits and separate acquisition/semantics completeness. |
+| CI-205 | DONE | Job dependency handling (blocked/skipped downstream jobs). | CI-202, CI-302 | Exact declaration-label correlation attaches static `needs`; `blockedByPipelineJobIds` is added only for same-attempt non-successful dependencies when the skipped job has no explicit condition. Outcome remains SKIPPED. |
+| CI-303 | DONE | Explicit unresolved semantics (dynamic/external behavior lowers completeness). | CI-302 | Invalid/dynamic/bounded structures, action references, wrappers, and reusable processes emit typed issues and PARTIAL semantics; no execution or expression evaluation occurs. |
+| CI-304 | DONE | Repository command references (strong commands vs wrapper scripts). | CI-302 | Declared commands carry `semanticReach: DIRECT | WRAPPER | DYNAMIC`; tests distinguish `pnpm test`, `./scripts/ci.sh`, and expression-bearing commands. |
+| CI-305 | DONE | Reusable workflow references. | CI-302 | Job-level reusable-process reference is retained and semantics becomes partial because its implementation is not expanded. |
+| CI-306 | BLOCKED | Structured matrix coordinates and `needs` correlation from declaration to runtime jobs. | CI-302 | `needs` correlation is complete, but current Actions runs/jobs and Check Runs contracts expose no structured runtime matrix coordinates; display parsing/log parsing/positional matching were rejected. Blocker and alternatives: `CI_CD_WORKFLOW_DECLARATION_DECISION.md`. |
 
-**G3 exit:** Spark can explain what the repository declares and what portions remain unresolved.
+**G3 exit: DONE with CI-306 explicitly unresolved.** Spark explains what the repository declares and which portions remain unknown. The matrix-coordinate limitation is represented as partial completeness and does not block the evidence architecture from consuming factual runtime/declaration observations.
 
 ### G4 — Evidence architecture
 
@@ -259,7 +259,7 @@ Objective: connect process execution with repository meaning. **This gate reconc
 
 | ID | Status | Task | Depends on | Acceptance evidence | Reconciles with |
 | --- | --- | --- | --- | --- | --- |
-| CI-401 | BACKLOG | Pipeline execution → `EvidenceRunObservation` (execution stays a fact; no coverage implied). | G2, G3 | Runs become provider-neutral evidence-run observations. | RU-301 |
+| CI-401 | READY | Pipeline execution → `EvidenceRunObservation` (execution stays a fact; no coverage implied). | G2, G3 | Runs become provider-neutral evidence-run observations. | RU-301 |
 | CI-402 | BACKLOG | Evidence attribution (provenance-bearing claims targeting CHANGE/AREA/BOUNDARY/RELATIONSHIP). | CI-401 | Attribution sources: workflow path filters, supported commands, build/test metadata, repository structure, profile, provider metadata. | RU-303 |
 | CI-403 | BACKLOG | Evidence expectations (repository workflow, required-check policy, ecosystem adapter, Spark profile). | CI-402 | No expectation ⇒ no legitimate `MISSING`. | RU-304 |
 | CI-404 | BACKLOG | Stale-evidence semantics (revision change creates a new verification subject; old success stays historical). | CI-401 | Prior success is not re-labelled `PENDING`. | RU-302/301 |
@@ -485,6 +485,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | CI-205 | premature done claim -> backlog (moved to G3) | Review found the runtime API proves `SKIPPED` but not the declared `needs` cause. Marking blocked-by-upstream DONE would violate rules 6, 9, and 13. CI-205 now depends on CI-302 and preserves skipped without invented causality until correlation exists. |
 | 2026-09-01 | CI-301 | backlog -> ready | G2 dependency is satisfied. Next acceptance boundary: acquire workflow files at the exact evaluated revision SHA (not default branch). |
 | 2026-09-01 | CI-306 | created (planning) | CI-207 decision identified a provider limitation: runtime job responses do not provide trustworthy `needs` edges or structured matrix coordinates. CI-306 is the declaration-correlation task that resolves this by correlating declaration-parsed structure to runtime jobs. |
+| 2026-09-01 | CI-301–305 + CI-205 | ready/backlog -> done | Added bounded exact-SHA workflow acquisition, YAML declaration parsing, explicit unresolved-semantics issues/completeness, direct/wrapper/dynamic command reach, reusable-process retention, and conservative exact-label runtime correlation with same-attempt blocking references. Full suite: 44 files / 303 tests; typecheck and diff checks pass. |
+| 2026-09-01 | CI-306 | backlog -> blocked (non-blocking) | Official workflow-run, attempt-job, and Check Runs contracts expose no structured runtime matrix coordinates. Declared matrices and runtime jobs remain separate; job display parsing, raw logs, and positional matching were rejected as unstable/sensitive. Decision and alternatives recorded in `CI_CD_WORKFLOW_DECLARATION_DECISION.md`. |
+| 2026-09-01 | CI-401 | backlog -> ready | Bounded G2/G3 dependencies are satisfied with matrix incompleteness explicit. Next rollback boundary is execution facts becoming evidence observations on the existing shared normalization/projector seam. |
 
 ## Change log
 
@@ -496,13 +499,14 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | Corrected and revalidated G0; split CI-1 into CI-1A/CI-1B. | Keep characterization/trajectory semantics reviewable before introducing the provider-neutral core model; fix provider identity, lifecycle, deployment, reusable-workflow, and analytical-grain errors found during review. |
 | 2026-09-01 | Completed G1 provider-neutral process observations. | Preserve logical run versus rerun-attempt identity, make lifecycle/result independent, share vocabulary with the characterization corpus, and keep legacy behavior behind one explicit lossy projector. |
 | 2026-09-01 | Completed the bounded G2 GitHub Actions runtime slice; corrected CI-205 sequencing. | CI-207 fixes canonical source and identity crosswalk; CI-201–204/206 implement bounded factual acquisition. Dependency-blocking interpretation moved behind checked-in declaration correlation because the runtime response cannot establish its cause. Shadow path only. |
+| 2026-09-01 | Completed bounded G3 declaration understanding; preserved CI-306 as an explicit provider limitation. | Read workflows at the evaluated SHA, parse only bounded declarations, correlate jobs/needs conservatively, and make unknown external/dynamic/matrix semantics visible rather than heuristic. |
 
 ## Decision gates
 
-- **Gate A — Process truth:** can Spark distinguish `running / failed / skipped / blocked / missing / stale / unknown` truthfully? (Core model: **yes** for lifecycle/outcome and hierarchy. GitHub adapter: **yes** for running/failed/skipped/cancelled with explicit completeness. Blocked/missing/stale remain derived semantics for later gates (G3 declaration correlation and G4 evidence expectations).) If no, stop.
+- **Gate A — Process truth:** can Spark distinguish `running / failed / skipped / blocked / missing / stale / unknown` truthfully? (Core/runtime/declaration model: **yes** for lifecycle/outcome/hierarchy and bounded blocked-dependency correlation. Missing/stale remain G4 evidence/trajectory semantics. Matrix coordinates remain explicitly unknown.) If no, stop.
 - **Gate B — Evidence truth:** can Spark distinguish what ran / what passed / what it validates / why / what was expected / what remains unknown? (Currently **no** — coverage always unknown, no expectations.) If no, stop.
 - **Gate C — Historical truth:** can Spark reconstruct CI/CD state at a historical point in time? (Currently **no** — latest-per-SHA projection + compressed blob only.) If no, do not build behavioral analytics.
 - **Gate D — Insight usefulness:** can deterministic CI/CD insights explain a change without attention or ML? Reassess the model if no.
 - **Gate E — Agent readiness:** can structured CI/CD context reliably answer what an agent needs without prescribing arbitrary code changes? Only after this should CI/CD join automatic-steering research.
 
-**Immediate execution order:** CI-001–106 + CI-004 (G0/G1, done) → CI-207 + CI-201–204/206 (bounded G2 runtime, done) → **CI-301–306 + CI-205 (G3 declared workflows/correlation, next)** → CI-401–405 **+ RU-301…305** (evidence architecture, one workstream) → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.
+**Immediate execution order:** CI-001–305 + CI-004/205/207 (bounded G0–G3, done; CI-306 explicitly blocked/non-blocking) → **CI-401–405 + RU-301…305 (G4 evidence architecture, ready)** → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.
