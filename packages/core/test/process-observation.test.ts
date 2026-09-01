@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    deduplicateProcessObservations,
     normalizeProcessObservation,
     normalizeProcessObservationRecords,
     type ProcessObservationRecord,
@@ -133,5 +134,61 @@ describe('process observation records', () => {
         expect(results.map(item => item.record.recordId)).toEqual(['a', 'b']);
         expect(results[0].issues).toEqual([]);
         expect(results[1].issues.map(issue => issue.code)).toContain('INVALID_PROCESS_OBSERVATION_TIMESTAMP');
+    });
+});
+
+describe('idempotent process observation ingestion', () => {
+    it('keeps the first arrival per identity and reports every duplicate', () => {
+        const first = record({ recordId: 'live:delivery-1', observedAt: '2026-09-01T10:00:05Z' });
+        const retry = record({ recordId: 'live:delivery-1', observedAt: '2026-09-01T10:00:05Z', ingestedAt: '2026-09-01T10:00:07Z' });
+        const log = deduplicateProcessObservations([retry, first, first]);
+        expect(log.records).toHaveLength(1);
+        // First arrival in input order is the retry copy; identity dedup is copy-neutral.
+        expect(log.records[0].ingestedAt).toBe('2026-09-01T10:00:07Z');
+        expect(log.duplicates).toEqual([{ recordId: 'live:delivery-1', occurrences: 3 }]);
+        expect(log.droppedCount).toBe(2);
+    });
+
+    it('leaves distinct identities untouched', () => {
+        const log = deduplicateProcessObservations([
+            record({ recordId: 'a', observedAt: '2026-09-01T10:00:00Z' }),
+            record({ recordId: 'b', observedAt: '2026-09-01T10:01:00Z' }),
+        ]);
+        expect(log.records.map(item => item.recordId)).toEqual(['a', 'b']);
+        expect(log.duplicates).toEqual([]);
+        expect(log.droppedCount).toBe(0);
+    });
+
+    it('orders the log deterministically by observation, ingestion, then identity', () => {
+        const log = deduplicateProcessObservations([
+            record({ recordId: 'z', observedAt: '2026-09-01T10:01:00Z' }),
+            record({ recordId: 'a', observedAt: '2026-09-01T10:00:00Z' }),
+            record({ recordId: 'b', observedAt: '2026-09-01T10:00:00Z' }),
+            record({ recordId: 'c', observedAt: '2026-09-01T10:00:00Z' }),
+        ]);
+        expect(log.records.map(item => item.recordId)).toEqual(['a', 'b', 'c', 'z']);
+    });
+
+    it('sorts unparseable observation times deterministically ahead of valid ones', () => {
+        const log = deduplicateProcessObservations([
+            record({ recordId: 'valid', observedAt: '2026-09-01T10:00:00Z' }),
+            record({ recordId: 'broken', observedAt: 'not-a-time' }),
+        ]);
+        expect(log.records.map(item => item.recordId)).toEqual(['broken', 'valid']);
+    });
+
+    it('returns an empty log for empty input', () => {
+        const log = deduplicateProcessObservations([]);
+        expect(log.records).toEqual([]);
+        expect(log.duplicates).toEqual([]);
+        expect(log.droppedCount).toBe(0);
+    });
+
+    it('reports duplicate identities in sorted order', () => {
+        const log = deduplicateProcessObservations([
+            record({ recordId: 'z' }), record({ recordId: 'z' }),
+            record({ recordId: 'a' }), record({ recordId: 'a' }),
+        ]);
+        expect(log.duplicates.map(item => item.recordId)).toEqual(['a', 'z']);
     });
 });

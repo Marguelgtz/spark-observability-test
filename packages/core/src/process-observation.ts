@@ -146,3 +146,63 @@ export function normalizeProcessObservationRecords(
 ): NormalizedProcessObservation[] {
     return records.map(record => normalizeProcessObservation(record));
 }
+
+export interface ProcessObservationDuplicate {
+    recordId: string;
+    occurrences: number;
+}
+
+/**
+ * An idempotent observation log: exactly one record per logical identity.
+ * Delivery-level deduplication of provider retries lives in the API layer
+ * (`webhook_deliveries`); this is the record-level half of CI-603.
+ */
+export interface ProcessObservationLog {
+    records: ProcessObservationRecord[];
+    duplicates: ProcessObservationDuplicate[];
+    /** Number of dropped duplicate records. */
+    droppedCount: number;
+}
+
+function timeKey(value: string): number {
+    const parsed = parseTime(value);
+    return parsed ?? Number.NEGATIVE_INFINITY;
+}
+
+function compareRecords(a: ProcessObservationRecord, b: ProcessObservationRecord): number {
+    const aObserved = timeKey(a.observedAt);
+    const bObserved = timeKey(b.observedAt);
+    if (aObserved !== bObserved) return aObserved < bObserved ? -1 : 1;
+    const aIngested = timeKey(a.ingestedAt);
+    const bIngested = timeKey(b.ingestedAt);
+    if (aIngested !== bIngested) return aIngested < bIngested ? -1 : 1;
+    return a.recordId.localeCompare(b.recordId);
+}
+
+/**
+ * Reduces raw ingested records to an idempotent log.
+ *
+ * The first arrival per `recordId` (input order is arrival order) is kept;
+ * every later arrival with the same identity is reported as a duplicate and
+ * dropped. The returned log is in deterministic replay order: observation
+ * time, then ingestion time, then record identity.
+ */
+export function deduplicateProcessObservations(
+    records: readonly ProcessObservationRecord[],
+): ProcessObservationLog {
+    const kept = new Map<string, ProcessObservationRecord>();
+    const counts = new Map<string, number>();
+    for (const record of records) {
+        counts.set(record.recordId, (counts.get(record.recordId) ?? 0) + 1);
+        if (!kept.has(record.recordId)) kept.set(record.recordId, record);
+    }
+    const duplicates: ProcessObservationDuplicate[] = [...counts.entries()]
+        .filter(([, occurrences]) => occurrences > 1)
+        .map(([recordId, occurrences]) => ({ recordId, occurrences }))
+        .sort((a, b) => a.recordId.localeCompare(b.recordId));
+    return {
+        records: [...kept.values()].sort(compareRecords),
+        duplicates,
+        droppedCount: records.length - kept.size,
+    };
+}
