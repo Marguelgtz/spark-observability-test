@@ -50,13 +50,24 @@ export class GitHubApiClient {
   }
 
   async listCheckRuns(owner: string, repo: string, sha: string): Promise<GitHubCheckRun[]> {
+    return (await this.listCheckRunsForRevision(owner, repo, sha)).items;
+  }
+
+  async listCheckRunsForRevision(
+    owner: string,
+    repo: string,
+    sha: string,
+    maxPages = 100,
+  ): Promise<GitHubPageResult<GitHubCheckRun>> {
     const checks: GitHubCheckRun[] = [];
-    for (let page = 1; page <= 100; page += 1) {
+    let totalCount = 0;
+    for (let page = 1; page <= maxPages; page += 1) {
       const body = await this.request<{ total_count: number; check_runs: GitHubCheckRun[] }>(`/repos/${owner}/${repo}/commits/${sha}/check-runs?per_page=100&page=${page}`);
-      checks.push(...body.check_runs);
+      totalCount = body.total_count;
+      checks.push(...body.check_runs.filter(check => check.head_sha === sha));
       if (checks.length >= body.total_count || body.check_runs.length < 100) break;
     }
-    return checks;
+    return { items: checks, totalCount, complete: checks.length >= totalCount };
   }
 
   async listWorkflowRunsForRevision(

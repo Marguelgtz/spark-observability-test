@@ -173,6 +173,22 @@ describe('GitHub API pagination', () => {
     expect(result.complete).toBe(false);
     expect(fetcher).toHaveBeenCalledTimes(30);
   });
+
+  it('reports bounded Check Run acquisition and filters unexpected revisions', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      total_count: 101,
+      check_runs: Array.from({ length: 100 }, (_, index) => ({
+        id: index, name: 'verify', head_sha: index === 0 ? 'stale' : 'head', status: 'completed', conclusion: 'success',
+      })),
+    })));
+    const client = new GitHubApiClient('not-logged', fetcher as typeof fetch, 'https://example.test');
+
+    const result = await client.listCheckRunsForRevision('acme', 'widgets', 'head', 1);
+
+    expect(result).toMatchObject({ totalCount: 101, complete: false });
+    expect(result.items).toHaveLength(99);
+    expect(result.items.every(check => check.head_sha === 'head')).toBe(true);
+  });
 });
 
 describe('repository context and Spark input', () => {

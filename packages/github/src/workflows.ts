@@ -304,6 +304,13 @@ function parseJobs(
       });
     }
     const needs = stringList(rawJob.needs, `${path}.${id}.needs`, issues);
+    const name = typeof rawJob.name === 'string' ? rawJob.name : undefined;
+    if (name && hasExpression(name)) {
+      issues.push({
+        code: 'UNRESOLVED_EXPRESSION', path: `${path}.${id}.name`,
+        detail: 'dynamic job name is retained but cannot be correlated as a static runtime label',
+      });
+    }
     const matrix = parseMatrix(
       isRecord(rawJob.strategy) ? rawJob.strategy.matrix : undefined,
       `${path}.${id}.strategy.matrix`, limits, issues,
@@ -318,7 +325,7 @@ function parseJobs(
     }
     return [{
       id,
-      ...(typeof rawJob.name === 'string' ? { name: rawJob.name } : {}),
+      ...(name ? { name } : {}),
       ...(needs ? { needs } : {}),
       ...(matrix ? { matrix } : {}),
       ...(environment ? { environment } : {}),

@@ -138,7 +138,8 @@ describe('repository understanding normalization', () => {
         });
         input.observations.evidenceRuns.push({
             kind: 'evidence-run', id: 'evidence:1', repositoryId: 'repo', revision: 'head', name: 'test', evidenceKind: 'test',
-            lifecycle: 'COMPLETED', outcome: 'PASSED', pipelineAttemptId: 'attempt:7:1', pipelineJobId: 'job:missing',
+            lifecycle: 'COMPLETED', outcome: 'PASSED', pipelineRunId: 'pipeline-run:7',
+            pipelineAttemptId: 'attempt:7:1', pipelineJobId: 'job:missing',
             pipelineStepId: 'step:1', source: { kind: 'ci' },
         });
 
@@ -155,7 +156,7 @@ describe('repository understanding normalization', () => {
         expect(result.understanding.observations.pipelineJobs[0]).not.toHaveProperty('blockedByPipelineJobIds');
         expect(result.understanding.observations.pipelineSteps.map(item => item.id)).toEqual(['step:1']);
         expect(result.understanding.observations.evidenceRuns[0]).toMatchObject({
-            pipelineAttemptId: 'attempt:7:1', pipelineStepId: 'step:1',
+            pipelineRunId: 'pipeline-run:7', pipelineAttemptId: 'attempt:7:1', pipelineStepId: 'step:1',
         });
         expect(result.understanding.observations.evidenceRuns[0]).not.toHaveProperty('pipelineJobId');
         expect(result.issues.map(issue => issue.code)).toEqual([

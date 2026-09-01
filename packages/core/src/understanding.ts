@@ -197,6 +197,7 @@ export interface EvidenceRunObservation {
     evidenceKind: string;
     lifecycle: ProcessLifecycle;
     outcome: ProcessOutcome;
+    pipelineRunId?: PipelineRunId;
     pipelineAttemptId?: PipelineAttemptId;
     pipelineJobId?: PipelineJobId;
     pipelineStepId?: PipelineStepId;
@@ -329,10 +330,19 @@ export interface EvidenceAttribution {
     support: ClaimSupport[];
 }
 
+export interface EvidenceExpectationSelector {
+    evidenceName?: string;
+    evidenceKind?: string;
+    pipelineDefinitionId?: PipelineDefinitionId;
+    logicalJobId?: string;
+}
+
 export interface EvidenceExpectation {
     id: EvidenceExpectationId;
     name: string;
     target: UnderstandingTarget;
+    /** Exact execution identity constraints used to decide whether this expectation was observed. */
+    match?: EvidenceExpectationSelector;
     support: ClaimSupport[];
 }
 
