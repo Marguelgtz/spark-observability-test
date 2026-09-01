@@ -196,6 +196,35 @@ describe('process state reconstruction', () => {
             .toEqual(['pipeline-run:1', 'attempt:1', 'job:test', 'step:test:1']);
     });
 
+    it('retains non-terminal ancestors needed by a terminal step', () => {
+        const olderUnderstanding = understanding({
+            attempts: [{ id: 'attempt:1', pipelineRunId: 'pipeline-run:1', attempt: 1, lifecycle: 'RUNNING' }],
+            jobs: [{ id: 'job:test', pipelineAttemptId: 'attempt:1', name: 'test', lifecycle: 'RUNNING' }],
+            steps: [{ id: 'step:test:1', pipelineJobId: 'job:test', sequence: 1, lifecycle: 'COMPLETED' }],
+        });
+        const newerUnderstanding = understanding();
+        const older = record({
+            recordId: 'live:1', observedAt: '2026-09-01T10:00:00Z', understanding: olderUnderstanding,
+        });
+        const newer = record({
+            recordId: 'live:2', observedAt: '2026-09-01T10:05:00Z', understanding: newerUnderstanding,
+        });
+
+        const result = reconstructProcessState([older, newer], {
+            repositoryId: 'repository:1', revision: 'head', at: '2026-09-01T10:06:00Z',
+        });
+
+        const observations = result.understanding?.observations;
+        expect(observations?.pipelineRuns.map(item => item.id)).toEqual(['pipeline-run:1']);
+        expect(observations?.pipelineAttempts.map(item => [item.id, item.lifecycle]))
+            .toEqual([['attempt:1', 'RUNNING']]);
+        expect(observations?.pipelineJobs.map(item => [item.id, item.lifecycle]))
+            .toEqual([['job:test', 'RUNNING']]);
+        expect(observations?.pipelineSteps.map(item => [item.id, item.lifecycle]))
+            .toEqual([['step:test:1', 'COMPLETED']]);
+        expect(result.retainedTerminalFacts).toEqual(['step:test:1']);
+    });
+
     it('never mixes revisions: other revisions are excluded from the state', () => {
         const other = record({
             recordId: 'live:3', observedAt: '2026-09-01T10:07:00Z', revision: 'other',

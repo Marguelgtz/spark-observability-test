@@ -96,34 +96,39 @@ function ensureAncestry(
 ): void {
     const mergedObservations = merged.observations;
     const olderObservations = older.observations;
-    if (execution.pipelineRunId && !mergedObservations.pipelineRuns.some(run => run.id === execution.pipelineRunId)) {
-        const run: PipelineRunObservation | undefined =
-            olderObservations.pipelineRuns.find(candidate => candidate.id === execution.pipelineRunId);
-        if (run) mergedObservations.pipelineRuns.push({ ...run });
+    const step = execution.pipelineStepId
+        ? olderObservations.pipelineSteps.find(candidate => candidate.id === execution.pipelineStepId)
+        : undefined;
+    const pipelineJobId = execution.pipelineJobId ?? step?.pipelineJobId;
+    const job = pipelineJobId
+        ? olderObservations.pipelineJobs.find(candidate => candidate.id === pipelineJobId)
+        : undefined;
+    const pipelineAttemptId = execution.pipelineAttemptId ?? job?.pipelineAttemptId;
+    const attempt = pipelineAttemptId
+        ? olderObservations.pipelineAttempts.find(candidate => candidate.id === pipelineAttemptId)
+        : undefined;
+    const pipelineRunId = execution.pipelineRunId ?? attempt?.pipelineRunId;
+    const run: PipelineRunObservation | undefined = pipelineRunId
+        ? olderObservations.pipelineRuns.find(candidate => candidate.id === pipelineRunId)
+        : undefined;
+
+    // Add the complete chain from the root down. An ancestor can still be
+    // non-terminal while a child step is terminal, so ancestry retention is
+    // deliberately independent from terminal-fact retention.
+    if (run && !mergedObservations.pipelineRuns.some(candidate => candidate.id === run.id)) {
+        mergedObservations.pipelineRuns.push(structuredClone(run));
     }
-    if (execution.pipelineAttemptId
-        && !mergedObservations.pipelineAttempts.some(item => item.id === execution.pipelineAttemptId)) {
-        const attempt = olderObservations.pipelineAttempts.find(candidate => candidate.id === execution.pipelineAttemptId);
-        if (attempt) {
-            mergedObservations.pipelineAttempts.push({ ...attempt });
-            if (isTerminal(attempt.lifecycle)) retained.add(attempt.id);
-        }
+    if (attempt && !mergedObservations.pipelineAttempts.some(candidate => candidate.id === attempt.id)) {
+        mergedObservations.pipelineAttempts.push(structuredClone(attempt));
+        if (isTerminal(attempt.lifecycle)) retained.add(attempt.id);
     }
-    if (execution.pipelineJobId
-        && !mergedObservations.pipelineJobs.some(item => item.id === execution.pipelineJobId)) {
-        const job = olderObservations.pipelineJobs.find(candidate => candidate.id === execution.pipelineJobId);
-        if (job) {
-            mergedObservations.pipelineJobs.push({ ...job });
-            if (isTerminal(job.lifecycle)) retained.add(job.id);
-        }
+    if (job && !mergedObservations.pipelineJobs.some(candidate => candidate.id === job.id)) {
+        mergedObservations.pipelineJobs.push(structuredClone(job));
+        if (isTerminal(job.lifecycle)) retained.add(job.id);
     }
-    if (execution.pipelineStepId
-        && !mergedObservations.pipelineSteps.some(item => item.id === execution.pipelineStepId)) {
-        const step = olderObservations.pipelineSteps.find(candidate => candidate.id === execution.pipelineStepId);
-        if (step) {
-            mergedObservations.pipelineSteps.push({ ...step });
-            if (isTerminal(step.lifecycle)) retained.add(step.id);
-        }
+    if (step && !mergedObservations.pipelineSteps.some(candidate => candidate.id === step.id)) {
+        mergedObservations.pipelineSteps.push(structuredClone(step));
+        if (isTerminal(step.lifecycle)) retained.add(step.id);
     }
 }
 
