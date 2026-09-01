@@ -1,12 +1,16 @@
 import { evaluateAttention } from './attention';
+import {
+    currentEvidenceRuns,
+    evidenceAcquisitionIsComplete,
+    expectationMatchesEvidence,
+    supportedExpectationClaim,
+} from './evidence-matching';
 import { normalizeRepositoryUnderstanding, type UnderstandingNormalizationIssue } from './understanding-normalize';
 import type {
     Area,
     AreaMembership,
     Boundary,
     ClaimSupport,
-    EvidenceExpectation,
-    EvidenceRunObservation,
     ProcessLifecycle,
     ProcessOutcome,
     RepositoryUnderstanding,
@@ -160,44 +164,6 @@ function labelsForTarget(target: UnderstandingTarget, understanding: RepositoryU
     return ['Repository-wide'];
 }
 
-function evidenceProcessIdentity(
-    run: EvidenceRunObservation,
-    understanding: RepositoryUnderstanding,
-): { pipelineDefinitionId?: string; logicalJobId?: string } {
-    const job = run.pipelineJobId
-        ? understanding.observations.pipelineJobs.find(item => item.id === run.pipelineJobId)
-        : undefined;
-    const attemptId = run.pipelineAttemptId ?? job?.pipelineAttemptId;
-    const attempt = attemptId
-        ? understanding.observations.pipelineAttempts.find(item => item.id === attemptId)
-        : undefined;
-    const pipelineRunId = run.pipelineRunId ?? attempt?.pipelineRunId;
-    const pipelineRun = pipelineRunId
-        ? understanding.observations.pipelineRuns.find(item => item.id === pipelineRunId)
-        : undefined;
-    return { pipelineDefinitionId: pipelineRun?.pipelineDefinitionId, logicalJobId: job?.logicalJobId };
-}
-
-function supportedExpectationClaim(expectation: EvidenceExpectation): ClaimSupport | undefined {
-    return expectation.support.find(item => item.confidence === 'SUPPORTED'
-        && item.completeness.state === 'COMPLETE'
-        && (item.derivation === 'DECLARED' || item.derivation === 'DETERMINISTIC'));
-}
-
-function expectationMatches(
-    expectation: EvidenceExpectation,
-    run: EvidenceRunObservation,
-    understanding: RepositoryUnderstanding,
-): boolean {
-    const selector = expectation.match;
-    if ((selector?.evidenceName ?? expectation.name) !== run.name) return false;
-    if (selector?.evidenceKind && selector.evidenceKind !== run.evidenceKind) return false;
-    if (!selector?.pipelineDefinitionId && !selector?.logicalJobId) return true;
-    const identity = evidenceProcessIdentity(run, understanding);
-    return (!selector.pipelineDefinitionId || selector.pipelineDefinitionId === identity.pipelineDefinitionId)
-        && (!selector.logicalJobId || selector.logicalJobId === identity.logicalJobId);
-}
-
 function projectAnalysis(understanding: RepositoryUnderstanding): AnalysisCompleteness | undefined {
     const changedFiles = understanding.observations.completeness.find(item => item.source === 'changed-files');
     const repositoryContext = understanding.completeness.find(item => item.dimension === 'repository-context');
@@ -273,10 +239,8 @@ export function projectRepositoryUnderstanding(input: RepositoryUnderstanding): 
         .map(boundary => boundary.label));
     if (affectedLabels.size >= 50) sensitiveSurfaces.add('shared contract');
 
-    const currentEvidenceRuns = understanding.observations.evidenceRuns
-        .filter(run => run.repositoryId === understanding.observations.change.repositoryId
-            && run.revision === understanding.observations.change.headRevision);
-    const evidence: Evidence[] = currentEvidenceRuns.map(run => {
+    const currentEvidence = currentEvidenceRuns(understanding);
+    const evidence: Evidence[] = currentEvidence.map(run => {
         const coverage = understanding.evidenceAttributions
             .filter(attribution => attribution.evidenceRunId === run.id)
             .flatMap(attribution => labelsForTarget(attribution.target, understanding));
@@ -290,12 +254,10 @@ export function projectRepositoryUnderstanding(input: RepositoryUnderstanding): 
             ...(run.url ? { url: run.url } : {}),
         };
     });
-    const evidenceAcquisitionComplete = understanding.observations.completeness
-        .some(item => item.source === 'github-check-runs' && item.state === 'COMPLETE');
-    if (evidenceAcquisitionComplete) {
+    if (evidenceAcquisitionIsComplete(understanding)) {
         for (const expectation of understanding.evidenceExpectations) {
             const supportedClaim = supportedExpectationClaim(expectation);
-            if (!supportedClaim || currentEvidenceRuns.some(run => expectationMatches(expectation, run, understanding))) continue;
+            if (!supportedClaim || currentEvidence.some(run => expectationMatchesEvidence(expectation, run, understanding))) continue;
             const coverage = labelsForTarget(expectation.target, understanding);
             evidence.push({
                 name: expectation.match?.evidenceName ?? expectation.name,

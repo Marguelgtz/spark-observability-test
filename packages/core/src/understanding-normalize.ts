@@ -254,6 +254,10 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
         return false;
     }).map(item => normalizeProcessState(item, `observations.pipelineSteps.${item.id}`, issues));
     const pipelineStepIds = new Set(pipelineSteps.map(item => item.id));
+    const pipelineRunsById = new Map(pipelineRuns.map(item => [item.id, item]));
+    const pipelineAttemptsById = new Map(pipelineAttempts.map(item => [item.id, item]));
+    const pipelineJobsById = new Map(pipelineJobs.map(item => [item.id, item]));
+    const pipelineStepsById = new Map(pipelineSteps.map(item => [item.id, item]));
 
     const evidenceRuns: EvidenceRunObservation[] = uniqueById(
         input.observations.evidenceRuns,
@@ -261,21 +265,51 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
         issues,
     ).map(item => {
         const normalized = normalizeProcessState(item, `observations.evidenceRuns.${item.id}`, issues);
-        const linkedIds = [
-            ['pipelineRunId', normalized.pipelineRunId, pipelineRunIds],
-            ['pipelineAttemptId', normalized.pipelineAttemptId, pipelineAttemptIds],
-            ['pipelineJobId', normalized.pipelineJobId, pipelineJobIds],
-            ['pipelineStepId', normalized.pipelineStepId, pipelineStepIds],
-        ] as const;
         const result: EvidenceRunObservation = { ...normalized };
-        for (const [field, id, ids] of linkedIds) {
-            if (!id || ids.has(id)) continue;
+        const removeLink = (
+            field: 'pipelineRunId' | 'pipelineAttemptId' | 'pipelineJobId' | 'pipelineStepId',
+            detail: string,
+        ) => {
             issues.push({
                 code: 'DANGLING_REFERENCE',
                 path: `observations.evidenceRuns.${item.id}.${field}`,
-                detail: 'removed missing process observation reference',
+                detail,
             });
             delete result[field];
+        };
+        const runMatchesEvidence = (runId: string | undefined): boolean => {
+            const run = runId ? pipelineRunsById.get(runId) : undefined;
+            return run?.repositoryId === normalized.repositoryId && run.revision === normalized.revision;
+        };
+        if (result.pipelineRunId && !runMatchesEvidence(result.pipelineRunId)) {
+            removeLink('pipelineRunId', 'removed missing or cross-revision pipeline run reference');
+        }
+        if (result.pipelineAttemptId) {
+            const attempt = pipelineAttemptsById.get(result.pipelineAttemptId);
+            if (!attempt || !runMatchesEvidence(attempt.pipelineRunId)
+                || (result.pipelineRunId !== undefined && result.pipelineRunId !== attempt.pipelineRunId)) {
+                removeLink('pipelineAttemptId', 'removed missing, cross-revision, or inconsistent pipeline attempt reference');
+            }
+        }
+        if (result.pipelineJobId) {
+            const job = pipelineJobsById.get(result.pipelineJobId);
+            const attempt = job ? pipelineAttemptsById.get(job.pipelineAttemptId) : undefined;
+            if (!job || !attempt || !runMatchesEvidence(attempt.pipelineRunId)
+                || (result.pipelineRunId !== undefined && result.pipelineRunId !== attempt.pipelineRunId)
+                || (result.pipelineAttemptId !== undefined && result.pipelineAttemptId !== attempt.id)) {
+                removeLink('pipelineJobId', 'removed missing, cross-revision, or inconsistent pipeline job reference');
+            }
+        }
+        if (result.pipelineStepId) {
+            const step = pipelineStepsById.get(result.pipelineStepId);
+            const job = step ? pipelineJobsById.get(step.pipelineJobId) : undefined;
+            const attempt = job ? pipelineAttemptsById.get(job.pipelineAttemptId) : undefined;
+            if (!step || !job || !attempt || !runMatchesEvidence(attempt.pipelineRunId)
+                || (result.pipelineRunId !== undefined && result.pipelineRunId !== attempt.pipelineRunId)
+                || (result.pipelineAttemptId !== undefined && result.pipelineAttemptId !== attempt.id)
+                || (result.pipelineJobId !== undefined && result.pipelineJobId !== job.id)) {
+                removeLink('pipelineStepId', 'removed missing, cross-revision, or inconsistent pipeline step reference');
+            }
         }
         return result;
     });
