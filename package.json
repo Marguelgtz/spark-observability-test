@@ -2,7 +2,7 @@
   "name": "spark",
   "private": true,
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run packages apps",
     "typecheck": "tsc --noEmit",
     "spark:fixture": "pnpm --filter @spark/cli run start",
     "dev": "pnpm --filter @spark/api run dev",

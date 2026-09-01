@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-31T17:02:24.469965Z",
+  "source": {
+    "kind": "local-read-only-import-of-remote-d1-export",
+    "privacy": "aggregate-only; row identities and free text excluded",
+    "rawExportCommitted": false
+  },
+  "grain": {
+    "evaluationRuns": "one retained Spark evaluation snapshot",
+    "evidenceItems": "one evidence item embedded in an evaluation snapshot; the same provider check can appear in multiple snapshots",
+    "warning": "Evidence-item rates do not estimate rates of unique CI executions."
+  },
+  "scope": {
+    "evaluationSnapshots": 3901,
+    "pullRequestsWithRuns": 114,
+    "repositoriesWithRuns": 2,
+    "embeddedEvidenceSnapshots": 20186
+  },
+  "evaluationSnapshots": {
+    "attention": {
+      "HIGH": 700,
+      "MEDIUM": 3168,
+      "LOW": 33
+    },
+    "evidenceHealth": {
+      "CLEAR": 651,
+      "FAILED": 102,
+      "PENDING_OR_MISSING": 3123,
+      "UNKNOWN": 25
+    },
+    "missingNormalizedJson": 25,
+    "invalidNormalizedJson": 0,
+    "zeroEvidence": 379,
+    "zeroEvidenceMarkedClear": 379,
+    "withDuplicateEvidenceNames": 127,
+    "withConflictingStatusesForSameName": 31
+  },
+  "embeddedEvidenceSnapshots": {
+    "status": {
+      "PASSED": 7120,
+      "PENDING": 12923,
+      "FAILED": 143
+    },
+    "unknownCoverage": 20186,
+    "observedKnowledge": 20186
+  },
+  "metricDefinitions": {
+    "embeddedEvidenceSnapshots": "sum of evaluation.evidence array lengths across parseable normalized_json documents",
+    "unknownCoverage": "embedded evidence whose coverage is absent or UNKNOWN",
+    "zeroEvidence": "evaluation snapshots whose evaluation.evidence array is empty",
+    "withDuplicateEvidenceNames": "evaluation snapshots where at least one evidence name occurs more than once",
+    "withConflictingStatusesForSameName": "evaluation snapshots where at least one duplicated evidence name has more than one status"
+  },
+  "interpretationLimits": [
+    "Repeated snapshots mean evidence-item percentages are not unique execution rates.",
+    "Stored evidence cannot attribute duplicate names to matrices, parallel workflows, retries, or providers.",
+    "Aggregate attention counts do not isolate the contribution of any individual attention rule.",
+    "The 25 legacy rows have missing normalized JSON, not invalid JSON."
+  ]
+}
