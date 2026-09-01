@@ -8,6 +8,14 @@ import type {
 } from '../../src/understanding';
 import type { KnowledgeClass, SparkInput } from '../../src/types';
 
+function processState(status: SparkInput['evidence'][number]['status']) {
+    if (status === 'PENDING') return { lifecycle: 'RUNNING' as const, outcome: 'UNKNOWN' as const };
+    if (status === 'PASSED') return { lifecycle: 'COMPLETED' as const, outcome: 'PASSED' as const };
+    if (status === 'FAILED') return { lifecycle: 'COMPLETED' as const, outcome: 'FAILED' as const };
+    if (status === 'MISSING') return { lifecycle: 'NOT_OBSERVED' as const, outcome: 'UNKNOWN' as const };
+    return { lifecycle: 'COMPLETED' as const, outcome: 'UNKNOWN' as const };
+}
+
 function support(knowledge: KnowledgeClass = 'derived'): ClaimSupport {
     return {
         provenance: { kind: 'ECOSYSTEM_ADAPTER', source: 'legacy-test-bridge' },
@@ -97,7 +105,7 @@ export function legacyInputAsUnderstanding(input: SparkInput): RepositoryUnderst
         revision: input.change.id,
         name: evidence.name,
         evidenceKind: evidence.kind,
-        status: evidence.status,
+        ...processState(evidence.status),
         source: { kind: 'evidence-provider', id: evidence.source },
         ...(evidence.url ? { url: evidence.url } : {}),
     }));
@@ -153,6 +161,11 @@ export function legacyInputAsUnderstanding(input: SparkInput): RepositoryUnderst
                 source: { kind: 'vcs' },
             },
             artifacts,
+            pipelineDefinitions: [],
+            pipelineRuns: [],
+            pipelineAttempts: [],
+            pipelineJobs: [],
+            pipelineSteps: [],
             evidenceRuns,
             completeness: [{
                 source: 'changed-files',

@@ -12,6 +12,11 @@ import type {
     EvidenceAttribution,
     EvidenceExpectation,
     EvidenceRunObservation,
+    PipelineAttemptObservation,
+    PipelineJobObservation,
+    PipelineStepObservation,
+    ProcessLifecycle,
+    ProcessOutcome,
     RepositoryUnderstanding,
     SourceCompleteness,
 } from './understanding';
@@ -20,7 +25,9 @@ export type UnderstandingIssueCode =
     | 'DUPLICATE_ID'
     | 'DANGLING_REFERENCE'
     | 'INVALID_CONFIDENCE'
-    | 'INVALID_COMPLETENESS';
+    | 'INVALID_COMPLETENESS'
+    | 'INVALID_PROCESS_LIFECYCLE'
+    | 'INVALID_PROCESS_OUTCOME';
 
 export interface UnderstandingNormalizationIssue {
     code: UnderstandingIssueCode;
@@ -35,6 +42,12 @@ export interface NormalizedRepositoryUnderstanding {
 
 const completenessStates = new Set<CompletenessState>(['COMPLETE', 'PARTIAL', 'UNAVAILABLE']);
 const confidenceStates = new Set<ClaimConfidence>(['SUPPORTED', 'TENTATIVE', 'UNKNOWN']);
+const processLifecycles = new Set<ProcessLifecycle>([
+    'EXPECTED', 'NOT_OBSERVED', 'QUEUED', 'RUNNING', 'COMPLETED', 'CANCELLED',
+]);
+const processOutcomes = new Set<ProcessOutcome>([
+    'PASSED', 'FAILED', 'NEUTRAL', 'SKIPPED', 'UNKNOWN', 'NOT_APPLICABLE',
+]);
 
 function byId<T extends { id: string }>(left: T, right: T): number {
     return left.id.localeCompare(right.id);
@@ -68,6 +81,32 @@ function normalizeCompleteness(
     if (completenessStates.has(value.state)) return { ...value };
     issues.push({ code: 'INVALID_COMPLETENESS', path, detail: `replaced ${String(value.state)} with UNAVAILABLE` });
     return { state: 'UNAVAILABLE', reason: value.reason ?? 'invalid completeness state' };
+}
+
+function normalizeProcessState<T extends { lifecycle: ProcessLifecycle; outcome: ProcessOutcome }>(
+    value: T,
+    path: string,
+    issues: UnderstandingNormalizationIssue[],
+): T {
+    let lifecycle = value.lifecycle;
+    let outcome = value.outcome;
+    if (!processLifecycles.has(lifecycle)) {
+        issues.push({
+            code: 'INVALID_PROCESS_LIFECYCLE',
+            path: `${path}.lifecycle`,
+            detail: `replaced ${String(lifecycle)} with NOT_OBSERVED`,
+        });
+        lifecycle = 'NOT_OBSERVED';
+    }
+    if (!processOutcomes.has(outcome)) {
+        issues.push({
+            code: 'INVALID_PROCESS_OUTCOME',
+            path: `${path}.outcome`,
+            detail: `replaced ${String(outcome)} with UNKNOWN`,
+        });
+        outcome = 'UNKNOWN';
+    }
+    return { ...value, lifecycle, outcome };
 }
 
 function referenceExists(
@@ -144,10 +183,102 @@ function hasTarget(
 export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding): NormalizedRepositoryUnderstanding {
     const issues: UnderstandingNormalizationIssue[] = [];
     const artifacts = uniqueById(input.observations.artifacts, 'observations.artifacts', issues);
-    const evidenceRuns = uniqueById(input.observations.evidenceRuns, 'observations.evidenceRuns', issues);
     const artifactIds = new Set(artifacts.map(item => item.id));
+
+    const pipelineDefinitions = uniqueById(
+        input.observations.pipelineDefinitions,
+        'observations.pipelineDefinitions',
+        issues,
+    );
+    const pipelineDefinitionIds = new Set(pipelineDefinitions.map(item => item.id));
+    const pipelineRuns = uniqueById(input.observations.pipelineRuns, 'observations.pipelineRuns', issues).map(item => {
+        if (!item.pipelineDefinitionId || pipelineDefinitionIds.has(item.pipelineDefinitionId)) return { ...item };
+        issues.push({
+            code: 'DANGLING_REFERENCE',
+            path: `observations.pipelineRuns.${item.id}.pipelineDefinitionId`,
+            detail: 'removed missing pipeline definition reference; retained observed run',
+        });
+        const retained = { ...item };
+        delete retained.pipelineDefinitionId;
+        return retained;
+    });
+    const pipelineRunIds = new Set(pipelineRuns.map(item => item.id));
+    const pipelineAttempts: PipelineAttemptObservation[] = uniqueById(
+        input.observations.pipelineAttempts,
+        'observations.pipelineAttempts',
+        issues,
+    ).filter(item => {
+        if (pipelineRunIds.has(item.pipelineRunId)) return true;
+        issues.push({
+            code: 'DANGLING_REFERENCE',
+            path: `observations.pipelineAttempts.${item.id}.pipelineRunId`,
+            detail: 'removed attempt with a missing pipeline run',
+        });
+        return false;
+    }).map(item => normalizeProcessState(item, `observations.pipelineAttempts.${item.id}`, issues));
+    const pipelineAttemptIds = new Set(pipelineAttempts.map(item => item.id));
+    const pipelineJobs: PipelineJobObservation[] = uniqueById(
+        input.observations.pipelineJobs,
+        'observations.pipelineJobs',
+        issues,
+    ).filter(item => {
+        if (pipelineAttemptIds.has(item.pipelineAttemptId)) return true;
+        issues.push({
+            code: 'DANGLING_REFERENCE',
+            path: `observations.pipelineJobs.${item.id}.pipelineAttemptId`,
+            detail: 'removed job with a missing pipeline attempt',
+        });
+        return false;
+    }).map(item => normalizeProcessState(item, `observations.pipelineJobs.${item.id}`, issues));
+    const pipelineJobIds = new Set(pipelineJobs.map(item => item.id));
+    const pipelineSteps: PipelineStepObservation[] = uniqueById(
+        input.observations.pipelineSteps,
+        'observations.pipelineSteps',
+        issues,
+    ).filter(item => {
+        if (pipelineJobIds.has(item.pipelineJobId)) return true;
+        issues.push({
+            code: 'DANGLING_REFERENCE',
+            path: `observations.pipelineSteps.${item.id}.pipelineJobId`,
+            detail: 'removed step with a missing pipeline job',
+        });
+        return false;
+    }).map(item => normalizeProcessState(item, `observations.pipelineSteps.${item.id}`, issues));
+    const pipelineStepIds = new Set(pipelineSteps.map(item => item.id));
+
+    const evidenceRuns: EvidenceRunObservation[] = uniqueById(
+        input.observations.evidenceRuns,
+        'observations.evidenceRuns',
+        issues,
+    ).map(item => {
+        const normalized = normalizeProcessState(item, `observations.evidenceRuns.${item.id}`, issues);
+        const linkedIds = [
+            ['pipelineAttemptId', normalized.pipelineAttemptId, pipelineAttemptIds],
+            ['pipelineJobId', normalized.pipelineJobId, pipelineJobIds],
+            ['pipelineStepId', normalized.pipelineStepId, pipelineStepIds],
+        ] as const;
+        const result: EvidenceRunObservation = { ...normalized };
+        for (const [field, id, ids] of linkedIds) {
+            if (!id || ids.has(id)) continue;
+            issues.push({
+                code: 'DANGLING_REFERENCE',
+                path: `observations.evidenceRuns.${item.id}.${field}`,
+                detail: 'removed missing process observation reference',
+            });
+            delete result[field];
+        }
+        return result;
+    });
     const evidenceRunIds = new Set(evidenceRuns.map(item => item.id));
-    const observationIds = new Set([input.observations.snapshot.id, input.observations.change.id]);
+    const observationIds = new Set([
+        input.observations.snapshot.id,
+        input.observations.change.id,
+        ...pipelineDefinitionIds,
+        ...pipelineRunIds,
+        ...pipelineAttemptIds,
+        ...pipelineJobIds,
+        ...pipelineStepIds,
+    ]);
     const referenceSets = { observationIds, artifactIds, evidenceRunIds };
 
     const changedArtifacts = input.observations.change.artifacts.filter(item => {
@@ -271,7 +402,12 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
                 snapshot: { ...input.observations.snapshot },
                 change: { ...input.observations.change, artifacts: changedArtifacts },
                 artifacts,
-                evidenceRuns: evidenceRuns as EvidenceRunObservation[],
+                pipelineDefinitions,
+                pipelineRuns,
+                pipelineAttempts,
+                pipelineJobs,
+                pipelineSteps,
+                evidenceRuns,
                 completeness: sourceCompleteness,
             },
             areas: normalizedAreas,

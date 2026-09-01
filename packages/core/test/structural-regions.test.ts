@@ -55,6 +55,11 @@ describe('generic structural-region decision', () => {
                 artifacts: observedArtifacts.map(artifact => ({ artifactId: artifact.id, status: 'MODIFIED' })), source: { kind: 'vcs' },
             },
             artifacts: observedArtifacts,
+            pipelineDefinitions: [],
+            pipelineRuns: [],
+            pipelineAttempts: [],
+            pipelineJobs: [],
+            pipelineSteps: [],
             evidenceRuns: [],
             completeness: [
                 { source: 'changed-files', state: 'COMPLETE' },

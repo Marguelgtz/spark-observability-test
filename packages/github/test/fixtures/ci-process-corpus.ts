@@ -16,6 +16,8 @@
 // reusable scenarios use bounded synthetic shapes that preserve the identity
 // relationships exposed by the GitHub REST API.
 
+import type { ProcessLifecycle, ProcessOutcome } from '@spark/core';
+
 /** The Spark App `id` used to recognize and exclude the neutral Spark Check. */
 export const CI_CORPUS_SPARK_APP_ID = 42;
 
@@ -155,8 +157,8 @@ export interface CiCorpusWorkflow {
 
 // --- Provider-neutral truth (target vocabulary; promoted to core at CI-106) ----
 
-export type CiLifecycle = 'EXPECTED' | 'NOT_OBSERVED' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'CANCELLED';
-export type CiOutcome = 'PASSED' | 'FAILED' | 'NEUTRAL' | 'SKIPPED' | 'UNKNOWN' | 'NOT_APPLICABLE';
+export type CiLifecycle = ProcessLifecycle;
+export type CiOutcome = ProcessOutcome;
 export type CiDomain = 'SETUP' | 'DEPENDENCY_INSTALL' | 'STATIC_ANALYSIS' | 'BUILD' | 'TEST' | 'INTEGRATION' | 'DEPLOYMENT' | 'UNKNOWN';
 
 export interface CiTruthUnit {

@@ -11,6 +11,11 @@ const observations: RepositoryObservations = {
     artifacts: [{
         kind: 'artifact', id: 'artifact:a', repositoryId: 'repo', revision: 'head', path: 'src/a.ts', artifactKind: 'FILE', source: { kind: 'vcs' },
     }],
+    pipelineDefinitions: [],
+    pipelineRuns: [],
+    pipelineAttempts: [],
+    pipelineJobs: [],
+    pipelineSteps: [],
     evidenceRuns: [],
     completeness: [{ source: 'repository-tree', state: 'COMPLETE' }],
 };

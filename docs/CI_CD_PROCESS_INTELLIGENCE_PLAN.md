@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0 is **DONE**. CI-001 records the current ingestion loss audit, CI-002 provides a provider-grounded 14-scenario corpus, and CI-003 prevents fresh pending verification on a new revision from being classified as evidence regression while retaining same-revision pending transitions. The plan was **re-scoped from the CI-001 findings** (Part I §16): CI/CD builds on the existing `RepositoryUnderstanding` substrate through a **single evidence-claim seam** shared with RU G3, lifecycle/outcome becomes a **core vocabulary** change, and the V0 proof is a **shadow/derived projection** that leaves the live evaluator and attention policy untouched. No CI/CD process-observation feature code (G1+) is implemented yet.
+Status: **active living plan.** G0 and G1 are **DONE**. Spark core now represents provider-neutral pipeline definitions, logical runs, rerun attempts, jobs, and steps with independent lifecycle/outcome, and explicitly projects that richer state into the legacy evidence model. The implementation uses the existing `RepositoryUnderstanding` normalization/projector seam and leaves live ingestion and attention policy untouched. CI-207 is **READY** as the next gate: select and bound the canonical GitHub runtime sources and identity crosswalk before implementing the adapter.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -77,7 +77,7 @@ Repository Understanding
 Lifecycle: `EXPECTED | NOT_OBSERVED | QUEUED | RUNNING | COMPLETED | CANCELLED`
 Outcome: `PASSED | FAILED | NEUTRAL | SKIPPED | UNKNOWN | NOT_APPLICABLE`
 
-(The exact enum names are to be finalized from corpus/provider behavior; the invariant matters more than the names.)
+These names are now the shared core vocabulary established by CI-106; provider adapters must map into them without adding provider-specific core states.
 
 - `RUNNING + NOT_APPLICABLE` is **not** failure.
 - `COMPLETED + FAILED` is failure.
@@ -93,7 +93,8 @@ Static interpretation stays conservative: `run: pnpm --filter @spark/api test` s
 
 Capture enough per execution to reconstruct what actually happened.
 
-- **Pipeline run:** pipeline identity, provider run identity, revision/SHA, branch/ref, trigger event, attempt number, created/queued/started/completed times, lifecycle, outcome, provider URL.
+- **Pipeline run:** pipeline identity, provider run identity, revision/SHA, branch/ref, trigger event, creation time, provider URL. A run is the logical invocation and spans reruns.
+- **Pipeline attempt:** run identity, attempt number, started/completed times, lifecycle, outcome, provider URL. Re-execution creates a new attempt beneath the same run.
 - **Job:** job identity + run identity, logical job identity, display name, matrix identity/context, declared dependencies, runner classification, environment, lifecycle, outcome, started/completed/duration, URL.
 - **Step:** step identity + job identity, sequence, name, declared action or command reference, lifecycle, outcome, started/completed/duration.
 
@@ -202,7 +203,7 @@ Objective: understand the current pipeline before changing it.
 | CI-001 | DONE | Catalogue current CI/evidence ingestion and produce a loss map (`RETAINED` / `DISCARDED` / `CONFLATED` / `UNAVAILABLE`). | — | Part III: end-to-end ingestion traced; loss map produced; CI-start confound quantified from deployed D1. |
 | CI-002 | DONE | Create CI process characterization corpus. | CI-001 | 14-scenario corpus at `packages/github/test/fixtures/ci-process-corpus.ts` preserves the actual GitHub response boundaries and run/check-suite/attempt/job/check-run identities, separates deployment from deployment-status data, uses valid reusable-workflow syntax, and records provider-neutral `truth` separately from the current projection. Integrity and projection tests live in `packages/github/test/ci-process-corpus.test.ts`. Promote target vocabulary to `packages/core` at CI-106. |
 | CI-003 | DONE | Lock down CI-start confound. | CI-002 | `apps/api/test/change-trajectory.test.ts` proves a new revision with fresh pending verification does not emit `EVIDENCE_BECAME_PENDING`/`EVIDENCE_REGRESSED`, while a same-revision PASSED→PENDING transition remains visible. |
-| CI-004 | BACKLOG | Coordinate CI G4 with RU G3 (RU-301…RU-305) as one evidence-architecture workstream; align sequencing + the single normalization/projector seam. | CI-001, CI-106 | One evidence-claim pipeline and one projector; CI-4xx and RU-3xx task order reconciled; no parallel evaluator. |
+| CI-004 | DONE | Coordinate CI G4 with RU G3 (RU-301…RU-305) as one evidence-architecture workstream; align sequencing + the single normalization/projector seam. | CI-001, CI-106 | CI-4xx/RU-3xx mapping is recorded in Part III §3.6; process observations use the existing `normalizeRepositoryUnderstanding` + compatibility projector path; no parallel evaluator was added. |
 
 **G0 exit:** existing CI behavior and known confounds are reproducible in fixtures.
 
@@ -212,14 +213,14 @@ Objective: represent CI/CD facts without GitHub-specific semantics.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-101 | BACKLOG | Pipeline definition observation (identity, repository, revision, source, name/path, triggers, filters, jobs). | CI-106 | Types represent declared workflow without provider concepts. |
-| CI-102 | BACKLOG | Pipeline run observation (identity, definition identity, revision, trigger/ref, attempt, timestamps, lifecycle, outcome, URL). | CI-101, CI-106 | Run + attempt identity present; lifecycle and outcome independent. |
-| CI-103 | BACKLOG | Job observation (identity, run identity, logical job, display name, dependencies, matrix info, runner class, environment, timestamps, lifecycle, outcome). | CI-102 | Job hierarchy + dependencies represented. |
-| CI-104 | BACKLOG | Step observation (identity, job identity, sequence, name, declared command/action reference, timestamps, lifecycle, outcome). | CI-103 | Steps represented with declared command/action references. |
-| CI-105 | BACKLOG | Execution identity invariants. | CI-101–104 | Tests establish `logical verification ≠ run ≠ attempt ≠ job ≠ step`. |
-| CI-106 | READY | Define the provider-neutral process **vocabulary** (lifecycle enum, outcome enum, execution-identity value types) and extend `EvidenceRunObservation` so lifecycle and outcome are independent without breaking the legacy projector. | G0 | One core vocabulary shared by RU and CI; lifecycle/outcome independent at the observation layer; RU-301 and CI-102 both consume it; legacy evidence projection remains explicit and tested. |
+| CI-101 | DONE | Pipeline definition observation (identity, repository, revision, source, name/path, triggers, filters, jobs). | CI-106 | `PipelineDefinitionObservation` represents triggers, filters, declared jobs/matrices/environments, commands/actions, and reusable-process references without provider concepts. |
+| CI-102 | DONE | Pipeline run + attempt observations (optional definition identity, revision, trigger/ref, timestamps, lifecycle, outcome, URL). | CI-101, CI-106 | A logical run spans separately identified attempts; attempt lifecycle and outcome are independent; observed runs survive unavailable declaration acquisition. |
+| CI-103 | DONE | Job observation (attempt identity, logical job, display name, dependencies, matrix info, runner class, environment, timestamps, lifecycle, outcome). | CI-102 | `PipelineJobObservation` preserves hierarchy, declared identity, dependencies, matrix dimensions, environment, and result state. |
+| CI-104 | DONE | Step observation (identity, job identity, sequence, name, declared command/action reference, timestamps, lifecycle, outcome). | CI-103 | `PipelineStepObservation` preserves ordered steps and optional declared command/action/reusable-process references. |
+| CI-105 | DONE | Execution identity invariants. | CI-101–104 | `understanding-observations.test.ts` establishes one logical run with distinct attempts and separately identified job/step/evidence observations; normalizer tests enforce parent references. |
+| CI-106 | DONE | Define the provider-neutral process **vocabulary** (lifecycle enum, outcome enum, execution-identity value types) and extend `EvidenceRunObservation` so lifecycle and outcome are independent without breaking the legacy projector. | G0 | Core exports one vocabulary consumed by the GitHub corpus; lifecycle/outcome are independent; the compatibility projector has table-driven coverage for missing, pending, pass, fail, skipped, neutral, not-applicable, and cancelled states. |
 
-**G1 exit:** Spark core represents CI/CD process facts without GitHub-specific core concepts.
+**G1 exit: DONE.** Spark core represents CI/CD process facts without GitHub-specific concepts; hierarchy references and runtime state values normalize deterministically, and compatibility loss is explicit.
 
 ### G2 — GitHub Actions runtime adapter
 
@@ -227,7 +228,7 @@ Objective: populate process observations using actual GitHub data.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-207 | BACKLOG | Choose + document the canonical GitHub data source (Actions `runs`/`jobs`/`steps` vs `check-runs`) and the check-suite ⇄ run-id crosswalk; fix bounded fetch limits. | G1 | Written decision + crosswalk; CI-201–206 build on it; API bounds + pagination documented. |
+| CI-207 | READY | Choose + document the canonical GitHub data source (Actions `runs`/`jobs`/`steps` vs `check-runs`) and the check-suite ⇄ run-id crosswalk; fix bounded fetch limits. | G1 | Written decision + crosswalk; CI-201–206 build on it; API bounds + pagination documented. |
 | CI-201 | BACKLOG | Acquire workflow-run data (workflow, run, attempt, revision, trigger, timestamps, lifecycle, outcome). | CI-207 | Bounded run metadata fetched and normalized. |
 | CI-202 | BACKLOG | Acquire job and step data (run → jobs → steps). | CI-201 | Full run/job/step hierarchy populated. |
 | CI-203 | BACKLOG | Normalize lifecycle separately from outcome. | CI-201–202 | Tests cover queued, running, completed-success, completed-failure, cancelled, skipped. |
@@ -437,7 +438,7 @@ Evidence: read of `packages/github/src/{webhook,client,evaluate,normalize,check,
 
 The new `RepositoryUnderstanding` substrate (`packages/core/src/understanding.ts`) already defines the correct *shape*: `EvidenceRunObservation`, `EvidenceAttribution`, `EvidenceExpectation`, `CompletenessAssessment`, and a `RepositoryAnalyzer` interface with a `WORKFLOW_ANALYZER` provenance kind. However:
 
-- `EvidenceRunObservation` still only carries `{ name, evidenceKind, status: EvidenceStatus, source, url }` — the **same single conflation** (one status enum, no lifecycle/outcome split, no run/attempt/job/step identity, no timestamps).
+- At G0, `EvidenceRunObservation` only carried `{ name, evidenceKind, status: EvidenceStatus, source, url }`. CI-106 replaced that conflation with independent lifecycle/outcome and optional attempt/job/step links; CI-101–105 added the provider-neutral hierarchy. Live GitHub ingestion remains legacy until the later adapter/cutover gates.
 - `analyzeRepository` / `evaluateUnderstandingCompatibility` exist only in `packages/core` + tests and are **not wired into the live GitHub ingestion path** (confirmed by `AGENT_STEERING_DATA_AND_ARCHITECTURE_INVESTIGATION.md` §4.2). The live path uses the legacy `SparkInput`/`SparkEvaluation` model.
 - The `WORKFLOW_ANALYZER` provenance kind is declared but **no workflow analyzer exists**.
 
@@ -460,7 +461,7 @@ So CI-4xx does **not** duplicate RU-301…305; it is the CI/CD-specific realizat
 - CI-start confound quantified from real data (64% PENDING, 100% unknown coverage, 127 duplicate-name runs, 31 conflicting-status runs, 379 zero-evidence-CLEAR runs). ✔
 - Reconciliation with RU G3 documented (§3.6). ✔
 
-**G0 is complete:** CI-001's loss map is inspectable, CI-002 makes the provider and projection losses reproducible, and CI-003 prevents the known cross-revision trajectory confound without changing attention policy. G1 is the next gate.
+**G0 is complete:** CI-001's loss map is inspectable, CI-002 makes the provider and projection losses reproducible, and CI-003 prevents the known cross-revision trajectory confound without changing attention policy. G1 subsequently completed the core model; CI-207 is next.
 
 ## Task evidence log
 
@@ -475,6 +476,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | CI-002 | reopened -> done | Corrected provider boundaries and identity invariants; reruns now keep one run/check-suite identity with distinct attempts/jobs; reusable workflows use job-level `uses`; skipped provider records remain `COMPLETED/SKIPPED`; deployment/status and explicit pending-approval evidence are separate. Corpus tests pass in both root and package execution contexts. |
 | 2026-09-01 | CI-003 | backlog -> done | Added revision-aware classification tests and implementation in `apps/api/src/change-trajectory.ts`: fresh PENDING on a new SHA is not `EVIDENCE_BECAME_PENDING`/`EVIDENCE_REGRESSED`; same-SHA PASSED→PENDING remains visible. Attention policy is unchanged. |
 | 2026-09-01 | G0 verification | inspected | Root `pnpm test` is explicitly scoped to repository-owned `packages` and `apps`, preventing unrelated untracked analysis applications from being discovered as Spark tests; `pnpm typecheck` remains the workspace-wide type gate. |
+| 2026-09-01 | CI-101–106 | backlog/ready -> done | Added provider-neutral definition/run/attempt/job/step observations and independent lifecycle/outcome to `packages/core/src/understanding.ts`; extended normalization with hierarchy/reference checks; added table-driven legacy projection and identity tests; the GitHub corpus now consumes the shared core vocabulary. Focused core/GitHub tests and typecheck pass. |
+| 2026-09-01 | CI-004 | backlog -> done | Kept process facts on the existing `RepositoryUnderstanding` normalization + compatibility-projector seam and retained the CI-4xx/RU-3xx coordination mapping in Part III §3.6; no parallel evidence evaluator was introduced. |
+| 2026-09-01 | CI-207 | backlog -> ready | G1 dependency is satisfied. Next acceptance boundary is a written, bounded Actions/check-runs source decision and identity crosswalk before provider implementation. |
 
 ## Change log
 
@@ -484,13 +488,14 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-31 | Re-scoped the plan from CI-001 findings (Part I §16, R1–R6). | Bake in: single CI+RU evidence-claim seam (CI-004); core lifecycle/outcome vocabulary (CI-106); canonical GitHub data source + crosswalk (CI-207); V0 as shadow projection (R4); corpus shapes shared fixtures (R5); deployment webhook routing (CI-1005). No gate weakened; new tasks use new IDs. |
 | 2026-08-31 | Completed the initial CI-002 corpus draft. | Preserved as a failed hypothesis in the task evidence log; provider-grounding corrections followed on 2026-09-01. |
 | 2026-09-01 | Corrected and revalidated G0; split CI-1 into CI-1A/CI-1B. | Keep characterization/trajectory semantics reviewable before introducing the provider-neutral core model; fix provider identity, lifecycle, deployment, reusable-workflow, and analytical-grain errors found during review. |
+| 2026-09-01 | Completed G1 provider-neutral process observations. | Preserve logical run versus rerun-attempt identity, make lifecycle/result independent, share vocabulary with the characterization corpus, and keep legacy behavior behind one explicit lossy projector. |
 
 ## Decision gates
 
-- **Gate A — Process truth:** can Spark distinguish `running / failed / skipped / blocked / missing / stale / unknown` truthfully? (Currently **no** — one `status` variable, no lifecycle/outcome split.) If no, stop.
+- **Gate A — Process truth:** can Spark distinguish `running / failed / skipped / blocked / missing / stale / unknown` truthfully? (Core model: **yes for lifecycle/outcome and hierarchy**; end-to-end ingestion: **not yet**, pending CI-207/CI-2xx. Blocked/stale remain derived semantics for later gates.) If no, stop.
 - **Gate B — Evidence truth:** can Spark distinguish what ran / what passed / what it validates / why / what was expected / what remains unknown? (Currently **no** — coverage always unknown, no expectations.) If no, stop.
 - **Gate C — Historical truth:** can Spark reconstruct CI/CD state at a historical point in time? (Currently **no** — latest-per-SHA projection + compressed blob only.) If no, do not build behavioral analytics.
 - **Gate D — Insight usefulness:** can deterministic CI/CD insights explain a change without attention or ML? Reassess the model if no.
 - **Gate E — Agent readiness:** can structured CI/CD context reliably answer what an agent needs without prescribing arbitrary code changes? Only after this should CI/CD join automatic-steering research.
 
-**Immediate execution order:** CI-001–003 (G0, done) → CI-106 (core vocabulary) → CI-101–105 (provider-neutral semantics and identity invariants) → CI-004 (RU-workstream coordination, after CI-106) → CI-207 + CI-201–206 (canonical source + GitHub runtime) → CI-301–305 (declared workflows) → CI-401–405 **+ RU-301…305** (evidence architecture, one workstream) → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.
+**Immediate execution order:** CI-001–106 + CI-004 (G0/G1, done) → **CI-207 (ready)** → CI-201–206 (GitHub runtime) → CI-301–305 (declared workflows) → CI-401–405 **+ RU-301…305** (evidence architecture, one workstream) → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.

@@ -5,6 +5,8 @@ import type {
     AreaMembership,
     Boundary,
     ClaimSupport,
+    ProcessLifecycle,
+    ProcessOutcome,
     RepositoryUnderstanding,
     UnderstandingTarget,
 } from './understanding';
@@ -12,6 +14,7 @@ import type {
     AnalysisCompleteness,
     Change,
     Evidence,
+    EvidenceStatus,
     KnowledgeClass,
     Project,
     RepositoryContext,
@@ -24,6 +27,7 @@ export const LEGACY_PROJECTION_LOSSES = [
     'Only depends-on relationships are retained by the legacy project graph.',
     'Boundary-to-area and boundary-to-artifact links are collapsed into sensitive-surface labels.',
     'Evidence attribution rationale is collapsed into area-name coverage.',
+    'Process lifecycle and outcome are collapsed into one legacy evidence status.',
     'Per-source and per-dimension completeness is compressed into one legacy analysis summary.',
 ] as const;
 
@@ -41,6 +45,15 @@ export interface LegacyCompatibilityProjection {
 
 function valueName(value: string | { extension: string }): string {
     return typeof value === 'string' ? value : value.extension;
+}
+
+export function projectProcessState(lifecycle: ProcessLifecycle, outcome: ProcessOutcome): EvidenceStatus {
+    if (lifecycle === 'EXPECTED' || lifecycle === 'NOT_OBSERVED') return 'MISSING';
+    if (lifecycle === 'QUEUED' || lifecycle === 'RUNNING') return 'PENDING';
+    if (lifecycle === 'CANCELLED') return 'UNKNOWN';
+    if (outcome === 'PASSED') return 'PASSED';
+    if (outcome === 'FAILED') return 'FAILED';
+    return 'UNKNOWN';
 }
 
 function hasRole(area: Area, role: string): boolean {
@@ -227,7 +240,7 @@ export function projectRepositoryUnderstanding(input: RepositoryUnderstanding): 
         return {
             name: run.name,
             kind: run.evidenceKind,
-            status: run.status,
+            status: projectProcessState(run.lifecycle, run.outcome),
             source: run.source.id ?? run.source.kind,
             knowledge: 'observed',
             coverage: coverage.length > 0 ? [...new Set(coverage)].sort() : 'UNKNOWN',
