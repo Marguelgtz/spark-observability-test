@@ -1,9 +1,30 @@
-import type { EvidenceStatus } from './types';
-
 export type ObservationId = string;
 export type RepositoryId = string;
 export type RevisionId = string;
 export type ArtifactId = string;
+export type PipelineDefinitionId = string;
+export type PipelineRunId = string;
+export type PipelineAttemptId = string;
+export type PipelineJobId = string;
+export type PipelineStepId = string;
+
+/** Where an observed process is in its lifecycle, independent of its result. */
+export type ProcessLifecycle =
+    | 'EXPECTED'
+    | 'NOT_OBSERVED'
+    | 'QUEUED'
+    | 'RUNNING'
+    | 'COMPLETED'
+    | 'CANCELLED';
+
+/** The terminal result of a process, independent of whether it has completed. */
+export type ProcessOutcome =
+    | 'PASSED'
+    | 'FAILED'
+    | 'NEUTRAL'
+    | 'SKIPPED'
+    | 'UNKNOWN'
+    | 'NOT_APPLICABLE';
 
 export interface ObservationSource {
     /** Provider-neutral source family, such as `vcs`, `ci`, or `filesystem`. */
@@ -56,6 +77,112 @@ export interface ChangeObservation {
     source: ObservationSource;
 }
 
+export interface PipelinePathFilterDeclaration {
+    include?: string[];
+    exclude?: string[];
+}
+
+export interface PipelineTriggerDeclaration {
+    /** Provider-neutral event name, such as a proposed change, push, schedule, or manual dispatch. */
+    event: string;
+    branches?: PipelinePathFilterDeclaration;
+    paths?: PipelinePathFilterDeclaration;
+}
+
+export type DeclaredExecutionReference =
+    | { kind: 'COMMAND'; command: string }
+    | { kind: 'ACTION'; reference: string }
+    | { kind: 'REUSABLE_PROCESS'; reference: string };
+
+export interface PipelineStepDeclaration {
+    id?: string;
+    name?: string;
+    execution: DeclaredExecutionReference;
+}
+
+export interface PipelineJobDeclaration {
+    id: string;
+    name?: string;
+    needs?: string[];
+    matrix?: Record<string, Array<string | number | boolean>>;
+    environment?: string;
+    reusableProcess?: string;
+    steps?: PipelineStepDeclaration[];
+}
+
+export interface PipelineDefinitionObservation {
+    kind: 'pipeline-definition';
+    id: PipelineDefinitionId;
+    repositoryId: RepositoryId;
+    revision: RevisionId;
+    name: string;
+    path: string;
+    triggers: PipelineTriggerDeclaration[];
+    jobs: PipelineJobDeclaration[];
+    source: ObservationSource;
+}
+
+/** A logical invocation. Re-execution creates another attempt under the same run. */
+export interface PipelineRunObservation {
+    kind: 'pipeline-run';
+    id: PipelineRunId;
+    /** Link to an acquired declaration; absent when definition acquisition was unavailable. */
+    pipelineDefinitionId?: PipelineDefinitionId;
+    repositoryId: RepositoryId;
+    revision: RevisionId;
+    trigger: string;
+    ref?: string;
+    createdAt?: string;
+    source: ObservationSource;
+    url?: string;
+}
+
+export interface PipelineAttemptObservation {
+    kind: 'pipeline-attempt';
+    id: PipelineAttemptId;
+    pipelineRunId: PipelineRunId;
+    attempt: number;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
+    startedAt?: string;
+    completedAt?: string;
+    source: ObservationSource;
+    url?: string;
+}
+
+export interface PipelineJobObservation {
+    kind: 'pipeline-job';
+    id: PipelineJobId;
+    pipelineAttemptId: PipelineAttemptId;
+    /** Stable identifier from the declaration before matrix expansion, when available. */
+    logicalJobId?: string;
+    name: string;
+    needs?: string[];
+    matrix?: Record<string, string | number | boolean>;
+    runnerClass?: string;
+    environment?: string;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
+    startedAt?: string;
+    completedAt?: string;
+    source: ObservationSource;
+    url?: string;
+}
+
+export interface PipelineStepObservation {
+    kind: 'pipeline-step';
+    id: PipelineStepId;
+    pipelineJobId: PipelineJobId;
+    sequence: number;
+    name: string;
+    execution?: DeclaredExecutionReference;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
+    startedAt?: string;
+    completedAt?: string;
+    source: ObservationSource;
+}
+
 export interface EvidenceRunObservation {
     kind: 'evidence-run';
     id: ObservationId;
@@ -63,7 +190,11 @@ export interface EvidenceRunObservation {
     revision: RevisionId;
     name: string;
     evidenceKind: string;
-    status: EvidenceStatus;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
+    pipelineAttemptId?: PipelineAttemptId;
+    pipelineJobId?: PipelineJobId;
+    pipelineStepId?: PipelineStepId;
     source: ObservationSource;
     url?: string;
 }
@@ -72,6 +203,11 @@ export interface RepositoryObservations {
     snapshot: RepositorySnapshotObservation;
     change: ChangeObservation;
     artifacts: ArtifactObservation[];
+    pipelineDefinitions: PipelineDefinitionObservation[];
+    pipelineRuns: PipelineRunObservation[];
+    pipelineAttempts: PipelineAttemptObservation[];
+    pipelineJobs: PipelineJobObservation[];
+    pipelineSteps: PipelineStepObservation[];
     evidenceRuns: EvidenceRunObservation[];
     /** Acquisition truth remains independent for each source or dimension. */
     completeness: SourceCompleteness[];

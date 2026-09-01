@@ -25,6 +25,11 @@ function fixture(): RepositoryUnderstanding {
                 { kind: 'artifact', id: 'artifact:z', repositoryId: 'repo', revision: 'head', path: 'z.ts', artifactKind: 'FILE', source: { kind: 'vcs' } },
                 { kind: 'artifact', id: 'artifact:a', repositoryId: 'repo', revision: 'head', path: 'a.ts', artifactKind: 'FILE', source: { kind: 'vcs' } },
             ],
+            pipelineDefinitions: [],
+            pipelineRuns: [],
+            pipelineAttempts: [],
+            pipelineJobs: [],
+            pipelineSteps: [],
             evidenceRuns: [],
             completeness: [{ source: 'tree', state: 'COMPLETE' }, { source: 'changes', state: 'COMPLETE' }],
         },
@@ -93,6 +98,71 @@ describe('repository understanding normalization', () => {
             'DANGLING_REFERENCE',
             'INVALID_COMPLETENESS',
             'INVALID_COMPLETENESS',
+        ]);
+    });
+
+    it('normalizes the process hierarchy and removes dangling descendants and evidence links', () => {
+        const input = fixture();
+        input.observations.pipelineDefinitions.push({
+            kind: 'pipeline-definition', id: 'definition:verify', repositoryId: 'repo', revision: 'head', name: 'Verify',
+            path: '.automation/verify.yml', triggers: [{ event: 'proposed-change' }], jobs: [{ id: 'test' }],
+            source: { kind: 'ci-definition' },
+        });
+        input.observations.pipelineRuns.push(
+            {
+                kind: 'pipeline-run', id: 'pipeline-run:7', pipelineDefinitionId: 'definition:verify', repositoryId: 'repo',
+                revision: 'head', trigger: 'proposed-change', source: { kind: 'ci' },
+            },
+            {
+                kind: 'pipeline-run', id: 'pipeline-run:without-definition', pipelineDefinitionId: 'definition:missing', repositoryId: 'repo',
+                revision: 'head', trigger: 'proposed-change', source: { kind: 'ci' },
+            },
+        );
+        input.observations.pipelineAttempts.push(
+            {
+                kind: 'pipeline-attempt', id: 'attempt:7:1', pipelineRunId: 'pipeline-run:7', attempt: 1,
+                lifecycle: 'DONE' as never, outcome: 'SUCCESS' as never, source: { kind: 'ci' },
+            },
+            {
+                kind: 'pipeline-attempt', id: 'attempt:dangling', pipelineRunId: 'pipeline-run:missing', attempt: 1,
+                lifecycle: 'COMPLETED', outcome: 'FAILED', source: { kind: 'ci' },
+            },
+        );
+        input.observations.pipelineJobs.push({
+            kind: 'pipeline-job', id: 'job:1', pipelineAttemptId: 'attempt:7:1', name: 'test',
+            lifecycle: 'COMPLETED', outcome: 'PASSED', source: { kind: 'ci' },
+        });
+        input.observations.pipelineSteps.push({
+            kind: 'pipeline-step', id: 'step:1', pipelineJobId: 'job:1', sequence: 1, name: 'test',
+            lifecycle: 'COMPLETED', outcome: 'PASSED', source: { kind: 'ci' },
+        });
+        input.observations.evidenceRuns.push({
+            kind: 'evidence-run', id: 'evidence:1', repositoryId: 'repo', revision: 'head', name: 'test', evidenceKind: 'test',
+            lifecycle: 'COMPLETED', outcome: 'PASSED', pipelineAttemptId: 'attempt:7:1', pipelineJobId: 'job:missing',
+            pipelineStepId: 'step:1', source: { kind: 'ci' },
+        });
+
+        const result = normalizeRepositoryUnderstanding(input);
+
+        expect(result.understanding.observations.pipelineRuns.map(item => item.id)).toEqual([
+            'pipeline-run:7', 'pipeline-run:without-definition',
+        ]);
+        expect(result.understanding.observations.pipelineRuns[1]).not.toHaveProperty('pipelineDefinitionId');
+        expect(result.understanding.observations.pipelineAttempts).toEqual([
+            expect.objectContaining({ id: 'attempt:7:1', lifecycle: 'NOT_OBSERVED', outcome: 'UNKNOWN' }),
+        ]);
+        expect(result.understanding.observations.pipelineJobs.map(item => item.id)).toEqual(['job:1']);
+        expect(result.understanding.observations.pipelineSteps.map(item => item.id)).toEqual(['step:1']);
+        expect(result.understanding.observations.evidenceRuns[0]).toMatchObject({
+            pipelineAttemptId: 'attempt:7:1', pipelineStepId: 'step:1',
+        });
+        expect(result.understanding.observations.evidenceRuns[0]).not.toHaveProperty('pipelineJobId');
+        expect(result.issues.map(issue => issue.code)).toEqual([
+            'DANGLING_REFERENCE',
+            'DANGLING_REFERENCE',
+            'INVALID_PROCESS_LIFECYCLE',
+            'INVALID_PROCESS_OUTCOME',
+            'DANGLING_REFERENCE',
         ]);
     });
 });
