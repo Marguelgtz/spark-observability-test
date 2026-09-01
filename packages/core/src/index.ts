@@ -10,3 +10,4 @@ export * from './attention';
 export * from './evaluate';
 export * from './evidence-matching';
 export * from './verification-graph';
+export * from './process-observation';
