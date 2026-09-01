@@ -25,7 +25,7 @@ Authoritative contracts:
 
 | Canonical concept | GitHub identity | Rule |
 | --- | --- | --- |
-| Pipeline definition identity | `workflow_id` | Stable source identity only; checked-in definition content is acquired separately at the evaluated revision in G3. |
+| Pipeline definition identity | normalized workflow path at the repository/revision | Joins runtime to exact-revision declaration content. `workflow_id` remains the provider crosswalk and fallback when the run exposes no usable path. |
 | Logical pipeline run | workflow run `id` | Reruns retain this ID. |
 | Attempt | `(run.id, run_attempt)` | Attempt number is never promoted to a new logical run. |
 | Workflow/check-suite bridge | `run.check_suite_id` ↔ `check_run.check_suite.id` | Supplemental bridge for matching supplied Checks data to an Actions run. |

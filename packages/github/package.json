@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "main": "src/index.ts",
   "dependencies": {
-    "@spark/core": "workspace:*"
+    "@spark/core": "workspace:*",
+    "yaml": "^2.9.0"
   }
 }

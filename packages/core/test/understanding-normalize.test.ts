@@ -130,7 +130,7 @@ describe('repository understanding normalization', () => {
         );
         input.observations.pipelineJobs.push({
             kind: 'pipeline-job', id: 'job:1', pipelineAttemptId: 'attempt:7:1', name: 'test',
-            lifecycle: 'COMPLETED', outcome: 'PASSED', source: { kind: 'ci' },
+            lifecycle: 'COMPLETED', outcome: 'PASSED', blockedByPipelineJobIds: ['job:missing'], source: { kind: 'ci' },
         });
         input.observations.pipelineSteps.push({
             kind: 'pipeline-step', id: 'step:1', pipelineJobId: 'job:1', sequence: 1, name: 'test',
@@ -152,6 +152,7 @@ describe('repository understanding normalization', () => {
             expect.objectContaining({ id: 'attempt:7:1', lifecycle: 'UNKNOWN', outcome: 'UNKNOWN' }),
         ]);
         expect(result.understanding.observations.pipelineJobs.map(item => item.id)).toEqual(['job:1']);
+        expect(result.understanding.observations.pipelineJobs[0]).not.toHaveProperty('blockedByPipelineJobIds');
         expect(result.understanding.observations.pipelineSteps.map(item => item.id)).toEqual(['step:1']);
         expect(result.understanding.observations.evidenceRuns[0]).toMatchObject({
             pipelineAttemptId: 'attempt:7:1', pipelineStepId: 'step:1',
@@ -161,6 +162,7 @@ describe('repository understanding normalization', () => {
             'DANGLING_REFERENCE',
             'INVALID_PROCESS_LIFECYCLE',
             'INVALID_PROCESS_OUTCOME',
+            'DANGLING_REFERENCE',
             'DANGLING_REFERENCE',
         ]);
     });

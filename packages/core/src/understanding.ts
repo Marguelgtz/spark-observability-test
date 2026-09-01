@@ -91,7 +91,7 @@ export interface PipelineTriggerDeclaration {
 }
 
 export type DeclaredExecutionReference =
-    | { kind: 'COMMAND'; command: string }
+    | { kind: 'COMMAND'; command: string; semanticReach?: 'DIRECT' | 'WRAPPER' | 'DYNAMIC' }
     | { kind: 'ACTION'; reference: string }
     | { kind: 'REUSABLE_PROCESS'; reference: string };
 
@@ -107,6 +107,8 @@ export interface PipelineJobDeclaration {
     needs?: string[];
     matrix?: Record<string, Array<string | number | boolean>>;
     environment?: string;
+    /** Raw declared condition; its semantics remain unresolved unless an analyzer handles it. */
+    condition?: string;
     reusableProcess?: string;
     steps?: PipelineStepDeclaration[];
 }
@@ -159,6 +161,8 @@ export interface PipelineJobObservation {
     logicalJobId?: string;
     name: string;
     needs?: string[];
+    /** Upstream job executions deterministically shown to have prevented this job from running. */
+    blockedByPipelineJobIds?: PipelineJobId[];
     matrix?: Record<string, string | number | boolean>;
     runnerClass?: string;
     environment?: string;
