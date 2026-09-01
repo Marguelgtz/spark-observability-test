@@ -167,4 +167,40 @@ describe('repository understanding normalization', () => {
             'DANGLING_REFERENCE',
         ]);
     });
+
+    it('removes process links whose ancestry belongs to another revision', () => {
+        const input = fixture();
+        input.observations.pipelineRuns.push({
+            kind: 'pipeline-run', id: 'pipeline-run:old', repositoryId: 'repo', revision: 'old',
+            trigger: 'pull_request', source: { kind: 'ci' },
+        });
+        input.observations.pipelineAttempts.push({
+            kind: 'pipeline-attempt', id: 'attempt:old', pipelineRunId: 'pipeline-run:old', attempt: 1,
+            lifecycle: 'COMPLETED', outcome: 'PASSED', source: { kind: 'ci' },
+        });
+        input.observations.pipelineJobs.push({
+            kind: 'pipeline-job', id: 'job:old', pipelineAttemptId: 'attempt:old', name: 'verify',
+            lifecycle: 'COMPLETED', outcome: 'PASSED', source: { kind: 'ci' },
+        });
+        input.observations.pipelineSteps.push({
+            kind: 'pipeline-step', id: 'step:old', pipelineJobId: 'job:old', sequence: 1, name: 'test',
+            lifecycle: 'COMPLETED', outcome: 'PASSED', source: { kind: 'ci' },
+        });
+        input.observations.evidenceRuns.push({
+            kind: 'evidence-run', id: 'evidence:head', repositoryId: 'repo', revision: 'head', name: 'verify',
+            evidenceKind: 'test', lifecycle: 'COMPLETED', outcome: 'PASSED',
+            pipelineRunId: 'pipeline-run:old', pipelineAttemptId: 'attempt:old', pipelineJobId: 'job:old',
+            pipelineStepId: 'step:old', source: { kind: 'ci' },
+        });
+
+        const result = normalizeRepositoryUnderstanding(input);
+
+        expect(result.understanding.observations.evidenceRuns[0]).not.toHaveProperty('pipelineRunId');
+        expect(result.understanding.observations.evidenceRuns[0]).not.toHaveProperty('pipelineAttemptId');
+        expect(result.understanding.observations.evidenceRuns[0]).not.toHaveProperty('pipelineJobId');
+        expect(result.understanding.observations.evidenceRuns[0]).not.toHaveProperty('pipelineStepId');
+        expect(result.issues.map(issue => issue.code)).toEqual([
+            'DANGLING_REFERENCE', 'DANGLING_REFERENCE', 'DANGLING_REFERENCE', 'DANGLING_REFERENCE',
+        ]);
+    });
 });
