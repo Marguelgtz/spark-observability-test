@@ -1,4 +1,12 @@
-import type { GitHubCheckRun, GitHubPullRequest, GitHubPullRequestFile, GitHubRepository } from './types';
+import type {
+  GitHubCheckRun,
+  GitHubPageResult,
+  GitHubPullRequest,
+  GitHubPullRequestFile,
+  GitHubRepository,
+  GitHubWorkflowJob,
+  GitHubWorkflowRun,
+} from './types';
 
 export class GitHubApiClient {
   constructor(
@@ -49,6 +57,54 @@ export class GitHubApiClient {
       if (checks.length >= body.total_count || body.check_runs.length < 100) break;
     }
     return checks;
+  }
+
+  async listWorkflowRunsForRevision(
+    owner: string,
+    repo: string,
+    sha: string,
+    maxPages: number,
+  ): Promise<GitHubPageResult<GitHubWorkflowRun>> {
+    const runs: GitHubWorkflowRun[] = [];
+    let totalCount = 0;
+    for (let page = 1; page <= maxPages; page += 1) {
+      const body = await this.request<{ total_count: number; workflow_runs: GitHubWorkflowRun[] }>(
+        `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(sha)}&per_page=100&page=${page}`,
+      );
+      totalCount = body.total_count;
+      runs.push(...body.workflow_runs.filter(run => run.head_sha === sha));
+      if (body.workflow_runs.length < 100 || runs.length >= totalCount) break;
+    }
+    return { items: runs, totalCount, complete: runs.length >= totalCount };
+  }
+
+  getWorkflowRunAttempt(
+    owner: string,
+    repo: string,
+    runId: number,
+    attempt: number,
+  ): Promise<GitHubWorkflowRun> {
+    return this.request(`/repos/${owner}/${repo}/actions/runs/${runId}/attempts/${attempt}`);
+  }
+
+  async listWorkflowJobsForAttempt(
+    owner: string,
+    repo: string,
+    runId: number,
+    attempt: number,
+    maxPages: number,
+  ): Promise<GitHubPageResult<GitHubWorkflowJob>> {
+    const jobs: GitHubWorkflowJob[] = [];
+    let totalCount = 0;
+    for (let page = 1; page <= maxPages; page += 1) {
+      const body = await this.request<{ total_count: number; jobs: GitHubWorkflowJob[] }>(
+        `/repos/${owner}/${repo}/actions/runs/${runId}/attempts/${attempt}/jobs?per_page=100&page=${page}`,
+      );
+      totalCount = body.total_count;
+      jobs.push(...body.jobs);
+      if (body.jobs.length < 100 || jobs.length >= totalCount) break;
+    }
+    return { items: jobs, totalCount, complete: jobs.length >= totalCount };
   }
 
   async getTree(owner: string, repo: string, sha: string): Promise<{ paths: string[]; complete: boolean }> {

@@ -43,7 +43,7 @@ export interface NormalizedRepositoryUnderstanding {
 const completenessStates = new Set<CompletenessState>(['COMPLETE', 'PARTIAL', 'UNAVAILABLE']);
 const confidenceStates = new Set<ClaimConfidence>(['SUPPORTED', 'TENTATIVE', 'UNKNOWN']);
 const processLifecycles = new Set<ProcessLifecycle>([
-    'EXPECTED', 'NOT_OBSERVED', 'QUEUED', 'RUNNING', 'COMPLETED', 'CANCELLED',
+    'EXPECTED', 'NOT_OBSERVED', 'QUEUED', 'RUNNING', 'COMPLETED', 'CANCELLED', 'UNKNOWN',
 ]);
 const processOutcomes = new Set<ProcessOutcome>([
     'PASSED', 'FAILED', 'NEUTRAL', 'SKIPPED', 'UNKNOWN', 'NOT_APPLICABLE',
@@ -94,9 +94,9 @@ function normalizeProcessState<T extends { lifecycle: ProcessLifecycle; outcome:
         issues.push({
             code: 'INVALID_PROCESS_LIFECYCLE',
             path: `${path}.lifecycle`,
-            detail: `replaced ${String(lifecycle)} with NOT_OBSERVED`,
+            detail: `replaced ${String(lifecycle)} with UNKNOWN`,
         });
-        lifecycle = 'NOT_OBSERVED';
+        lifecycle = 'UNKNOWN';
     }
     if (!processOutcomes.has(outcome)) {
         issues.push({
@@ -191,17 +191,7 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
         issues,
     );
     const pipelineDefinitionIds = new Set(pipelineDefinitions.map(item => item.id));
-    const pipelineRuns = uniqueById(input.observations.pipelineRuns, 'observations.pipelineRuns', issues).map(item => {
-        if (!item.pipelineDefinitionId || pipelineDefinitionIds.has(item.pipelineDefinitionId)) return { ...item };
-        issues.push({
-            code: 'DANGLING_REFERENCE',
-            path: `observations.pipelineRuns.${item.id}.pipelineDefinitionId`,
-            detail: 'removed missing pipeline definition reference; retained observed run',
-        });
-        const retained = { ...item };
-        delete retained.pipelineDefinitionId;
-        return retained;
-    });
+    const pipelineRuns = uniqueById(input.observations.pipelineRuns, 'observations.pipelineRuns', issues);
     const pipelineRunIds = new Set(pipelineRuns.map(item => item.id));
     const pipelineAttempts: PipelineAttemptObservation[] = uniqueById(
         input.observations.pipelineAttempts,

@@ -15,7 +15,8 @@ export type ProcessLifecycle =
     | 'QUEUED'
     | 'RUNNING'
     | 'COMPLETED'
-    | 'CANCELLED';
+    | 'CANCELLED'
+    | 'UNKNOWN';
 
 /** The terminal result of a process, independent of whether it has completed. */
 export type ProcessOutcome =
@@ -126,7 +127,7 @@ export interface PipelineDefinitionObservation {
 export interface PipelineRunObservation {
     kind: 'pipeline-run';
     id: PipelineRunId;
-    /** Link to an acquired declaration; absent when definition acquisition was unavailable. */
+    /** Stable definition identity; the corresponding declaration observation may be unavailable. */
     pipelineDefinitionId?: PipelineDefinitionId;
     repositoryId: RepositoryId;
     revision: RevisionId;

@@ -50,7 +50,7 @@ function valueName(value: string | { extension: string }): string {
 export function projectProcessState(lifecycle: ProcessLifecycle, outcome: ProcessOutcome): EvidenceStatus {
     if (lifecycle === 'EXPECTED' || lifecycle === 'NOT_OBSERVED') return 'MISSING';
     if (lifecycle === 'QUEUED' || lifecycle === 'RUNNING') return 'PENDING';
-    if (lifecycle === 'CANCELLED') return 'UNKNOWN';
+    if (lifecycle === 'CANCELLED' || lifecycle === 'UNKNOWN') return 'UNKNOWN';
     if (outcome === 'PASSED') return 'PASSED';
     if (outcome === 'FAILED') return 'FAILED';
     return 'UNKNOWN';

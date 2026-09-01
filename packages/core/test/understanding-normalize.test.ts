@@ -147,9 +147,9 @@ describe('repository understanding normalization', () => {
         expect(result.understanding.observations.pipelineRuns.map(item => item.id)).toEqual([
             'pipeline-run:7', 'pipeline-run:without-definition',
         ]);
-        expect(result.understanding.observations.pipelineRuns[1]).not.toHaveProperty('pipelineDefinitionId');
+        expect(result.understanding.observations.pipelineRuns[1]).toHaveProperty('pipelineDefinitionId', 'definition:missing');
         expect(result.understanding.observations.pipelineAttempts).toEqual([
-            expect.objectContaining({ id: 'attempt:7:1', lifecycle: 'NOT_OBSERVED', outcome: 'UNKNOWN' }),
+            expect.objectContaining({ id: 'attempt:7:1', lifecycle: 'UNKNOWN', outcome: 'UNKNOWN' }),
         ]);
         expect(result.understanding.observations.pipelineJobs.map(item => item.id)).toEqual(['job:1']);
         expect(result.understanding.observations.pipelineSteps.map(item => item.id)).toEqual(['step:1']);
@@ -158,7 +158,6 @@ describe('repository understanding normalization', () => {
         });
         expect(result.understanding.observations.evidenceRuns[0]).not.toHaveProperty('pipelineJobId');
         expect(result.issues.map(issue => issue.code)).toEqual([
-            'DANGLING_REFERENCE',
             'DANGLING_REFERENCE',
             'INVALID_PROCESS_LIFECYCLE',
             'INVALID_PROCESS_OUTCOME',
