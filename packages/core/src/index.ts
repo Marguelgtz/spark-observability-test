@@ -13,3 +13,4 @@ export * from './verification-graph';
 export * from './process-observation';
 export * from './process-reconstruction';
 export * from './process-export';
+export * from './process-insight';
