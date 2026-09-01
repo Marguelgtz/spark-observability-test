@@ -11,3 +11,4 @@ export * from './types';
 export * from './user-auth';
 export * from './webhook';
 export * from './workflows';
+export * from './workflow-evidence';

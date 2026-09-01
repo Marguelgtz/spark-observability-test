@@ -79,4 +79,49 @@ describe('repository understanding compatibility projector', () => {
         expect(understanding.observations.evidenceRuns).toHaveLength(1);
         expect(projection.evidence).toEqual([]);
     });
+
+    it('projects missing evidence only from a supported expectation and complete acquisition', () => {
+        const understanding = legacyInputAsUnderstanding({
+            change: { id: 'head', files: [{ path: 'src/main.ts', status: 'modified' }] },
+            context: { projects: [] },
+            evidence: [],
+        });
+        understanding.observations.completeness.push({ source: 'github-check-runs', state: 'COMPLETE' });
+        understanding.evidenceExpectations.push({
+            id: 'expectation:verify',
+            name: 'verify',
+            target: { kind: 'CHANGE', changeId: understanding.observations.change.id },
+            match: { evidenceName: 'verify', evidenceKind: 'github-check-run' },
+            support: [{
+                provenance: { kind: 'PROFILE', source: '.spark/profile.yml' },
+                derivation: 'DECLARED', confidence: 'SUPPORTED', evidence: [], completeness: { state: 'COMPLETE' },
+            }],
+        });
+
+        const projection = projectRepositoryUnderstanding(understanding);
+
+        expect(projection.evidence).toEqual([{
+            name: 'verify', kind: 'github-check-run', status: 'MISSING', source: '.spark/profile.yml',
+            knowledge: 'inferred', coverage: ['Repository-wide'],
+        }]);
+    });
+
+    it('does not invent missing evidence when check acquisition or rule support is incomplete', () => {
+        const understanding = legacyInputAsUnderstanding({
+            change: { id: 'head', files: [{ path: 'src/main.ts', status: 'modified' }] },
+            context: { projects: [] },
+            evidence: [],
+        });
+        understanding.observations.completeness.push({ source: 'github-check-runs', state: 'PARTIAL' });
+        understanding.evidenceExpectations.push({
+            id: 'expectation:verify', name: 'verify',
+            target: { kind: 'CHANGE', changeId: understanding.observations.change.id },
+            support: [{
+                provenance: { kind: 'PROFILE', source: '.spark/profile.yml' },
+                derivation: 'DECLARED', confidence: 'UNKNOWN', evidence: [], completeness: { state: 'PARTIAL' },
+            }],
+        });
+
+        expect(projectRepositoryUnderstanding(understanding).evidence).toEqual([]);
+    });
 });

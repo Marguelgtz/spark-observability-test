@@ -1,6 +1,6 @@
 # Repository Understanding Action Plan
 
-Status: active living plan. G0 and G1 are complete; G2 is in progress. The coordinated CI/RU G3 evidence gate is also in progress: RU-301 and RU-302 are complete, and RU-303 is ready. The cross-gate UI compatibility audit is complete.
+Status: active living plan. G0 and G1 are complete; G2 is in progress. RU-301–305 of the coordinated CI/RU G3 evidence gate are complete on the bounded shadow path; RU-306 corpus validation is ready. The cross-gate UI compatibility audit is complete.
 
 Research basis: [`REPOSITORY_UNDERSTANDING_RESEARCH.md`](./REPOSITORY_UNDERSTANDING_RESEARCH.md).
 
@@ -155,10 +155,10 @@ The implementation round is successful when:
 | --- | --- | --- | --- | --- |
 | RU-301 | DONE | Refactor normalized Check Runs into EvidenceRun observations. | G1 | Provider identity, exact revision, lifecycle/result, URL, and duplicates are retained without embedded semantic coverage. |
 | RU-302 | DONE | Add checked-in workflow observation and bounded interpretation. | RU-201, RU-301 | Trigger filters, commands, matrices, and unresolved dynamic/external behavior have explicit completeness. |
-| RU-303 | READY | Add evidence-attribution claims. | RU-302 | Attributions can target change, area, boundary, or relationship and state repository-supported versus adapter-derived support. |
-| RU-304 | BACKLOG | Add evidence-expectation claims. | RU-303 | `MISSING` is produced only from a supported repository rule, required-check policy, adapter rule, or profile declaration. |
-| RU-305 | BACKLOG | Project evidence claims into legacy `Evidence[]`. | RU-303, RU-304 | Existing consumers receive stable statuses and `UNKNOWN` coverage when adequate attribution does not exist. |
-| RU-306 | BACKLOG | Validate workflow/evidence cases across Spark, Stint, Django, Cargo, Kubernetes, and Bazel fixtures. | RU-305 | Repository-defined scope is distinguished from external/unknown CI; passing checks never imply universal coverage. |
+| RU-303 | DONE | Add evidence-attribution claims. | RU-302 | Attributions can target change, area, boundary, or relationship and state repository-supported versus adapter-derived support. |
+| RU-304 | DONE | Add evidence-expectation claims. | RU-303 | `MISSING` is produced only from a supported repository rule, required-check policy, adapter rule, or profile declaration. |
+| RU-305 | DONE | Project evidence claims into legacy `Evidence[]`. | RU-303, RU-304 | Existing consumers receive stable statuses and `UNKNOWN` coverage when adequate attribution does not exist. |
+| RU-306 | READY | Validate workflow/evidence cases across Spark, Stint, Django, Cargo, Kubernetes, and Bazel fixtures. | RU-305 | Repository-defined scope is distinguished from external/unknown CI; passing checks never imply universal coverage. |
 
 ### G4 — Restore profiles as declared enrichment
 
@@ -295,6 +295,10 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | RU-302 | backlog -> done (coordinated with CI G3) | Exact-revision workflow acquisition and bounded declaration interpretation landed on `ci-process/4-workflow-definitions`; external actions, wrappers, dynamic expressions, and unavailable runtime matrix coordinates explicitly lower completeness. |
 | 2026-09-01 | RU-301 | backlog -> done (coordinated with CI-401) | GitHub Check Runs now retain provider identity, exact revision, independent lifecycle/outcome, URL, same-name duplicates, and reviewed process crosswalks as `EvidenceRunObservation` facts without coverage. Full suite: 45 files / 308 tests; typecheck passes. |
 | 2026-09-01 | RU-303 | backlog -> ready | Exact-revision workflow declarations and process-linked evidence facts are available; provenance-bearing attribution is the next shared CI/RU boundary. |
+| 2026-09-01 | RU-303 | ready -> done (coordinated with CI-402) | Path-filter claims target only selected artifacts and their supported areas/boundaries; explicit adapter/profile rules support all target kinds including relationships. Execution without support remains `UNKNOWN` coverage. |
+| 2026-09-01 | RU-304 | backlog -> done (coordinated with CI-403) | Workflow and explicit provider/adapter/profile expectations carry exact match selectors and complete support. Conditional, reusable, matrix, dynamic, and incomplete semantics do not create `MISSING`. |
+| 2026-09-01 | RU-305 | backlog -> done (coordinated with CI-405) | The sole compatibility projector retains current-revision executions, supported coverage, and guarded missing expectations; source/dimension completeness remains separately inspectable. Full suite: 46 files / 314 tests; typecheck passes. |
+| 2026-09-01 | RU-306 | backlog -> ready | The evidence architecture is complete enough to replay cross-ecosystem workflow/evidence fixtures without changing live attention behavior. |
 
 ## Plan change log
 
@@ -303,3 +307,4 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-30 | Initial six-gate action plan created. | Convert completed research into reversible implementation work while keeping tasks editable and evidence-backed. |
 | 2026-08-31 | Cross-gate UI compatibility audit completed and UIE backlog linked. | Establish what the current UI preserves, loses, omits, or overstates before any product-surface evolution. |
 | 2026-09-01 | Reconciled RU-301/302 with the CI process stack and started G3. | Use one evidence observation/claim/projector seam; do not repeat the completed exact-revision workflow work or create a second Check Run path. |
+| 2026-09-01 | Completed RU-301–305 through the shared CI G4 implementation. | Preserve one canonical evidence architecture and require supported claims plus completeness before compatibility output asserts coverage or missing evidence. |

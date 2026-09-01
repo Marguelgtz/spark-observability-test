@@ -379,13 +379,22 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
         })
         .map(item => ({ ...item, support: normalizeSupport(item.support, `evidenceAttributions.${item.id}`, referenceSets, issues) }));
 
+    const pipelineDefinitionsById = new Map(pipelineDefinitions.map(item => [item.id, item]));
     const evidenceExpectations: EvidenceExpectation[] = uniqueById(input.evidenceExpectations, 'evidenceExpectations', issues)
         .filter(item => {
-            if (hasTarget(item.target, targetIds)) return true;
+            const definition = item.match?.pipelineDefinitionId
+                ? pipelineDefinitionsById.get(item.match.pipelineDefinitionId)
+                : undefined;
+            const validSelector = !item.match?.pipelineDefinitionId
+                || (definition !== undefined
+                    && (!item.match.logicalJobId || definition.jobs.some(job => job.id === item.match!.logicalJobId)));
+            if (hasTarget(item.target, targetIds) && validSelector && (!item.match?.logicalJobId || item.match.pipelineDefinitionId)) {
+                return true;
+            }
             issues.push({
                 code: 'DANGLING_REFERENCE',
                 path: `evidenceExpectations.${item.id}`,
-                detail: 'removed expectation with a missing target',
+                detail: 'removed expectation with a missing target or declaration selector',
             });
             return false;
         })

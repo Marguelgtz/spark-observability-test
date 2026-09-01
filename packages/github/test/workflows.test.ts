@@ -101,6 +101,7 @@ jobs:
 on: pull_request
 jobs:
   test:
+    name: Test \${{ matrix.target }}
     strategy:
       matrix: \${{ fromJSON(needs.prepare.outputs.matrix) }}
     steps:
