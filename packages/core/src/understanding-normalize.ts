@@ -262,6 +262,7 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
     ).map(item => {
         const normalized = normalizeProcessState(item, `observations.evidenceRuns.${item.id}`, issues);
         const linkedIds = [
+            ['pipelineRunId', normalized.pipelineRunId, pipelineRunIds],
             ['pipelineAttemptId', normalized.pipelineAttemptId, pipelineAttemptIds],
             ['pipelineJobId', normalized.pipelineJobId, pipelineJobIds],
             ['pipelineStepId', normalized.pipelineStepId, pipelineStepIds],

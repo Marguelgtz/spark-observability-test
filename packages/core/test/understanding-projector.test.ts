@@ -63,4 +63,20 @@ describe('repository understanding compatibility projector', () => {
             ['verify', 'PASSED', 'UNKNOWN'],
         ]);
     });
+
+    it('keeps prior-revision evidence historical instead of relabelling it for the current change', () => {
+        const understanding = legacyInputAsUnderstanding({
+            change: { id: 'head', files: [{ path: 'src/main.ts', status: 'modified' }] },
+            context: { projects: [] },
+            evidence: [{
+                name: 'verify', kind: 'check-run', status: 'PASSED', source: 'ci', knowledge: 'observed', coverage: 'UNKNOWN',
+            }],
+        });
+        understanding.observations.evidenceRuns[0].revision = 'prior-head';
+
+        const projection = projectRepositoryUnderstanding(understanding);
+
+        expect(understanding.observations.evidenceRuns).toHaveLength(1);
+        expect(projection.evidence).toEqual([]);
+    });
 });

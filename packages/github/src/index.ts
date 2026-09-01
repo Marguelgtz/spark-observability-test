@@ -3,6 +3,7 @@ export * from './auth';
 export * from './check';
 export * from './client';
 export * from './evaluate';
+export * from './evidence';
 export * from './normalize';
 export * from './process';
 export * from './repository';

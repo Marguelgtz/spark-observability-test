@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0, G1, bounded G2 runtime, and bounded G3 declaration understanding are **DONE**. Spark now retains exact-revision workflow declarations and conservatively correlates exact job identities/`needs` to runtime observations; external actions, wrapper/dynamic commands, and unavailable matrix coordinates reduce completeness instead of creating invented meaning. CI-306 is explicitly **BLOCKED but non-blocking** because GitHub exposes declared matrices and distinct runtime jobs but no authoritative structured coordinate bridge. Live ingestion and attention policy remain untouched. CI-401 is **READY** next for the shared CI/RU evidence seam.
+Status: **active living plan.** G0, G1, bounded G2 runtime, and bounded G3 declaration understanding are **DONE**. G4 is in progress: CI-401 and CI-404 now retain exact-revision Check Runs as process-linked evidence facts while keeping prior-revision success historical. External actions, wrapper/dynamic commands, and unavailable matrix coordinates still reduce completeness instead of creating invented meaning; CI-306 remains explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-402 is **READY** next on the shared CI/RU evidence seam.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -259,10 +259,10 @@ Objective: connect process execution with repository meaning. **This gate reconc
 
 | ID | Status | Task | Depends on | Acceptance evidence | Reconciles with |
 | --- | --- | --- | --- | --- | --- |
-| CI-401 | READY | Pipeline execution → `EvidenceRunObservation` (execution stays a fact; no coverage implied). | G2, G3 | Runs become provider-neutral evidence-run observations. | RU-301 |
-| CI-402 | BACKLOG | Evidence attribution (provenance-bearing claims targeting CHANGE/AREA/BOUNDARY/RELATIONSHIP). | CI-401 | Attribution sources: workflow path filters, supported commands, build/test metadata, repository structure, profile, provider metadata. | RU-303 |
+| CI-401 | DONE | Pipeline execution → `EvidenceRunObservation` (execution stays a fact; no coverage implied). | G2, G3 | Runs become provider-neutral evidence-run observations. | RU-301 |
+| CI-402 | READY | Evidence attribution (provenance-bearing claims targeting CHANGE/AREA/BOUNDARY/RELATIONSHIP). | CI-401 | Attribution sources: workflow path filters, supported commands, build/test metadata, repository structure, profile, provider metadata. | RU-303 |
 | CI-403 | BACKLOG | Evidence expectations (repository workflow, required-check policy, ecosystem adapter, Spark profile). | CI-402 | No expectation ⇒ no legitimate `MISSING`. | RU-304 |
-| CI-404 | BACKLOG | Stale-evidence semantics (revision change creates a new verification subject; old success stays historical). | CI-401 | Prior success is not re-labelled `PENDING`. | RU-302/301 |
+| CI-404 | DONE | Stale-evidence semantics (revision change creates a new verification subject; old success stays historical). | CI-401 | Prior success is not re-labelled `PENDING`. | RU-302/301 |
 | CI-405 | BACKLOG | CI process completeness (separate dimensions: workflow acquisition, runtime acquisition, job acquisition, step acquisition, semantic attribution). | CI-401–403 | Per-dimension completeness, projected to legacy analysis summary. | RU-305 |
 
 **G4 exit:** Spark answers: what ran, what happened, what it validates, why Spark believes that, what should have happened, what remains unknown.
@@ -488,6 +488,9 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | CI-301–305 + CI-205 | ready/backlog -> done | Added bounded exact-SHA workflow acquisition, YAML declaration parsing, explicit unresolved-semantics issues/completeness, direct/wrapper/dynamic command reach, reusable-process retention, and conservative exact-label runtime correlation with same-attempt blocking references. Full suite: 44 files / 303 tests; typecheck and diff checks pass. |
 | 2026-09-01 | CI-306 | backlog -> blocked (non-blocking) | Official workflow-run, attempt-job, and Check Runs contracts expose no structured runtime matrix coordinates. Declared matrices and runtime jobs remain separate; job display parsing, raw logs, and positional matching were rejected as unstable/sensitive. Decision and alternatives recorded in `CI_CD_WORKFLOW_DECLARATION_DECISION.md`. |
 | 2026-09-01 | CI-401 | backlog -> ready | Bounded G2/G3 dependencies are satisfied with matrix incompleteness explicit. Next rollback boundary is execution facts becoming evidence observations on the existing shared normalization/projector seam. |
+| 2026-09-01 | CI-401 + RU-301 | ready/backlog -> done | `observeGitHubEvidenceRuns` retains exact-revision Check Runs by provider ID, preserves same-name executions, maps independent lifecycle/outcome, and attaches run/attempt/job identities only through the reviewed crosswalk. Spark self-checks and mismatched revisions are not turned into evidence. Full suite: 45 files / 308 tests; typecheck and diff checks pass. |
+| 2026-09-01 | CI-404 | backlog -> done | Evidence observations retain their revision, while the compatibility projector selects only evidence for the current change head. Prior success remains in canonical history and is not re-labelled or projected as current evidence. |
+| 2026-09-01 | CI-402 | backlog -> ready | Process-linked evidence facts and exact-revision workflow declarations are now available on the single normalization/projector seam. Next boundary is provenance-bearing attribution without implied coverage. |
 
 ## Change log
 
@@ -500,6 +503,7 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | Completed G1 provider-neutral process observations. | Preserve logical run versus rerun-attempt identity, make lifecycle/result independent, share vocabulary with the characterization corpus, and keep legacy behavior behind one explicit lossy projector. |
 | 2026-09-01 | Completed the bounded G2 GitHub Actions runtime slice; corrected CI-205 sequencing. | CI-207 fixes canonical source and identity crosswalk; CI-201–204/206 implement bounded factual acquisition. Dependency-blocking interpretation moved behind checked-in declaration correlation because the runtime response cannot establish its cause. Shadow path only. |
 | 2026-09-01 | Completed bounded G3 declaration understanding; preserved CI-306 as an explicit provider limitation. | Read workflows at the evaluated SHA, parse only bounded declarations, correlate jobs/needs conservatively, and make unknown external/dynamic/matrix semantics visible rather than heuristic. |
+| 2026-09-01 | Started G4 with execution facts and stale-revision isolation. | Convert Check Runs into provider-neutral evidence observations before deriving meaning; preserve historical runs canonically while limiting compatibility output to the evaluated head. |
 
 ## Decision gates
 
@@ -509,4 +513,4 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 - **Gate D — Insight usefulness:** can deterministic CI/CD insights explain a change without attention or ML? Reassess the model if no.
 - **Gate E — Agent readiness:** can structured CI/CD context reliably answer what an agent needs without prescribing arbitrary code changes? Only after this should CI/CD join automatic-steering research.
 
-**Immediate execution order:** CI-001–305 + CI-004/205/207 (bounded G0–G3, done; CI-306 explicitly blocked/non-blocking) → **CI-401–405 + RU-301…305 (G4 evidence architecture, ready)** → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.
+**Immediate execution order:** CI-001–305 + CI-004/205/207 (bounded G0–G3, done; CI-306 explicitly blocked/non-blocking) → **CI-402/403/405 + RU-303…305 (G4 evidence claims/projection; CI-401/404 + RU-301/302 done)** → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.

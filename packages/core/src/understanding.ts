@@ -197,6 +197,7 @@ export interface EvidenceRunObservation {
     evidenceKind: string;
     lifecycle: ProcessLifecycle;
     outcome: ProcessOutcome;
+    pipelineRunId?: PipelineRunId;
     pipelineAttemptId?: PipelineAttemptId;
     pipelineJobId?: PipelineJobId;
     pipelineStepId?: PipelineStepId;

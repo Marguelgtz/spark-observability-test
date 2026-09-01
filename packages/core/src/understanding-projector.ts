@@ -233,7 +233,10 @@ export function projectRepositoryUnderstanding(input: RepositoryUnderstanding): 
         .map(boundary => boundary.label));
     if (affectedLabels.size >= 50) sensitiveSurfaces.add('shared contract');
 
-    const evidence: Evidence[] = understanding.observations.evidenceRuns.map(run => {
+    const evidence: Evidence[] = understanding.observations.evidenceRuns
+        .filter(run => run.repositoryId === understanding.observations.change.repositoryId
+            && run.revision === understanding.observations.change.headRevision)
+        .map(run => {
         const coverage = understanding.evidenceAttributions
             .filter(attribution => attribution.evidenceRunId === run.id)
             .flatMap(attribution => labelsForTarget(attribution.target, understanding));
@@ -246,7 +249,7 @@ export function projectRepositoryUnderstanding(input: RepositoryUnderstanding): 
             coverage: coverage.length > 0 ? [...new Set(coverage)].sort() : 'UNKNOWN',
             ...(run.url ? { url: run.url } : {}),
         };
-    });
+        });
 
     const analysis = projectAnalysis(understanding);
     return {
