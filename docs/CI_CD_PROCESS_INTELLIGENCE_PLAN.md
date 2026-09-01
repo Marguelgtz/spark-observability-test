@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0 through bounded G5 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark now retains exact-revision process/evidence facts and supported claims, then derives a deterministic, explicitly bounded verification graph with developer inspection serialization. Unsupported expectations remain `UNKNOWN`; only supported expectations plus complete evidence acquisition become `NOT_OBSERVED`. CI-306 remains explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-601 is **READY** next for the persistence-boundary decision.
+Status: **active living plan.** G0 through bounded G6 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark now retains exact-revision process/evidence facts and supported claims, derives a deterministic, explicitly bounded verification graph with developer inspection serialization, and can replay that state point-in-time from bounded, idempotent, versioned observation records with deterministic JSONL export. Unsupported expectations remain `UNKNOWN`; only supported expectations plus complete evidence acquisition become `NOT_OBSERVED`. CI-306 remains explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-701 (normal-CI lifecycle insight) is **READY** next for the deterministic process-insight work.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -285,13 +285,13 @@ Objective: make CI/CD process intelligence historically trustworthy.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-601 | READY | Decide persistence boundary (retain run/attempt/job/step summary, revision, timestamps, lifecycle/outcome, claim/version refs; raw logs stay external/on-demand). | G4 | Decision records retained vs external data. |
-| CI-602 | BACKLOG | Distinguish event time vs observation time (provider event time, Spark ingestion time, backfill time). | CI-601 | Three time axes represented. |
-| CI-603 | BACKLOG | Idempotency (webhook retries do not create duplicate logical executions). | CI-601 | Retry of the same delivery is deduped. |
-| CI-604 | BACKLOG | Historical reconstruction (for a revision/time: what had executed, was running, was expected, was missing, and what Spark believed). | CI-601–603 | Point-in-time reconstruction from persisted state. |
-| CI-605 | BACKLOG | Exportable process representation (JSONL / Parquet / DuckDB / future analytical systems). | CI-604 | Clean bounded export. |
+| CI-601 | DONE | Decide persistence boundary (retain run/attempt/job/step summary, revision, timestamps, lifecycle/outcome, claim/version refs; raw logs stay external/on-demand). | G4 | Decision records retained vs external data. |
+| CI-602 | DONE | Distinguish event time vs observation time (provider event time, Spark ingestion time, backfill time). | CI-601 | Three time axes represented. |
+| CI-603 | DONE | Idempotency (webhook retries do not create duplicate logical executions). | CI-601 | Retry of the same delivery is deduped. |
+| CI-604 | DONE | Historical reconstruction (for a revision/time: what had executed, was running, was expected, was missing, and what Spark believed). | CI-601–603 | Point-in-time reconstruction from persisted state. |
+| CI-605 | DONE | Exportable process representation (JSONL / Parquet / DuckDB / future analytical systems). | CI-604 | Clean bounded export. |
 
-**G6 exit:** CI/CD state is point-in-time replayable.
+**G6 exit: DONE on the bounded shadow path.** CI/CD state is point-in-time replayable from bounded, store-agnostic observation records (normalized `RepositoryUnderstanding` payload, three validated time axes, LIVE/BACKFILL source, model/normalization/adapter versions). Ingestion is idempotent at delivery, record, and fact level; reconstruction applies terminal monotonicity and sticky knowledge per exact revision; export is deterministic bounded JSONL. Projections, the verification graph, and later insights stay re-derived — no second store. The boundary is recorded in [`CI_CD_PERSISTENCE_BOUNDARY_DECISION.md`](./CI_CD_PERSISTENCE_BOUNDARY_DECISION.md).
 
 ### G7 — Deterministic process insights
 
