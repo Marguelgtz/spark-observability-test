@@ -141,13 +141,15 @@ function resolved(delta: TransitionDeltaV1, statuses: EvidenceStatusV1[]): boole
 
 export function classifyNotableTransition(delta: TransitionDeltaV1): NotableTransitionV1 | undefined {
   const kinds: NotableTransitionKindV1[] = [];
+  const revisionChanged = delta.fromHeadSha !== delta.toHeadSha;
   if (delta.attention?.direction === 'INCREASED') kinds.push('ATTENTION_INCREASED');
   if (delta.attention?.direction === 'DECREASED') kinds.push('ATTENTION_DECREASED');
 
   const health = delta.evidenceHealth;
   if (became(delta, 'FAILED') || (health?.to === 'FAILED' && health.from !== 'FAILED')) kinds.push('EVIDENCE_REGRESSED');
   if (resolved(delta, ['FAILED']) || (health?.from === 'FAILED' && health.to === 'CLEAR')) kinds.push('EVIDENCE_RECOVERED');
-  if (became(delta, 'PENDING') || became(delta, 'MISSING') || (health?.to === 'PENDING_OR_MISSING' && health.from !== 'PENDING_OR_MISSING')) {
+  const pendingOrMissingHealthBecame = health?.to === 'PENDING_OR_MISSING' && health.from !== 'PENDING_OR_MISSING';
+  if (became(delta, 'MISSING') || (!revisionChanged && (became(delta, 'PENDING') || pendingOrMissingHealthBecame))) {
     kinds.push('EVIDENCE_BECAME_PENDING');
   }
   if (resolved(delta, ['PENDING', 'MISSING']) || (health?.from === 'PENDING_OR_MISSING' && health.to === 'CLEAR')) {

@@ -162,13 +162,47 @@ describe('Change Trajectory engine', () => {
     expect(trajectory.summary.totalTransitions).toBe(0);
   });
 
+  it('does not classify fresh pending verification on a new revision as evidence regression', () => {
+    const trajectory = buildTrajectory([
+      run('run:1', 1, 'LOW', 'PASSED', {}, 'sha-1'),
+      run('run:2', 2, 'MEDIUM', 'PENDING', {}, 'sha-2'),
+    ])!;
+    const transition = trajectory.notableTransitions[0];
+
+    expect(transition.delta).toMatchObject({ fromHeadSha: 'sha-1', toHeadSha: 'sha-2' });
+    expect(transition.kinds).toEqual(['ATTENTION_INCREASED']);
+    expect(transition.kinds).not.toContain('EVIDENCE_BECAME_PENDING');
+    expect(transition.kinds).not.toContain('EVIDENCE_REGRESSED');
+  });
+
+  it('retains pending-verification transitions within the same revision', () => {
+    const delta = deriveTransitionDelta(
+      run('run:1', 1, 'LOW', 'PASSED', {}, 'same-sha'),
+      run('run:2', 2, 'MEDIUM', 'PENDING', {}, 'same-sha'),
+    );
+
+    expect(classifyNotableTransition(delta)?.kinds).toContain('EVIDENCE_BECAME_PENDING');
+  });
+
+  it('retains explicit missing-evidence transitions on a new revision', () => {
+    const delta = deriveTransitionDelta(
+      run('run:1', 1, 'LOW', 'PASSED', {}, 'sha-1'),
+      run('run:2', 2, 'MEDIUM', 'MISSING', {}, 'sha-2'),
+    );
+
+    expect(classifyNotableTransition(delta)?.kinds).toContain('EVIDENCE_BECAME_PENDING');
+  });
+
   it.each([
     ['MISSING', 'PASSED', ['EVIDENCE_RESOLVED']],
     ['PASSED', 'MISSING', ['EVIDENCE_BECAME_PENDING']],
     ['FAILED', 'PASSED', ['EVIDENCE_RECOVERED']],
     ['PASSED', 'FAILED', ['EVIDENCE_REGRESSED']],
   ] as const)('classifies %s → %s evidence', (from, to, kinds) => {
-    const delta = deriveTransitionDelta(run('run:1', 1, 'MEDIUM', from), run('run:2', 2, 'MEDIUM', to));
+    const delta = deriveTransitionDelta(
+      run('run:1', 1, 'MEDIUM', from, {}, 'same-sha'),
+      run('run:2', 2, 'MEDIUM', to, {}, 'same-sha'),
+    );
     expect(classifyNotableTransition(delta)?.kinds).toEqual(expect.arrayContaining([...kinds]));
   });
 
