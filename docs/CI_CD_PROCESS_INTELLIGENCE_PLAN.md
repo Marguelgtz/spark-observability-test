@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0 and G1 are **DONE**. Spark core now represents provider-neutral pipeline definitions, logical runs, rerun attempts, jobs, and steps with independent lifecycle/outcome, and explicitly projects that richer state into the legacy evidence model. The implementation uses the existing `RepositoryUnderstanding` normalization/projector seam and leaves live ingestion and attention policy untouched. CI-207 is **READY** as the next gate: select and bound the canonical GitHub runtime sources and identity crosswalk before implementing the adapter.
+Status: **active living plan.** G0, G1, and the bounded G2 runtime slice are **DONE**. Spark core represents provider-neutral pipeline definitions, logical runs, rerun attempts, jobs, and steps with independent lifecycle/outcome, and explicitly projects that richer state into the legacy evidence model. The GitHub Actions runtime adapter (CI-207 + CI-201–204 and CI-206) acquires and normalizes the run → attempt → job → step hierarchy with bounded acquisition, identity crosswalk, and explicit completeness. CI-205 moved behind G3 because runtime data alone cannot prove a skipped job was blocked by a declared dependency. Live ingestion and attention policy remain untouched. CI-301 is **READY** next.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -74,7 +74,7 @@ Repository Understanding
 
 **Lifecycle and result must not be the same variable.** A pipeline/job/step has a lifecycle and, independently, an outcome.
 
-Lifecycle: `EXPECTED | NOT_OBSERVED | QUEUED | RUNNING | COMPLETED | CANCELLED`
+Lifecycle: `EXPECTED | NOT_OBSERVED | QUEUED | RUNNING | COMPLETED | CANCELLED | UNKNOWN`
 Outcome: `PASSED | FAILED | NEUTRAL | SKIPPED | UNKNOWN | NOT_APPLICABLE`
 
 These names are now the shared core vocabulary established by CI-106; provider adapters must map into them without adding provider-specific core states.
@@ -172,8 +172,8 @@ CI-001 (Part III) surfaced five facts that sharpen the plan. They are recorded a
 | --- | --- |
 | PR CI-1A | CI-001–003 (loss audit, provider-grounded characterization corpus, revision-aware CI-start confound fix) |
 | PR CI-1B | CI-004 + CI-101–106 (core process vocabulary and provider-neutral observation model; no provider runtime) |
-| PR CI-2 | CI-207 + CI-201–206 (canonical data source + GitHub runtime execution: runs, attempts, jobs, steps) |
-| PR CI-3 | CI-301–305 (workflow-definition understanding) |
+| PR CI-2 | CI-207 + CI-201–204 + CI-206 (canonical data source + GitHub runtime execution: runs, attempts, jobs, steps) |
+| PR CI-3 | CI-205 + CI-301–306 (workflow-definition understanding and declaration/runtime correlation) |
 | PR CI-4 | CI-401–405 **+ RU-301…305** (evidence architecture landed as one coordinated workstream; single normalization/projector seam) |
 | PR CI-5 | CI-501–503 (Verification Graph / inspection) |
 | PR CI-6 | CI-601–605 (persistence / replay) |
@@ -218,7 +218,7 @@ Objective: represent CI/CD facts without GitHub-specific semantics.
 | CI-103 | DONE | Job observation (attempt identity, logical job, display name, dependencies, matrix info, runner class, environment, timestamps, lifecycle, outcome). | CI-102 | `PipelineJobObservation` preserves hierarchy, declared identity, dependencies, matrix dimensions, environment, and result state. |
 | CI-104 | DONE | Step observation (identity, job identity, sequence, name, declared command/action reference, timestamps, lifecycle, outcome). | CI-103 | `PipelineStepObservation` preserves ordered steps and optional declared command/action/reusable-process references. |
 | CI-105 | DONE | Execution identity invariants. | CI-101–104 | `understanding-observations.test.ts` establishes one logical run with distinct attempts and separately identified job/step/evidence observations; normalizer tests enforce parent references. |
-| CI-106 | DONE | Define the provider-neutral process **vocabulary** (lifecycle enum, outcome enum, execution-identity value types) and extend `EvidenceRunObservation` so lifecycle and outcome are independent without breaking the legacy projector. | G0 | Core exports one vocabulary consumed by the GitHub corpus; lifecycle/outcome are independent; the compatibility projector has table-driven coverage for missing, pending, pass, fail, skipped, neutral, not-applicable, and cancelled states. |
+| CI-106 | DONE | Define the provider-neutral process **vocabulary** (lifecycle enum, outcome enum, execution-identity value types) and extend `EvidenceRunObservation` so lifecycle and outcome are independent without breaking the legacy projector. | G0 | Core exports one vocabulary consumed by the GitHub corpus; lifecycle/outcome are independent; the compatibility projector has table-driven coverage for missing, pending, pass, fail, skipped, neutral, not-applicable, cancelled, and unknown states. |
 
 **G1 exit: DONE.** Spark core represents CI/CD process facts without GitHub-specific concepts; hierarchy references and runtime state values normalize deterministically, and compatibility loss is explicit.
 
@@ -228,15 +228,14 @@ Objective: populate process observations using actual GitHub data.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-207 | READY | Choose + document the canonical GitHub data source (Actions `runs`/`jobs`/`steps` vs `check-runs`) and the check-suite ⇄ run-id crosswalk; fix bounded fetch limits. | G1 | Written decision + crosswalk; CI-201–206 build on it; API bounds + pagination documented. |
-| CI-201 | BACKLOG | Acquire workflow-run data (workflow, run, attempt, revision, trigger, timestamps, lifecycle, outcome). | CI-207 | Bounded run metadata fetched and normalized. |
-| CI-202 | BACKLOG | Acquire job and step data (run → jobs → steps). | CI-201 | Full run/job/step hierarchy populated. |
-| CI-203 | BACKLOG | Normalize lifecycle separately from outcome. | CI-201–202 | Tests cover queued, running, completed-success, completed-failure, cancelled, skipped. |
-| CI-204 | BACKLOG | Correctly represent retries (same-SHA rerun vs new-revision correction). | CI-203 | Same-SHA rerun and new-revision correction are distinguishable. |
-| CI-205 | BACKLOG | Job dependency handling (blocked/skipped downstream jobs). | CI-202 | Downstream jobs blocked by a failed `needs` are represented truthfully. |
-| CI-206 | BACKLOG | Matrix identity. | CI-202 | Enough provider metadata distinguishes matrix executions. |
+| CI-207 | DONE | Choose + document the canonical GitHub data source (Actions `runs`/`jobs`/`steps` vs `check-runs`) and the check-suite ⇄ run-id crosswalk; fix bounded fetch limits. | G1 | Written decision + crosswalk in `CI_CD_GITHUB_RUNTIME_SOURCE_DECISION.md`; CI-201–206 build on it; API bounds + pagination documented. |
+| CI-201 | DONE | Acquire workflow-run data (workflow, run, attempt, revision, trigger, timestamps, lifecycle, outcome). | CI-207 | Bounded run metadata fetched via `listWorkflowRunsForRevision` + `getWorkflowRunAttempt` and normalized to `PipelineRunObservation`/`PipelineAttemptObservation`; tests cover pagination and attempt identity verification. |
+| CI-202 | DONE | Acquire job and step data (run → jobs → steps). | CI-201 | Full run/job/step hierarchy populated via `listWorkflowJobsForAttempt`; `jobObservation` and `stepObservations` normalize to `PipelineJobObservation`/`PipelineStepObservation`; tests cover attempt-specific endpoint, truncation, and completeness reporting. |
+| CI-203 | DONE | Normalize lifecycle separately from outcome. | CI-201–202 | `normalizeGitHubProcessState` maps status+conclusion to independent lifecycle/outcome; table-driven tests cover queued, in_progress, completed/success, completed/failure, completed/timed_out, completed/neutral, completed/skipped, completed/cancelled, and unknown. |
+| CI-204 | DONE | Correctly represent retries (same-SHA rerun vs new-revision correction). | CI-203 | Same-SHA corpus test preserves one run with FAILED then PASSED attempts; a separate test proves a corrected revision carries a different revision and logical-run identity. |
+| CI-206 | DONE | Matrix identity. | CI-202 | Every matrix execution preserved through unique job identity and display name without parsing the name. Structured matrix coordinates deferred to CI-306 declaration correlation. Tests show distinct matrix jobs retain separate IDs and `matrix`/`needs` remain `undefined` (not invented). |
 
-**G2 exit:** Spark reconstructs actual GitHub Actions execution hierarchy for a revision.
+**G2 exit: DONE for bounded runtime facts.** Spark reconstructs GitHub Actions execution hierarchy for a revision: bounded workflow-run discovery, attempt-specific job/step acquisition, independent lifecycle/outcome normalization, same-SHA rerun identity, truthful skipped recording, and distinct matrix execution preservation. It does not call a skipped job “blocked” until G3 supplies a declared dependency edge.
 
 ### G3 — Checked-in workflow understanding
 
@@ -244,11 +243,13 @@ Objective: understand what the repository declares should execute.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-301 | BACKLOG | Acquire workflow files at the evaluated revision (never assume default branch). | G2 | Workflow bytes read at the exact head SHA. |
+| CI-301 | READY | Acquire workflow files at the evaluated revision (never assume default branch). | G2 | Workflow bytes read at the exact head SHA. |
 | CI-302 | BACKLOG | Parse bounded workflow structure (triggers, branch/path filters, jobs, `needs`, matrix, steps `uses`/`run`, environments). | CI-301 | Bounded parse with explicit coverage. |
+| CI-205 | BACKLOG | Job dependency handling (blocked/skipped downstream jobs). | CI-202, CI-302 | A skipped runtime job is described as blocked only when an unambiguous declared `needs` edge connects it to a failed upstream job; otherwise it remains skipped. |
 | CI-303 | BACKLOG | Explicit unresolved semantics (dynamic/external behavior lowers completeness). | CI-302 | No invented meaning; completeness reflects unresolved behavior. |
 | CI-304 | BACKLOG | Repository command references (strong commands vs wrapper scripts). | CI-302 | `pnpm --filter @spark/api test` strong; `./scripts/ci.sh` conservative. |
 | CI-305 | BACKLOG | Reusable workflow references. | CI-302 | Relationship + completeness represented even when expansion is unavailable. |
+| CI-306 | BACKLOG | Structured matrix coordinates and `needs` correlation from declaration to runtime jobs. | CI-302 | Declaration-parsed matrix/`needs` correlated to runtime job observations; provider limitation from CI-207 (no trustworthy runtime `needs`/matrix) resolved. |
 
 **G3 exit:** Spark can explain what the repository declares and what portions remain unresolved.
 
@@ -479,6 +480,11 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-09-01 | CI-101–106 | backlog/ready -> done | Added provider-neutral definition/run/attempt/job/step observations and independent lifecycle/outcome to `packages/core/src/understanding.ts`; extended normalization with hierarchy/reference checks; added table-driven legacy projection and identity tests; the GitHub corpus now consumes the shared core vocabulary. Focused core/GitHub tests and typecheck pass. |
 | 2026-09-01 | CI-004 | backlog -> done | Kept process facts on the existing `RepositoryUnderstanding` normalization + compatibility-projector seam and retained the CI-4xx/RU-3xx coordination mapping in Part III §3.6; no parallel evidence evaluator was introduced. |
 | 2026-09-01 | CI-207 | backlog -> ready | G1 dependency is satisfied. Next acceptance boundary is a written, bounded Actions/check-runs source decision and identity crosswalk before provider implementation. |
+| 2026-09-01 | CI-207 | ready -> done | Decision written in `CI_CD_GITHUB_RUNTIME_SOURCE_DECISION.md`: GitHub Actions REST is canonical (Actions runs + attempt-specific jobs with embedded steps); Check Runs remain supplemental. Identity crosswalk maps canonical pipeline definition/run/attempt/job/step IDs to provider workflow_id, run.id, (run.id, run_attempt), job.id, and (job.id, step.number). Bounded acquisition defaults documented (1 page × 100 runs, 10 runs, 3 attempts, 1 page × 100 jobs). Normalization decisions fix lifecycle/outcome mapping. Provider limitations (no trustworthy runtime `needs`, no structured matrix coordinates) explicitly deferred to G3 declaration correlation. |
+| 2026-09-01 | CI-201–204, CI-206 | backlog -> done | Implemented in `packages/github/src/process.ts` + `packages/github/src/client.ts`: exact-revision runs, historical attempts, attempt-specific jobs with embedded steps, lifecycle/outcome mapping, rerun/new-revision identity, distinct runtime job identity, bounded fetches, and explicit completeness. Focused process/corpus/core tests and typecheck pass. |
+| 2026-09-01 | CI-205 | premature done claim -> backlog (moved to G3) | Review found the runtime API proves `SKIPPED` but not the declared `needs` cause. Marking blocked-by-upstream DONE would violate rules 6, 9, and 13. CI-205 now depends on CI-302 and preserves skipped without invented causality until correlation exists. |
+| 2026-09-01 | CI-301 | backlog -> ready | G2 dependency is satisfied. Next acceptance boundary: acquire workflow files at the exact evaluated revision SHA (not default branch). |
+| 2026-09-01 | CI-306 | created (planning) | CI-207 decision identified a provider limitation: runtime job responses do not provide trustworthy `needs` edges or structured matrix coordinates. CI-306 is the declaration-correlation task that resolves this by correlating declaration-parsed structure to runtime jobs. |
 
 ## Change log
 
@@ -489,13 +495,14 @@ Add one row whenever a task changes status. Evidence must point to tests, comman
 | 2026-08-31 | Completed the initial CI-002 corpus draft. | Preserved as a failed hypothesis in the task evidence log; provider-grounding corrections followed on 2026-09-01. |
 | 2026-09-01 | Corrected and revalidated G0; split CI-1 into CI-1A/CI-1B. | Keep characterization/trajectory semantics reviewable before introducing the provider-neutral core model; fix provider identity, lifecycle, deployment, reusable-workflow, and analytical-grain errors found during review. |
 | 2026-09-01 | Completed G1 provider-neutral process observations. | Preserve logical run versus rerun-attempt identity, make lifecycle/result independent, share vocabulary with the characterization corpus, and keep legacy behavior behind one explicit lossy projector. |
+| 2026-09-01 | Completed the bounded G2 GitHub Actions runtime slice; corrected CI-205 sequencing. | CI-207 fixes canonical source and identity crosswalk; CI-201–204/206 implement bounded factual acquisition. Dependency-blocking interpretation moved behind checked-in declaration correlation because the runtime response cannot establish its cause. Shadow path only. |
 
 ## Decision gates
 
-- **Gate A — Process truth:** can Spark distinguish `running / failed / skipped / blocked / missing / stale / unknown` truthfully? (Core model: **yes for lifecycle/outcome and hierarchy**; end-to-end ingestion: **not yet**, pending CI-207/CI-2xx. Blocked/stale remain derived semantics for later gates.) If no, stop.
+- **Gate A — Process truth:** can Spark distinguish `running / failed / skipped / blocked / missing / stale / unknown` truthfully? (Core model: **yes** for lifecycle/outcome and hierarchy. GitHub adapter: **yes** for running/failed/skipped/cancelled with explicit completeness. Blocked/missing/stale remain derived semantics for later gates (G3 declaration correlation and G4 evidence expectations).) If no, stop.
 - **Gate B — Evidence truth:** can Spark distinguish what ran / what passed / what it validates / why / what was expected / what remains unknown? (Currently **no** — coverage always unknown, no expectations.) If no, stop.
 - **Gate C — Historical truth:** can Spark reconstruct CI/CD state at a historical point in time? (Currently **no** — latest-per-SHA projection + compressed blob only.) If no, do not build behavioral analytics.
 - **Gate D — Insight usefulness:** can deterministic CI/CD insights explain a change without attention or ML? Reassess the model if no.
 - **Gate E — Agent readiness:** can structured CI/CD context reliably answer what an agent needs without prescribing arbitrary code changes? Only after this should CI/CD join automatic-steering research.
 
-**Immediate execution order:** CI-001–106 + CI-004 (G0/G1, done) → **CI-207 (ready)** → CI-201–206 (GitHub runtime) → CI-301–305 (declared workflows) → CI-401–405 **+ RU-301…305** (evidence architecture, one workstream) → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.
+**Immediate execution order:** CI-001–106 + CI-004 (G0/G1, done) → CI-207 + CI-201–204/206 (bounded G2 runtime, done) → **CI-301–306 + CI-205 (G3 declared workflows/correlation, next)** → CI-401–405 **+ RU-301…305** (evidence architecture, one workstream) → CI-5xx (graph) → CI-6xx (persistence) → CI-7xx (insights) → CI-8xx (history) → CI-9xx (agent context) → CI-10xx (CD, incl. CI-1005 routing). Do not begin with UI, agent integration, or historical ML.

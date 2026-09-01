@@ -14,6 +14,7 @@ describe('process observation semantics', () => {
         ['COMPLETED', 'SKIPPED', 'UNKNOWN'],
         ['COMPLETED', 'NOT_APPLICABLE', 'UNKNOWN'],
         ['CANCELLED', 'UNKNOWN', 'UNKNOWN'],
+        ['UNKNOWN', 'UNKNOWN', 'UNKNOWN'],
     ] satisfies Array<[ProcessLifecycle, ProcessOutcome, string]>)('projects %s/%s to legacy %s', (lifecycle, outcome, status) => {
         expect(projectProcessState(lifecycle, outcome)).toBe(status);
     });

@@ -31,8 +31,56 @@ export interface GitHubCheckRun {
   conclusion: string | null;
   html_url?: string;
   details_url?: string;
+  check_suite?: { id: number };
   app?: { id?: number; slug?: string; name?: string } | null;
   pull_requests?: Array<{ number: number }>;
+}
+
+export interface GitHubWorkflowRun {
+  id: number;
+  workflow_id: number;
+  check_suite_id: number;
+  name: string;
+  path?: string;
+  head_sha: string;
+  head_branch: string | null;
+  event: string;
+  status: string;
+  conclusion: string | null;
+  run_attempt: number;
+  created_at: string;
+  updated_at: string;
+  run_started_at?: string;
+  html_url: string;
+}
+
+export interface GitHubWorkflowStep {
+  number: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface GitHubWorkflowJob {
+  id: number;
+  run_id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  started_at?: string;
+  completed_at?: string;
+  html_url: string;
+  check_run_url?: string;
+  labels?: string[];
+  steps?: GitHubWorkflowStep[];
+}
+
+export interface GitHubPageResult<T> {
+  items: T[];
+  totalCount: number;
+  complete: boolean;
 }
 
 export interface RepositoryContextResult {
