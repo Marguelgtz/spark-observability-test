@@ -64,6 +64,17 @@ test('drilldown canvases pair graph forms to the metric context', async ({ page 
   await expect(charts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
 
+  const evaluationFlow = page.getByTestId('evaluation-flow-trend');
+  await expect(evaluationFlow).toHaveAttribute('data-scale-mode', 'dual');
+  await expect(evaluationFlow.locator('.insight-line-axis-title.series-1')).toHaveText('Evaluations');
+  await expect(evaluationFlow.locator('.insight-line-axis-title.series-2')).toHaveText('PRs observed');
+  await expect(evaluationFlow.locator('.insight-line-axis.series-1')).toHaveCount(4);
+  await expect(evaluationFlow.locator('.insight-line-axis.series-2')).toHaveCount(4);
+  await expect(evaluationFlow.locator('.insight-line-axis-title.series-1')).toHaveCSS('fill', 'rgb(47, 95, 135)');
+  await expect(evaluationFlow.locator('.insight-line-axis-title.series-2')).toHaveCSS('fill', 'rgb(155, 107, 31)');
+  await expect(evaluationFlow.locator('.insight-line-series.series-1')).toHaveCSS('stroke', 'rgb(47, 95, 135)');
+  await expect(evaluationFlow.locator('.insight-line-series.series-2')).toHaveCSS('stroke', 'rgb(155, 107, 31)');
+
   await page.goto('/app/overview/attention?window=7d&attention=ALL');
   charts = page.getByTestId('overview-charts');
   await expect(page.getByTestId('insight-canvas-current-attention')).toBeVisible();
