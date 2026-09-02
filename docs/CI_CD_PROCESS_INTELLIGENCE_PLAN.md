@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0 through bounded G7 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark now retains exact-revision process/evidence facts and supported claims, derives a deterministic verification graph, replays point-in-time state from bounded idempotent records, and produces bounded provenance-bearing process insights for normal activity, failure localization/domain, repository-backed reproduction, dependency blockage, matrix/retry behavior, missing expectations, verification gaps, and recovery. Unsupported expectations remain `UNKNOWN`; only supported expectations plus complete evidence acquisition become `NOT_OBSERVED`. CI-306 and deployment insight CI-710 remain explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-801 (runtime baselines) is **READY** next for historical process intelligence.
+Status: **active living plan.** G0 through bounded G8 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark retains exact-revision process/evidence facts, replays point-in-time state, derives bounded provenance-bearing process insights, and now reduces retained observations into denominator-bearing runtime baselines, measured retry recovery, structured failure recurrence, target/process coverage, and abstention-aware drift. Unsupported expectations remain `UNKNOWN`; incomplete acquisition is never counted as negative evidence. CI-306 and deployment insight CI-710 remain explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-901 (`ProcessInsightV0`) is **READY** next for the agent-facing context contract.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -319,13 +319,13 @@ Objective: use accumulated process history.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-801 | READY | Runtime baselines (median/p90 duration, success/failure/retry rates). | G6 | Denominators present; bounded by history. |
-| CI-802 | BACKLOG | Flake evidence (same-revision retry recovery with denominators). | CI-707 | Measured, not asserted. |
-| CI-803 | BACKLOG | Failure fingerprints (structured identities first). | G8 | Fingerprint recurrence tracked. |
-| CI-804 | BACKLOG | Area/process relationships (which workflows validate which regions). | CI-402 | Area→workflow and boundary→evidence measured. |
-| CI-805 | BACKLOG | Process drift (workflow stopped, job slower, new matrix dimension, new dependency, new gap). | G6 | Meaningful drift detected truthfully. |
+| CI-801 | DONE | Runtime baselines (median/p90 duration, success/failure/retry rates). | G6 | Stable executions, explicit denominators, sufficient-history thresholds, and bounded recent history. |
+| CI-802 | DONE | Flake evidence (same-revision retry recovery with denominators). | CI-707 | Exact run/job/matrix retry recovery divided by eligible retry sequences; non-causal caveat retained. |
+| CI-803 | DONE | Failure fingerprints (structured identities first). | G8 | Stable structured recurrence across revisions without log parsing. |
+| CI-804 | DONE | Area/process relationships (which workflows validate which regions). | CI-402 | Supported attribution measured against complete-acquisition changed-revision denominators. |
+| CI-805 | DONE | Process drift (workflow stopped, job slower, new matrix dimension, new dependency, new gap). | G6 | Observable transitions detected with sample thresholds and explicit abstention. |
 
-**G8 exit:** historical insights are statistically bounded and clearly distinguish fact from inference.
+**G8 exit: DONE on the bounded shadow path.** Historical reports deterministically deduplicate repeated snapshots, retain recent bounded history, state numerator/denominator and sufficient-history thresholds, report every truncation/exclusion, and distinguish measured observations from causal interpretation. The boundary is recorded in [`CI_CD_HISTORICAL_INTELLIGENCE_DECISION.md`](./CI_CD_HISTORICAL_INTELLIGENCE_DECISION.md). Full verification: 52 test files / 376 tests, TypeScript, and diff checks. No persistence, ingestion, frontend, Check, attention, agent, or ML changes.
 
 ### G9 — Agent-facing CI/CD context
 
@@ -333,7 +333,7 @@ Objective: prepare CI/CD intelligence for later steering. **Do not implement aut
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-901 | BACKLOG | `ProcessInsightV0` (kind, subject, revision, summary, supporting observations, areas/boundaries, confidence, completeness, reproduction candidate, state ACTIVE/RESOLVED, supersedes/resolvedBy). | G7 | Bounded, provenance-bearing insight shape. |
+| CI-901 | READY | `ProcessInsightV0` (kind, subject, revision, summary, supporting observations, areas/boundaries, confidence, completeness, reproduction candidate, state ACTIVE/RESOLVED, supersedes/resolvedBy). | G7 | Bounded, provenance-bearing insight shape. |
 | CI-902 | BACKLOG | Integrate into future `SteeringStateV0` (one input to general Spark state). | CI-901 | CI/CD state is one input, not a driver. |
 | CI-903 | BACKLOG | Shadow usefulness study (can Spark answer: running? failed? where? what never ran? what's missing? recovered?). | CI-901 | Grounded answers measurable in shadow. |
 | CI-904 | BACKLOG | Resolution semantics (every actionable insight can become obsolete/resolved). | CI-901 | Obsolescence path defined. |
