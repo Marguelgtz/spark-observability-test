@@ -1,6 +1,6 @@
 # Spark CI/CD Process Intelligence — Research & Living Action Plan
 
-Status: **active living plan.** G0 through bounded G8 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark retains exact-revision process/evidence facts, replays point-in-time state, derives bounded provenance-bearing process insights, and now reduces retained observations into denominator-bearing runtime baselines, measured retry recovery, structured failure recurrence, target/process coverage, and abstention-aware drift. Unsupported expectations remain `UNKNOWN`; incomplete acquisition is never counted as negative evidence. CI-306 and deployment insight CI-710 remain explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-901 (`ProcessInsightV0`) is **READY** next for the agent-facing context contract.
+Status: **active living plan.** G0 through bounded G9 are **DONE** on the shadow `RepositoryUnderstanding` path. Spark retains exact-revision process/evidence facts, replays point-in-time state, derives bounded provenance-bearing process insights and historical measures, and now exposes them through a lifecycle-aware, abstention-safe agent context. CI/CD remains one neutral shadow input: no action, decision, or automatic steering exists. Unsupported expectations and incomplete absence remain `UNKNOWN`. CI-306 and deployment insight CI-710 remain explicitly **BLOCKED but non-blocking**. Live ingestion and attention policy remain untouched. CI-1001 (provider-neutral deployment observations) is **READY** next for the bounded CD extension.
 
 Purpose: before any work toward automatic agent steering, make CI/CD a first-class source of repository and process intelligence. The immediate goal is **not** to tell an agent what to do. It is:
 
@@ -333,12 +333,12 @@ Objective: prepare CI/CD intelligence for later steering. **Do not implement aut
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-901 | READY | `ProcessInsightV0` (kind, subject, revision, summary, supporting observations, areas/boundaries, confidence, completeness, reproduction candidate, state ACTIVE/RESOLVED, supersedes/resolvedBy). | G7 | Bounded, provenance-bearing insight shape. |
-| CI-902 | BACKLOG | Integrate into future `SteeringStateV0` (one input to general Spark state). | CI-901 | CI/CD state is one input, not a driver. |
-| CI-903 | BACKLOG | Shadow usefulness study (can Spark answer: running? failed? where? what never ran? what's missing? recovered?). | CI-901 | Grounded answers measurable in shadow. |
-| CI-904 | BACKLOG | Resolution semantics (every actionable insight can become obsolete/resolved). | CI-901 | Obsolescence path defined. |
+| CI-901 | DONE | `ProcessInsightV0` (kind, subject, revision, summary, supporting observations, areas/boundaries, confidence, completeness, reproduction candidate, state ACTIVE/RESOLVED, supersedes/resolvedBy). | G7 | Bounded, provenance-bearing insight shape. |
+| CI-902 | DONE | Integrate into future `SteeringStateV0` (one input to general Spark state). | CI-901 | CI/CD state is one cloned neutral shadow input; no decision/action fields. |
+| CI-903 | DONE | Shadow usefulness study (can Spark answer: running? failed? where? what never ran? what's missing? recovered?). | CI-901 | Six questions per context with explicit denominator, support/unknown counts, bounds, and recovery abstention. |
+| CI-904 | DONE | Resolution semantics (every actionable insight can become obsolete/resolved). | CI-901 | Complete-observation resolution, revision obsolescence, and partial-observation carry-forward are explicit. |
 
-**G9 exit:** CI/CD intelligence is usable by an agent as structured grounded context without prescribing code changes.
+**G9 exit: DONE on the bounded shadow path.** `ProcessContextV0` formalizes G7 insights with typed subjects, lifecycle identity, supported reproduction candidates, explicit present/recovery completeness, and bounded active/resolved history. `SteeringStateV0` admits CI/CD only as a cloned neutral input with no decision or action. The six-question usefulness study has an exact denominator and abstains when the relevant absence or recovery comparison is incomplete. The boundary is recorded in [`CI_CD_AGENT_CONTEXT_DECISION.md`](./CI_CD_AGENT_CONTEXT_DECISION.md). Full verification: 53 test files / 387 tests, TypeScript, and diff checks. No ingestion, persistence, frontend, Check, attention, agent-action, or ML changes.
 
 ### G10 — Bounded CD extension
 
@@ -346,7 +346,7 @@ Objective: prove the process vocabulary extends beyond CI.
 
 | ID | Status | Task | Depends on | Acceptance evidence |
 | --- | --- | --- | --- | --- |
-| CI-1001 | BACKLOG | Deployment observations (deployment, revision, environment, lifecycle, outcome, timestamps). | G2 | Deployments modeled with the same vocabulary. |
+| CI-1001 | READY | Deployment observations (deployment, revision, environment, lifecycle, outcome, timestamps). | G2 | Deployments modeled with the same vocabulary. |
 | CI-1002 | BACKLOG | Waiting/approval state (approval gates distinguished from failures). | CI-1001 | Waiting ≠ failure. |
 | CI-1003 | BACKLOG | CI → deployment relationship (observed process links, no implied causality). | CI-1001 | Relationship from observed links only. |
 | CI-1004 | BACKLOG | Deployment history (enough for later rollback/outcome research). | CI-1001 | Bounded deployment history retained. |

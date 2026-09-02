@@ -15,3 +15,4 @@ export * from './process-reconstruction';
 export * from './process-export';
 export * from './process-insight';
 export * from './process-history';
+export * from './process-context';
