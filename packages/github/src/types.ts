@@ -77,6 +77,37 @@ export interface GitHubWorkflowJob {
   steps?: GitHubWorkflowStep[];
 }
 
+export interface GitHubDeployment {
+  id: number;
+  sha: string;
+  ref: string | null;
+  /** Workflow run that triggered the deployment, when the provider identifies one. */
+  task_id?: number;
+  environment: string;
+  created_at: string;
+  updated_at?: string;
+  html_url?: string;
+}
+
+export interface GitHubDeploymentStatus {
+  id: number;
+  deployment_id: number;
+  state: string;
+  environment: string | null;
+  environment_guidance?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface GitHubEnvironmentPendingDeployments {
+  deployments: Array<{
+    id: number;
+    environment: string;
+    status: { id: number; state: string };
+  }>;
+  reviewers: Array<{ type: 'User' | 'Team' }>;
+}
+
 export interface GitHubPageResult<T> {
   items: T[];
   totalCount: number;

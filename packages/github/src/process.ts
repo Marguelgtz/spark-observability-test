@@ -131,6 +131,11 @@ function runId(providerRunId: number): string {
   return `pipeline-run:github-actions:${providerRunId}`;
 }
 
+/** Canonical run identity for a provider workflow run, shared by process and deployment acquisition. */
+export function githubActionsRunId(providerRunId: number): string {
+  return runId(providerRunId);
+}
+
 function attemptId(providerRunId: number, attempt: number): string {
   return `pipeline-attempt:github-actions:${providerRunId}:${attempt}`;
 }
