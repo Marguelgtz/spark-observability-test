@@ -1,4 +1,4 @@
-import type { ViewerV1 } from '@spark/dashboard-contracts';
+import type { DashboardDensityV1, ViewerV1 } from '@spark/dashboard-contracts';
 import type { DashboardRoute } from './router';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -74,6 +74,8 @@ export interface PersistentAppShell {
   outlet: HTMLElement;
   setViewer(viewer?: ViewerV1): void;
   setRoute(kind: DashboardRoute['kind']): void;
+  setDensity(density: DashboardDensityV1): void;
+  setPreferenceWarning(message?: string): void;
   show(view: HTMLElement): void;
   showLoading(kind: DashboardRoute['kind']): void;
 }
@@ -109,7 +111,11 @@ export function createPersistentAppShell(): PersistentAppShell {
   header.append(left, identitySlot);
 
   const outlet = node('main', 'main-column route-outlet');
-  root.append(header, outlet);
+  const preferenceWarning = node('div', 'shell-preference-warning');
+  preferenceWarning.dataset.testid = 'preference-warning';
+  preferenceWarning.setAttribute('role', 'status');
+  preferenceWarning.hidden = true;
+  root.append(header, preferenceWarning, outlet);
 
   function setViewer(viewer?: ViewerV1): void {
     identitySlot.replaceChildren();
@@ -138,6 +144,15 @@ export function createPersistentAppShell(): PersistentAppShell {
         link.classList.remove('is-active');
       }
     }
+  }
+
+  function setDensity(density: DashboardDensityV1): void {
+    root.dataset.density = density.toLowerCase();
+  }
+
+  function setPreferenceWarning(message?: string): void {
+    preferenceWarning.textContent = message ?? '';
+    preferenceWarning.hidden = !message;
   }
 
   function syncOutletAttributes(source?: HTMLElement): void {
@@ -171,5 +186,5 @@ export function createPersistentAppShell(): PersistentAppShell {
     outlet.replaceChildren(loadingContent(kind));
   }
 
-  return { root, outlet, setViewer, setRoute, show, showLoading };
+  return { root, outlet, setViewer, setRoute, setDensity, setPreferenceWarning, show, showLoading };
 }

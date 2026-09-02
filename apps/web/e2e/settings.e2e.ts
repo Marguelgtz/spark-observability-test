@@ -25,6 +25,7 @@ test('settings use defaults, save explicitly, and persist after reload', async (
   await expect(page.getByRole('status').filter({ hasText: 'Preferences saved.' })).toHaveCount(0);
   await page.getByTestId('settings-save').click();
   await expect(page.getByText('Preferences saved.', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('app-shell')).toHaveAttribute('data-density', 'compact');
   await page.reload();
 
   await expect(page.getByTestId('settings-default-window-24h')).toBeChecked();

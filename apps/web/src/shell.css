@@ -48,6 +48,44 @@
   opacity: 0.86;
 }
 
+.shell-preference-warning {
+  width: min(920px, calc(100% - 40px));
+  margin: 16px auto -24px;
+  border: 1px solid #d9b86c;
+  border-radius: 7px;
+  background: #fff8e8;
+  padding: 9px 12px;
+  color: #654c17;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.persistent-app-shell[data-density="compact"] .main-column {
+  padding-top: 34px;
+}
+
+.persistent-app-shell[data-density="compact"] .evaluation-row,
+.persistent-app-shell[data-density="compact"] .dashboard-change-row,
+.persistent-app-shell[data-density="compact"] .overview-list-row {
+  padding-block: 9px;
+}
+
+.persistent-app-shell[data-density="compact"] .evaluation-body,
+.persistent-app-shell[data-density="compact"] .dashboard-change-body,
+.persistent-app-shell[data-density="compact"] .overview-list-body {
+  gap: 2px;
+}
+
+.persistent-app-shell[data-density="compact"] .pr-section {
+  padding-block: 20px;
+}
+
+.persistent-app-shell[data-density="compact"] .pr-run {
+  min-height: 104px;
+  gap: 6px;
+  padding: 9px;
+}
+
 .route-loading {
   width: 100%;
 }
@@ -107,6 +145,11 @@
 }
 
 @media (max-width: 640px) {
+  .shell-preference-warning {
+    width: min(100% - 28px, 920px);
+    margin-bottom: -12px;
+  }
+
   .persistent-app-shell .shell-left {
     gap: 12px;
   }

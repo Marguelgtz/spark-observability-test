@@ -8,8 +8,7 @@ import './pr.css';
 import './behavior.css';
 import './progressive-list.css';
 import './settings.css';
-import type { AccountV1, ActivityResponseV1, ViewerV1 } from '@spark/dashboard-contracts';
-import { DASHBOARD_SETTINGS_DEFAULTS } from '@spark/dashboard-contracts';
+import type { AccountV1, ActivityResponseV1, PreviewSize, ViewerV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError, type LoadedDashboardSettings } from './api';
 import { createPersistentAppShell } from './app-shell';
@@ -27,13 +26,13 @@ import {
 } from './dashboard-ui';
 import { FavoriteStore } from './favorites';
 import { getNotableTransitionInsights, getOverviewDrilldown } from './overview-api';
+import { defaultDashboardSettings, resolvePreferences, SETTINGS_FALLBACK_WARNING } from './preferences';
 import { renderOverviewDrilldown } from './overview-ui';
 import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
 import { legacyActivityRedirect, navigate, parseRoute } from './router';
 import { renderSettings } from './settings-ui';
-import { parseActivityState, serializeActivityState, withActivityState, type ActivityUrlState } from './state';
+import { serializeActivityState, withActivityState, type ActivityUrlState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderNotFound, renderSignedOut } from './ui';
-import { DEFAULT_PREVIEW_SIZE } from './progressive-list';
 
 const mount = document.querySelector<HTMLElement>('#app')!;
 if (!mount) throw new Error('Missing #app mount');
@@ -110,12 +109,7 @@ function cachedSettings(force = false): Promise<LoadedDashboardSettings> {
 
 function fallbackSettings(): LoadedDashboardSettings {
   return {
-    settings: {
-      version: 1,
-      revision: 0,
-      ...DASHBOARD_SETTINGS_DEFAULTS,
-      updatedAt: null,
-    },
+    settings: defaultDashboardSettings(),
     etag: '"settings-0"',
   };
 }
@@ -156,8 +150,11 @@ function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
   );
 }
 
-function currentActivitySearch(): string {
-  return serializeActivityState(parseActivityState(window.location.search));
+function activateSettings(result: Settled<LoadedDashboardSettings>, showWarning: boolean): LoadedDashboardSettings {
+  const loaded = result.ok ? result.value : fallbackSettings();
+  shell.setDensity(loaded.settings.density);
+  shell.setPreferenceWarning(!result.ok && showWarning ? SETTINGS_FALLBACK_WARNING : undefined);
+  return loaded;
 }
 
 function activityPath(search: string): string {
@@ -176,6 +173,7 @@ function activityView(
   state: ActivityUrlState,
   favorites: FavoriteStore,
   routeBase: '/app' | '/app/activity',
+  previewSize: PreviewSize,
 ): HTMLElement {
   return renderActivity(viewer, response, state, {
     setWindow(value) {
@@ -203,7 +201,7 @@ function activityView(
       return api.getActivity({
         ...state,
         cursor,
-        limit: DEFAULT_PREVIEW_SIZE,
+        limit: previewSize,
         q: state.query,
         favoritesOnly: state.favoritesOnly,
       });
@@ -212,12 +210,14 @@ function activityView(
       return api.getPullRequestHistory(repositoryId, pullRequestNumber);
     },
     favorites,
-    previewSize: DEFAULT_PREVIEW_SIZE,
+    previewSize,
   });
 }
 
 function showSignedOut(): void {
   shell.setViewer(undefined);
+  shell.setPreferenceWarning(undefined);
+  shell.setDensity('COMFORTABLE');
   shell.show(renderSignedOut());
   const note = shell.outlet.querySelector<HTMLElement>('.phase-note');
   if (note) note.textContent = 'Sign in with GitHub to view Spark activity for repositories your account can access.';
@@ -245,10 +245,15 @@ async function render(): Promise<void> {
   const viewerTask = abortable(cachedViewer(), signal);
   const accountTask = abortable(cachedAccount(), signal);
   const favoritesTask = abortable(cachedFavorites(), signal);
+  const settingsTask = settle(abortable(cachedSettings(), signal));
 
   try {
+    const settingsResult = await settingsTask;
+    if (generation !== routeGeneration || signal.aborted) return;
+    const loadedSettings = activateSettings(settingsResult, route.kind !== 'settings');
+    const { settings: preferences, state } = resolvePreferences(window.location.search, loadedSettings.settings);
+
     if (route.kind === 'dashboard') {
-      const state = parseActivityState(window.location.search);
       const dashboardTask = abortable(getOperationalDashboard(state), signal);
       const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
       const insightsTask = settle(abortable(getDashboardInsights(state), signal));
@@ -272,7 +277,7 @@ async function render(): Promise<void> {
           const next = withActivityState(state, { repositoryId: value, attention: 'ALL', cursor: null, query: undefined, favoritesOnly: false });
           navigate(`/app?${serializeActivityState(next)}`);
         },
-      });
+      }, preferences.previewSize, preferences.collapseSecondarySections);
       shell.show(view);
 
       void recentTask.then(async (result) => {
@@ -299,11 +304,10 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'activity') {
-      const state = parseActivityState(window.location.search);
       const activityTask = abortable(api.getActivity({
         ...state,
         cursor: null,
-        limit: DEFAULT_PREVIEW_SIZE,
+        limit: preferences.previewSize,
         q: state.query,
         favoritesOnly: state.favoritesOnly,
       }), signal);
@@ -314,16 +318,15 @@ async function render(): Promise<void> {
         activityTask,
       ]);
       if (generation !== routeGeneration || signal.aborted) return;
-      shell.show(activityView(viewer, activity, state, favorites, '/app/activity'));
+      shell.show(activityView(viewer, activity, state, favorites, '/app/activity', preferences.previewSize));
       return;
     }
 
     if (route.kind === 'overview') {
-      const state = parseActivityState(window.location.search);
-      const overviewTask = abortable(getOverviewDrilldown(route.metric, state), signal);
+      const overviewTask = abortable(getOverviewDrilldown(route.metric, state, undefined, preferences.previewSize), signal);
       const transitionsTask = abortable(getNotableTransitionInsights(state), signal);
       const companionTask = route.metric === 'evaluations'
-        ? abortable(getOverviewDrilldown('pull-requests', state), signal)
+        ? abortable(getOverviewDrilldown('pull-requests', state, undefined, preferences.previewSize), signal)
         : Promise.resolve(undefined);
       const behaviorPatternsTask = route.metric === 'merged-unresolved'
         ? abortable(getBehaviorPatterns(state), signal).catch(() => undefined)
@@ -348,8 +351,8 @@ async function render(): Promise<void> {
         },
         transitions,
         companion,
-        (cursor) => getOverviewDrilldown(route.metric, state, cursor, DEFAULT_PREVIEW_SIZE),
-        DEFAULT_PREVIEW_SIZE,
+        (cursor) => getOverviewDrilldown(route.metric, state, cursor, preferences.previewSize),
+        preferences.previewSize,
       );
       if (behaviorPatterns) enhanceOverviewWithBehaviorPatterns(overviewView, behaviorPatterns, state);
       shell.show(overviewView);
@@ -357,7 +360,6 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'settings') {
-      const settingsTask = settle(abortable(cachedSettings(), signal));
       const repositoriesTask = settle(abortable(api.getActivity({
         window: '30d',
         attention: 'ALL',
@@ -367,23 +369,24 @@ async function render(): Promise<void> {
       }), signal));
       void accountTask.catch(() => undefined);
       void favoritesTask.catch(() => undefined);
-      const [viewer, loadedSettings, repositoryMetadata] = await Promise.all([
+      const [viewer, repositoryMetadata] = await Promise.all([
         viewerTask,
-        settingsTask,
         repositoriesTask,
       ]);
       if (generation !== routeGeneration || signal.aborted) return;
       shell.setViewer(viewer);
       const warnings: string[] = [];
-      if (!loadedSettings.ok) warnings.push('Saved preferences could not be loaded. Safe defaults are shown for now.');
+      if (!settingsResult.ok) warnings.push('Saved preferences could not be loaded. Safe defaults are shown for now.');
       if (!repositoryMetadata.ok) warnings.push('Repository choices could not be loaded. You can still save the other preferences.');
       shell.show(renderSettings(
-        loadedSettings.ok ? loadedSettings.value : fallbackSettings(),
+        loadedSettings,
         repositoryMetadata.ok ? repositoryMetadata.value.repositories : [],
         {
           save(input, etag) {
             return api.replaceSettings(input, etag).then((saved) => {
               settingsPromise = Promise.resolve(saved);
+              shell.setDensity(saved.settings.density);
+              shell.setPreferenceWarning(undefined);
               return saved;
             });
           },
@@ -419,7 +422,7 @@ async function render(): Promise<void> {
         behaviorTask,
       ]);
       if (generation !== routeGeneration || signal.aborted) return;
-      const activitySearch = currentActivitySearch();
+      const activitySearch = serializeActivityState(state);
       const saveFeedback = (transitionId: string, input: Parameters<typeof api.saveTrajectoryFeedback>[3]) => api.saveTrajectoryFeedback(
         route.repositoryId,
         route.pullRequestNumber,
@@ -432,6 +435,7 @@ async function render(): Promise<void> {
         activitySearch,
         favorites,
         saveFeedback,
+        preferences.previewSize,
       );
       enhancePullRequestWithSeverityTimeline(pullRequestView, trajectory, activitySearch, saveFeedback);
       if (behavior) enhancePullRequestWithBehavior(pullRequestView, behavior);
@@ -444,7 +448,7 @@ async function render(): Promise<void> {
       const runTask = abortable(api.getRun(route.repositoryId, route.runId), signal);
       const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, runTask]);
       if (generation !== routeGeneration || signal.aborted) return;
-      const activitySearch = currentActivitySearch();
+      const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       pointBackToActivity(evaluationView, activitySearch);
       shell.show(evaluationView);
@@ -456,7 +460,7 @@ async function render(): Promise<void> {
             shell.root,
             pullRequest,
             { headSha: summary.headSha, runId: route.runId },
-            currentActivitySearch(),
+            activitySearch,
           );
         })
         .catch(() => undefined);
@@ -467,7 +471,7 @@ async function render(): Promise<void> {
       const evaluationTask = abortable(api.getEvaluation(route.repositoryId, route.headSha), signal);
       const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, evaluationTask]);
       if (generation !== routeGeneration || signal.aborted) return;
-      const activitySearch = currentActivitySearch();
+      const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       pointBackToActivity(evaluationView, activitySearch);
       shell.show(evaluationView);
@@ -475,7 +479,7 @@ async function render(): Promise<void> {
       void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number), signal)
         .then((pullRequest) => {
           if (generation !== routeGeneration || signal.aborted) return;
-          enhanceEvaluationWithPullRequestContext(shell.root, pullRequest, { headSha: route.headSha }, currentActivitySearch());
+          enhanceEvaluationWithPullRequestContext(shell.root, pullRequest, { headSha: route.headSha }, activitySearch);
         })
         .catch(() => undefined);
       return;
