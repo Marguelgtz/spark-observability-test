@@ -382,17 +382,22 @@ const DOMAIN_RULES: Array<{ domain: FailureDomain; pattern: RegExp }> = [
     { domain: 'SETUP', pattern: /\b(checkout|setup|set up|initialize|bootstrap|configure)\b/i },
 ];
 
-function classifyFailure(location: FailureLocation): { domain: FailureDomain; matchedName?: string } {
-    const names = [...new Set([
-        ...(location.step ? [location.step.name] : []),
-        ...(location.job ? [location.job.name] : []),
-        location.name,
-    ])];
-    for (const name of names) {
+export function classifyProcessFailureDomain(
+    names: readonly string[],
+): { domain: FailureDomain; matchedName?: string } {
+    for (const name of [...new Set(names)]) {
         const rule = DOMAIN_RULES.find(item => item.pattern.test(name));
         if (rule) return { domain: rule.domain, matchedName: name };
     }
     return { domain: 'UNKNOWN' };
+}
+
+function classifyFailure(location: FailureLocation): { domain: FailureDomain; matchedName?: string } {
+    return classifyProcessFailureDomain([
+        ...(location.step ? [location.step.name] : []),
+        ...(location.job ? [location.job.name] : []),
+        location.name,
+    ]);
 }
 
 function failureDomainInsight(
