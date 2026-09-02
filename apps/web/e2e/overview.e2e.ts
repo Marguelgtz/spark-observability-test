@@ -7,8 +7,21 @@ const metrics = [
   ['merged-unresolved', 'Change outcomes'],
 ] as const;
 
-test('home metrics are clickable, render composable insights, and flag unresolved merges in recent activity', async ({ page }) => {
+test('dashboard metrics drill into existing views and insights stay secondary', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
+
+  await expect(page.getByTestId('dashboard-card-attention')).toHaveAttribute('href', /\/app\/overview\/attention/);
+  await expect(page.getByTestId('dashboard-card-active')).toHaveAttribute('href', /#active-changes$/);
+  await expect(page.getByTestId('dashboard-card-merged-unresolved')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
+  await expect(page.getByTestId('dashboard-card-recoveries')).toHaveAttribute('href', /\/app\/overview\/attention/);
+
+  const mergedRecent = page.getByTestId('recent-change-101-42');
+  await expect(mergedRecent).toBeVisible();
+  await expect(mergedRecent.getByText('Merged unresolved', { exact: true })).toBeVisible();
+
+  const insights = page.getByTestId('dashboard-insights');
+  await expect(page.getByTestId('home-charts')).not.toBeVisible();
+  await insights.locator('summary').click();
 
   const homeCharts = page.getByTestId('home-charts');
   await expect(homeCharts).toBeVisible();
@@ -20,17 +33,10 @@ test('home metrics are clickable, render composable insights, and flag unresolve
   await expect(homeCharts.locator('[data-chart-kind="stacked-bar"]')).toBeVisible();
   await expect(homeCharts.locator('[data-chart-kind="donut"]')).toBeVisible();
   await expect(page.getByTestId('notable-transition-mix')).toBeVisible();
-  await expect(page.getByTestId('overview-card-pull-requests')).toHaveAttribute('href', /\/app\/overview\/pull-requests/);
-  await expect(page.getByTestId('overview-card-evaluations')).toHaveAttribute('href', /\/app\/overview\/evaluations/);
-  await expect(page.getByTestId('overview-card-attention')).toHaveAttribute('href', /\/app\/overview\/attention/);
-  await expect(page.getByTestId('overview-card-merged-unresolved')).toHaveAttribute('href', /\/app\/overview\/merged-unresolved/);
 
-  const mergedRecent = page.getByTestId('pull-request-101-42');
-  await expect(mergedRecent.getByText('Merged unresolved', { exact: true })).toBeVisible();
-
-  await page.getByTestId('overview-card-evaluations').click();
-  await expect(page).toHaveURL(/\/app\/overview\/evaluations\?window=7d/);
-  await expect(page.getByTestId('overview-evaluations')).toBeVisible();
+  await page.getByTestId('dashboard-card-attention').click();
+  await expect(page).toHaveURL(/\/app\/overview\/attention\?window=7d/);
+  await expect(page.getByTestId('overview-attention')).toBeVisible();
   await expect(page.getByTestId('overview-charts')).toBeVisible();
 });
 

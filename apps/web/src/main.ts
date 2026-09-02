@@ -1,6 +1,7 @@
 import './styles.css';
 import './shell.css';
 import './home.css';
+import './dashboard.css';
 import './overview.css';
 import './account.css';
 import './pr.css';
@@ -12,8 +13,16 @@ import { createPersistentAppShell } from './app-shell';
 import { getBehaviorPatterns, getChangeBehavior } from './behavior-api';
 import { enhanceOverviewWithBehaviorPatterns, enhancePullRequestWithBehavior } from './behavior-ui';
 import { enhancePullRequestWithSeverityTimeline } from './context-insight-enhancers';
+import { getDashboardInsights, getDashboardRecentActivity, getOperationalDashboard } from './dashboard-api';
+import {
+  markDashboardMergedUnresolved,
+  renderDashboardInsights,
+  renderDashboardInsightsError,
+  renderDashboardRecentActivity,
+  renderDashboardRecentActivityError,
+  renderOperationalDashboard,
+} from './dashboard-ui';
 import { FavoriteStore } from './favorites';
-import { enhanceActivityHome } from './home-ui';
 import { getNotableTransitionInsights, getOverviewDrilldown } from './overview-api';
 import { renderOverviewDrilldown } from './overview-ui';
 import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
@@ -110,6 +119,15 @@ function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
+type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };
+
+function settle<T>(promise: Promise<T>): Promise<Settled<T>> {
+  return promise.then(
+    (value) => ({ ok: true as const, value }),
+    (error) => ({ ok: false as const, error }),
+  );
+}
+
 function currentActivitySearch(): string {
   return serializeActivityState(parseActivityState(window.location.search));
 }
@@ -122,33 +140,6 @@ function pointBackToActivity(view: HTMLElement, activitySearch: string): void {
   const back = view.querySelector<HTMLAnchorElement>('.back-link');
   if (!back || !back.textContent?.includes('Activity')) return;
   back.href = activityPath(activitySearch);
-}
-
-function trimActivityBrowserFromDashboard(view: HTMLElement, state: ActivityUrlState): HTMLElement {
-  const main = view.querySelector<HTMLElement>('main[data-testid="activity-view"]');
-  if (!main) return view;
-  main.dataset.surface = 'dashboard';
-  main.querySelector('.attention-filters')?.remove();
-  main.querySelector('.client-filters')?.remove();
-
-  const previewRows = [...main.querySelectorAll<HTMLElement>('.pull-request-activity')];
-  previewRows.slice(5).forEach((row) => row.remove());
-
-  const sectionLabel = main.querySelector<HTMLElement>('.section-label');
-  if (sectionLabel) sectionLabel.textContent = `Recent pull requests · ${Math.min(previewRows.length, 5)}`;
-
-  const recentNote = main.querySelector<HTMLElement>('.recent-activity-heading span');
-  if (recentNote) {
-    const activityState = { ...state, attention: 'ALL' as const, cursor: null, query: undefined, favoritesOnly: false };
-    const search = serializeActivityState(activityState);
-    const link = document.createElement('a');
-    link.className = 'home-section-link';
-    link.href = activityPath(search);
-    link.dataset.routerLink = 'true';
-    link.textContent = 'View all activity →';
-    recentNote.replaceChildren(link);
-  }
-  return view;
 }
 
 function activityView(
@@ -220,32 +211,52 @@ async function render(): Promise<void> {
   try {
     if (route.kind === 'dashboard') {
       const state = parseActivityState(window.location.search);
-      const activityTask = abortable(api.getActivity(state), signal);
-      const mergeOverviewTask = abortable(getOverviewDrilldown('merged-unresolved', state), signal).catch(() => undefined);
-      const evaluationOverviewTask = abortable(getOverviewDrilldown('evaluations', state), signal);
-      const transitionsTask = abortable(getNotableTransitionInsights(state), signal);
-      const [viewer, account, favorites, activity, mergeOverview, evaluationOverview, transitions] = await Promise.all([
+      const dashboardTask = abortable(getOperationalDashboard(state), signal);
+      const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
+      const insightsTask = settle(abortable(getDashboardInsights(state), signal));
+      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state), signal));
+      void favoritesTask.catch(() => undefined);
+
+      const [viewer, account, dashboard] = await Promise.all([
         viewerTask,
         accountTask,
-        favoritesTask,
-        activityTask,
-        mergeOverviewTask,
-        evaluationOverviewTask,
-        transitionsTask,
+        dashboardTask,
       ]);
       if (generation !== routeGeneration || signal.aborted) return;
 
-      const view = activityView(viewer, activity, state, favorites, '/app');
-      const dashboard = enhanceActivityHome(
-        view,
-        account,
-        activity,
-        state,
-        mergeOverview,
-        evaluationOverview,
-        transitions,
-      );
-      shell.show(trimActivityBrowserFromDashboard(dashboard, state));
+      shell.setViewer(viewer);
+      const view = renderOperationalDashboard(account, dashboard, state, {
+        setWindow(value) {
+          const next = withActivityState(state, { window: value, attention: 'ALL', cursor: null, query: undefined, favoritesOnly: false });
+          navigate(`/app?${serializeActivityState(next)}`);
+        },
+        setRepository(value) {
+          const next = withActivityState(state, { repositoryId: value, attention: 'ALL', cursor: null, query: undefined, favoritesOnly: false });
+          navigate(`/app?${serializeActivityState(next)}`);
+        },
+      });
+      shell.show(view);
+
+      void recentTask.then(async (result) => {
+        if (generation !== routeGeneration || signal.aborted) return;
+        if (!result.ok) {
+          if (!isAbort(result.error)) renderDashboardRecentActivityError(shell.outlet);
+          return;
+        }
+        renderDashboardRecentActivity(shell.outlet, result.value, state);
+        const mergeResult = await mergeOverviewTask;
+        if (generation !== routeGeneration || signal.aborted) return;
+        if (mergeResult.ok) markDashboardMergedUnresolved(shell.outlet, mergeResult.value);
+      });
+
+      void insightsTask.then((result) => {
+        if (generation !== routeGeneration || signal.aborted) return;
+        if (!result.ok) {
+          if (!isAbort(result.error)) renderDashboardInsightsError(shell.outlet);
+          return;
+        }
+        renderDashboardInsights(shell.outlet, dashboard, result.value, state);
+      });
       return;
     }
 
