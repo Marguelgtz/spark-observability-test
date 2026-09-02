@@ -9,6 +9,8 @@ import type {
     ClaimSupport,
     CompletenessAssessment,
     CompletenessState,
+    DeploymentApprovalState,
+    DeploymentObservation,
     EvidenceAttribution,
     EvidenceExpectation,
     EvidenceRunObservation,
@@ -27,7 +29,8 @@ export type UnderstandingIssueCode =
     | 'INVALID_CONFIDENCE'
     | 'INVALID_COMPLETENESS'
     | 'INVALID_PROCESS_LIFECYCLE'
-    | 'INVALID_PROCESS_OUTCOME';
+    | 'INVALID_PROCESS_OUTCOME'
+    | 'INVALID_DEPLOYMENT_APPROVAL_STATE';
 
 export interface UnderstandingNormalizationIssue {
     code: UnderstandingIssueCode;
@@ -47,6 +50,9 @@ const processLifecycles = new Set<ProcessLifecycle>([
 ]);
 const processOutcomes = new Set<ProcessOutcome>([
     'PASSED', 'FAILED', 'NEUTRAL', 'SKIPPED', 'UNKNOWN', 'NOT_APPLICABLE',
+]);
+const deploymentApprovalStates = new Set<DeploymentApprovalState>([
+    'NOT_REQUIRED', 'WAITING', 'APPROVED', 'REJECTED', 'UNKNOWN',
 ]);
 
 function byId<T extends { id: string }>(left: T, right: T): number {
@@ -259,6 +265,36 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
     const pipelineJobsById = new Map(pipelineJobs.map(item => [item.id, item]));
     const pipelineStepsById = new Map(pipelineSteps.map(item => [item.id, item]));
 
+    const deployments: DeploymentObservation[] = uniqueById(
+        input.observations.deployments,
+        'observations.deployments',
+        issues,
+    ).map(item => {
+        const normalized = normalizeProcessState(item, `observations.deployments.${item.id}`, issues);
+        const result: DeploymentObservation = { ...normalized };
+        if (!deploymentApprovalStates.has(result.approvalState)) {
+            issues.push({
+                code: 'INVALID_DEPLOYMENT_APPROVAL_STATE',
+                path: `observations.deployments.${item.id}.approvalState`,
+                detail: `replaced ${String(result.approvalState)} with UNKNOWN`,
+            });
+            result.approvalState = 'UNKNOWN';
+        }
+        if (result.pipelineRunId) {
+            const run = pipelineRunsById.get(result.pipelineRunId);
+            if (run?.repositoryId !== result.repositoryId || run.revision !== result.revision) {
+                issues.push({
+                    code: 'DANGLING_REFERENCE',
+                    path: `observations.deployments.${item.id}.pipelineRunId`,
+                    detail: 'removed missing or cross-revision pipeline run reference',
+                });
+                delete result.pipelineRunId;
+            }
+        }
+        return result;
+    });
+    const deploymentIds = new Set(deployments.map(item => item.id));
+
     const evidenceRuns: EvidenceRunObservation[] = uniqueById(
         input.observations.evidenceRuns,
         'observations.evidenceRuns',
@@ -322,6 +358,7 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
         ...pipelineAttemptIds,
         ...pipelineJobIds,
         ...pipelineStepIds,
+        ...deploymentIds,
     ]);
     const referenceSets = { observationIds, artifactIds, evidenceRunIds };
 
@@ -461,6 +498,7 @@ export function normalizeRepositoryUnderstanding(input: RepositoryUnderstanding)
                 pipelineJobs,
                 pipelineSteps,
                 evidenceRuns,
+                deployments,
                 completeness: sourceCompleteness,
             },
             areas: normalizedAreas,

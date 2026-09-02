@@ -2,6 +2,7 @@ export * from './app-user-access';
 export * from './auth';
 export * from './check';
 export * from './client';
+export * from './deployments';
 export * from './evaluate';
 export * from './evidence';
 export * from './normalize';

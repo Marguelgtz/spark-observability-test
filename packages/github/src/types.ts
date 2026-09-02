@@ -1,4 +1,4 @@
-import type { Project, SparkInput } from '@spark/core';
+import type { ProcessLifecycle, ProcessOutcome, Project, SparkInput } from '@spark/core';
 
 export interface GitHubRepository {
   id: number;
@@ -77,6 +77,37 @@ export interface GitHubWorkflowJob {
   steps?: GitHubWorkflowStep[];
 }
 
+export interface GitHubDeployment {
+  id: number;
+  sha: string;
+  ref: string | null;
+  /** Workflow run that triggered the deployment, when the provider identifies one. */
+  task_id?: number;
+  environment: string;
+  created_at: string;
+  updated_at?: string;
+  html_url?: string;
+}
+
+export interface GitHubDeploymentStatus {
+  id: number;
+  deployment_id: number;
+  state: string;
+  environment: string | null;
+  environment_guidance?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface GitHubEnvironmentPendingDeployments {
+  deployments: Array<{
+    id: number;
+    environment: string;
+    status: { id: number; state: string };
+  }>;
+  reviewers: Array<{ type: 'User' | 'Team' }>;
+}
+
 export interface GitHubPageResult<T> {
   items: T[];
   totalCount: number;
@@ -98,7 +129,7 @@ export interface GitHubEvaluationSource {
 }
 
 export interface GitHubEventRequest {
-  kind: 'installation' | 'installation_repositories' | 'pull_request_lifecycle' | 'evaluate' | 'ignore';
+  kind: 'installation' | 'installation_repositories' | 'pull_request_lifecycle' | 'deployment' | 'evaluate' | 'ignore';
   action: string;
   installationId?: number;
   repositoryId?: number;
@@ -113,6 +144,15 @@ export interface GitHubEventRequest {
     mergeSha?: string;
     occurredAt: string;
     evaluate: boolean;
+  };
+  deployment?: {
+    providerDeploymentId?: string;
+    providerStatusId?: string;
+    providerTaskId?: number;
+    environment?: string;
+    revision: string;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
   };
   payload: Record<string, unknown>;
 }

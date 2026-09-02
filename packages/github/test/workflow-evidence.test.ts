@@ -53,6 +53,7 @@ function fixture(): RepositoryUnderstanding {
         pipelineRunId: 'pipeline-run:1', pipelineAttemptId: 'pipeline-attempt:1', pipelineJobId: 'pipeline-job:1',
         source: { kind: 'ci' },
       }],
+      deployments: [],
       completeness: [
         { source: 'github-check-runs', state: 'COMPLETE' },
         { source: 'github-workflow-files', state: 'COMPLETE' },

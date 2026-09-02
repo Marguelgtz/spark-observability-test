@@ -1,5 +1,8 @@
 import type {
   GitHubCheckRun,
+  GitHubDeployment,
+  GitHubDeploymentStatus,
+  GitHubEnvironmentPendingDeployments,
   GitHubPageResult,
   GitHubPullRequest,
   GitHubPullRequestFile,
@@ -116,6 +119,59 @@ export class GitHubApiClient {
       if (body.jobs.length < 100 || jobs.length >= totalCount) break;
     }
     return { items: jobs, totalCount, complete: jobs.length >= totalCount };
+  }
+
+  async listDeploymentsForRevision(
+    owner: string,
+    repo: string,
+    sha: string,
+    maxPages: number,
+  ): Promise<GitHubPageResult<GitHubDeployment>> {
+    const deployments: GitHubDeployment[] = [];
+    let totalCount = 0;
+    for (let page = 1; page <= maxPages; page += 1) {
+      const body = await this.request<{ total_count: number; deployments: GitHubDeployment[] }>(
+        `/repos/${owner}/${repo}/deployments?sha=${encodeURIComponent(sha)}&per_page=100&page=${page}`,
+      );
+      totalCount = body.total_count;
+      deployments.push(...body.deployments.filter(item => item.sha === sha));
+      if (body.deployments.length < 100 || deployments.length >= totalCount) break;
+    }
+    return { items: deployments, totalCount, complete: deployments.length >= totalCount };
+  }
+
+  async listDeploymentStatuses(
+    owner: string,
+    repo: string,
+    deploymentId: number,
+    maxPages: number,
+  ): Promise<GitHubPageResult<GitHubDeploymentStatus>> {
+    const statuses: GitHubDeploymentStatus[] = [];
+    let totalCount = 0;
+    for (let page = 1; page <= maxPages; page += 1) {
+      const body = await this.request<{ total_count: number; statuses: GitHubDeploymentStatus[] }>(
+        `/repos/${owner}/${repo}/deployments/${deploymentId}/statuses?per_page=100&page=${page}`,
+      );
+      totalCount = body.total_count;
+      statuses.push(...body.statuses);
+      if (body.statuses.length < 100 || statuses.length >= totalCount) break;
+    }
+    return { items: statuses, totalCount, complete: statuses.length >= totalCount };
+  }
+
+  async getEnvironmentPendingDeployments(
+    owner: string,
+    repo: string,
+    environment: string,
+  ): Promise<GitHubEnvironmentPendingDeployments | undefined> {
+    try {
+      return await this.request<GitHubEnvironmentPendingDeployments>(
+        `/repos/${owner}/${repo}/environments/${encodeURIComponent(environment)}/pending-deployments`,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.endsWith('(404)')) return undefined;
+      throw error;
+    }
   }
 
   async getTree(owner: string, repo: string, sha: string): Promise<{ paths: string[]; complete: boolean }> {

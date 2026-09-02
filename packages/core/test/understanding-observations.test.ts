@@ -99,6 +99,7 @@ describe('repository observations', () => {
                     source: { kind: 'ci', id: 'provider:7' },
                 },
             ],
+            deployments: [],
             completeness: [
                 { source: 'changed-files', state: 'COMPLETE', observedCount: 1, expectedCount: 1 },
                 { source: 'repository-tree', state: 'PARTIAL', reason: 'provider response was truncated' },

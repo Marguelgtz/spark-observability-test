@@ -70,7 +70,7 @@ function understanding(
                 outcome: item.outcome, startedAt: item.startedAt, completedAt: item.completedAt,
                 source: { kind: 'ci' },
             })),
-            pipelineSteps: [], evidenceRuns: [],
+            pipelineSteps: [], evidenceRuns: [], deployments: [],
             completeness: [
                 { source: 'github-actions-runs', state: 'COMPLETE' },
                 { source: 'github-actions-jobs', state: 'COMPLETE' },

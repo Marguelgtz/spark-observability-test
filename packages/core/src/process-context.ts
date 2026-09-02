@@ -127,6 +127,8 @@ function subjectFor(insight: ProcessInsight): ProcessInsightSubjectV0 {
             return { kind: insight.detail.target.kind, id: insight.detail.target.id };
         case 'RECOVERY':
             return { kind: 'OBSERVATION', id: insight.detail.resolvingObservationId };
+        case 'DEPLOYMENT_STATE':
+            return { kind: 'OBSERVATION', id: insight.detail.deploymentId };
     }
 }
 

@@ -70,6 +70,7 @@ function fixture(revision = 'head'): RepositoryUnderstanding {
                 pipelineRunId: 'run:1', pipelineAttemptId: 'attempt:1', pipelineJobId: 'job:1',
                 pipelineStepId: 'step:1', source: { kind: 'ci' }, url: 'https://ci.local/check/1',
             }],
+            deployments: [],
             completeness: [{ source: 'github-check-runs', state: 'COMPLETE' }],
         },
         areas: [{ id: 'area:api', label: 'API', roles: ['FUNCTIONAL'], support: support() }],
@@ -163,6 +164,23 @@ describe('agent-facing CI/CD process context', () => {
             },
         });
         expect(localized?.id).toBe(`${localized?.stableInsightId}:context:failure-1`);
+    });
+
+    it('exposes deployment state insights in the agent context with the deployment as their subject', () => {
+        const understanding = fixture();
+        understanding.observations.deployments = [{
+            kind: 'deployment', id: 'deployment:production:1', repositoryId: 'repository:1', revision: 'head',
+            environment: 'production', lifecycle: 'QUEUED', outcome: 'UNKNOWN', approvalState: 'WAITING',
+            source: { kind: 'ci' },
+        }];
+        const context = deriveProcessContextV0(understanding, { contextId: 'deployment-1' });
+        const deployment = context.insights.find(item => item.insightKind === 'DEPLOYMENT_STATE');
+
+        expect(deployment).toMatchObject({
+            schemaVersion: 'process-insight/v0', state: 'ACTIVE',
+            subject: { kind: 'OBSERVATION', id: 'deployment:production:1' },
+            summary: 'deployment deployment:production:1 to environment production is waiting for approval; waiting is not a failure',
+        });
     });
 
     it('links repeated stable conditions through supersedes without mutating either input', () => {

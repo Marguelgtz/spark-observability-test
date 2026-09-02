@@ -61,6 +61,7 @@ describe('generic structural-region decision', () => {
             pipelineJobs: [],
             pipelineSteps: [],
             evidenceRuns: [],
+            deployments: [],
             completeness: [
                 { source: 'changed-files', state: 'COMPLETE' },
                 { source: 'repository-tree', state: 'PARTIAL', reason: 'tree truncated' },

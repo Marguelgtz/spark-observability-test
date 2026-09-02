@@ -66,6 +66,7 @@ function fixture(): RepositoryUnderstanding {
                 pipelineRunId: 'pipeline-run:1', pipelineAttemptId: 'pipeline-attempt:1', pipelineJobId: 'pipeline-job:1',
                 source: { kind: 'ci', id: 'github-check-run:1' },
             }],
+            deployments: [],
             completeness: [
                 { source: 'github-check-runs', state: 'COMPLETE', observedCount: 1, expectedCount: 1 },
                 { source: 'github-actions-runs', state: 'COMPLETE' },

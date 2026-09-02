@@ -99,6 +99,94 @@ describe('GitHub webhook security and routing', () => {
       ...base, action: 'completed', check_run: { ...base.check_run, name: 'Spark Observability', app: { id: 42 } },
     }, 42).kind).toBe('ignore');
   });
+
+  it('routes deployment events as bounded deployment observations without PR identifiers', () => {
+    const routed = routeGitHubEvent('deployment', {
+      action: 'created',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      deployment: { id: 6001, sha: 'rev-sha', environment: 'production', task_id: 50040, ref: 'main' },
+    });
+    expect(routed).toMatchObject({
+      kind: 'deployment',
+      action: 'created',
+      installationId: 7,
+      repositoryId: 8,
+      repositoryFullName: 'acme/widgets',
+      deployment: {
+        providerDeploymentId: '6001',
+        providerTaskId: 50040,
+        environment: 'production',
+        revision: 'rev-sha',
+        lifecycle: 'QUEUED',
+        outcome: 'UNKNOWN',
+      },
+    });
+  });
+
+  it('normalizes deployment status transitions onto the provider-neutral vocabulary', () => {
+    const base = {
+      action: 'created',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      deployment: { id: 6001, sha: 'rev-sha', environment: 'production' },
+    };
+    const running = routeGitHubEvent('deployment_status', {
+      ...base,
+      status: { id: 6102, state: 'in_progress', environment: 'production' },
+    });
+    expect(running).toMatchObject({
+      kind: 'deployment',
+      deployment: {
+        providerDeploymentId: '6001',
+        providerStatusId: '6102',
+        environment: 'production',
+        revision: 'rev-sha',
+        lifecycle: 'RUNNING',
+        outcome: 'UNKNOWN',
+      },
+    });
+
+    const failed = routeGitHubEvent('deployment_status', {
+      ...base,
+      status: { id: 6103, state: 'success', environment: 'production', environment_guidance: 'error' },
+    });
+    expect(failed).toMatchObject({ kind: 'deployment', deployment: { lifecycle: 'COMPLETED', outcome: 'FAILED' } });
+  });
+
+  it('keeps a deployment waiting on approval out of the failure vocabulary', () => {
+    const routed = routeGitHubEvent('deployment_status', {
+      action: 'created',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      deployment: { id: 6001, sha: 'rev-sha', environment: 'production' },
+      status: { id: 6101, state: 'pending', environment: 'production' },
+    });
+    expect(routed).toMatchObject({ kind: 'deployment', deployment: { lifecycle: 'QUEUED', outcome: 'UNKNOWN' } });
+  });
+
+  it('ignores deployment events missing the revision and run events without deployment identity', () => {
+    expect(routeGitHubEvent('deployment', { action: 'created', deployment: { id: 6001 } }).kind).toBe('ignore');
+    expect(routeGitHubEvent('deployment_status', {
+      action: 'created',
+      deployment: { id: 6001, sha: 'rev-sha' },
+      status: { id: 6101 },
+    }).kind).toBe('ignore');
+    // workflow_run and check_suite payloads carry no deployment identifier,
+    // so they cannot truthfully contribute deployment context via webhook.
+    expect(routeGitHubEvent('workflow_run', {
+      action: 'completed',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      workflow_run: { id: 50040, head_sha: 'rev-sha' },
+    }).kind).toBe('ignore');
+    expect(routeGitHubEvent('check_suite', {
+      action: 'completed',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      check_suite: { id: 7001, head_sha: 'rev-sha' },
+    }).kind).toBe('ignore');
+  });
 });
 
 describe('GitHub normalization', () => {

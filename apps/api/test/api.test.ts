@@ -249,6 +249,37 @@ describe('Spark orchestration', () => {
     expect(result.evaluation?.reasons).toContain('Structural uncertainty; repository topology could not be deeply analyzed');
     expect(fake.created[0]).toMatchObject({ conclusion: 'neutral' });
   });
+
+  it('acknowledges deployment observations without evaluation or persistence work', async () => {
+    const store = new MemoryStore();
+    const log = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    let clientRequested = false;
+    const orchestrator = new SparkOrchestrator({
+      store,
+      sparkAppId: 42,
+      createClient: async () => {
+        clientRequested = true;
+        throw new Error('deployment observations must not create provider clients');
+      },
+    });
+
+    const result = await orchestrator.handle({
+      kind: 'deployment', action: 'created', installationId: 1, repositoryId: 2, repositoryFullName: 'acme/repo',
+      deployment: {
+        providerDeploymentId: '6001', providerTaskId: 50040, environment: 'production',
+        revision: 'sha', lifecycle: 'QUEUED', outcome: 'UNKNOWN',
+      },
+      payload: {},
+    }, trigger('delivery-deployment'));
+
+    expect(result).toEqual({ status: 'deployment_observed' });
+    expect(clientRequested).toBe(false);
+    expect(store.runs.size).toBe(0);
+    expect(store.evaluations.size).toBe(0);
+    expect(store.installationEvents).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('"event":"spark_deployment_observation"'));
+    log.mockRestore();
+  });
 });
 
 describe('HTTP webhook endpoint', () => {
@@ -338,6 +369,41 @@ describe('HTTP webhook endpoint', () => {
     expect(orchestrator.handle).toHaveBeenCalledTimes(1);
     finishOrchestration?.();
     await context.drain();
+  });
+
+  it('routes deployment webhooks to the orchestrator with bounded deployment context', async () => {
+    const store = new MemoryStore();
+    const orchestrator = { handle: vi.fn(async () => ({ status: 'deployment_observed' })) } as unknown as SparkOrchestrator;
+    const context = new TestExecutionContext();
+    const body = JSON.stringify({
+      action: 'created',
+      installation: { id: 7 },
+      repository: { id: 8, full_name: 'acme/widgets' },
+      deployment: { id: 6001, sha: 'deployment-sha', environment: 'production', task_id: 50040 },
+    });
+    const headers = { 'x-hub-signature-256': await sign(body, 'secret'), 'x-github-delivery': 'deployment-delivery', 'x-github-event': 'deployment' };
+    const response = await handleRequest(new Request('https://spark.test/webhooks/github', { method: 'POST', body, headers }), env, context, { store, orchestrator });
+
+    expect(response.status).toBe(202);
+    await context.drain();
+    expect(orchestrator.handle).toHaveBeenCalledTimes(1);
+    expect(orchestrator.handle).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'deployment',
+      action: 'created',
+      installationId: 7,
+      repositoryId: 8,
+      repositoryFullName: 'acme/widgets',
+      deployment: {
+        providerDeploymentId: '6001',
+        providerTaskId: 50040,
+        environment: 'production',
+        revision: 'deployment-sha',
+        lifecycle: 'QUEUED',
+        outcome: 'UNKNOWN',
+      },
+    }), expect.objectContaining({ deliveryId: 'deployment-delivery', event: 'deployment', action: 'created' }));
+    expect(store.runs.size).toBe(0);
+    expect(store.evaluations.size).toBe(0);
   });
 
   it('serves the landing, health, privacy, and terms pages', async () => {
