@@ -16,7 +16,7 @@ export interface OrchestratorDependencies {
 }
 
 export interface OrchestratorResult {
-  status: 'ignored' | 'stored' | 'evaluated' | 'stale';
+  status: 'ignored' | 'stored' | 'evaluated' | 'stale' | 'deployment_observed';
   evaluation?: SparkEvaluation;
   checkRunId?: number;
 }
@@ -78,8 +78,36 @@ export class SparkOrchestrator {
     }
   }
 
+  private logDeploymentObservation(request: GitHubEventRequest): void {
+    const { deployment } = request;
+    const entry = {
+      event: 'spark_deployment_observation',
+      action: request.action,
+      installationId: request.installationId,
+      repository: request.repositoryFullName,
+      ...(request.repositoryId !== undefined ? { repositoryId: request.repositoryId } : {}),
+      ...(deployment ? {
+        revision: deployment.revision,
+        lifecycle: deployment.lifecycle,
+        outcome: deployment.outcome,
+        ...(deployment.environment ? { environment: deployment.environment } : {}),
+        ...(deployment.providerDeploymentId ? { providerDeploymentId: deployment.providerDeploymentId } : {}),
+        ...(deployment.providerStatusId ? { providerStatusId: deployment.providerStatusId } : {}),
+        ...(deployment.providerTaskId !== undefined ? { workflowRunId: deployment.providerTaskId } : {}),
+      } : {}),
+    };
+    console.info(JSON.stringify(entry));
+  }
+
   async handle(request: GitHubEventRequest, trigger?: EvaluationRunTrigger): Promise<OrchestratorResult> {
     if (request.kind === 'ignore') return { status: 'ignored' };
+    if (request.kind === 'deployment') {
+      // Shadow/derived path: deployment webhook observations are acknowledged
+      // and logged only. No D1 writes, no attention-policy changes, and no
+      // provider API work; bounded acquisition stays on the read path.
+      this.logDeploymentObservation(request);
+      return { status: 'deployment_observed' };
+    }
     if (request.kind === 'installation' || request.kind === 'installation_repositories') {
       await this.dependencies.store.saveInstallationEvent(request);
       return { status: 'stored' };

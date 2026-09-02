@@ -1,3 +1,5 @@
+import type { ProcessLifecycle, ProcessOutcome } from '@spark/core';
+import { normalizeGitHubDeploymentState } from './deployments';
 import type { GitHubEventRequest } from './types';
 
 const encoder = new TextEncoder();
@@ -43,6 +45,27 @@ function number(value: unknown): number | undefined {
 
 function string(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
+}
+
+function deploymentContext(
+  deployment: Record<string, unknown> | undefined,
+  revision: string,
+  state: { lifecycle: ProcessLifecycle; outcome: ProcessOutcome },
+  status: Record<string, unknown> | undefined,
+): NonNullable<GitHubEventRequest['deployment']> {
+  const providerDeploymentId = typeof deployment?.id === 'number' ? String(deployment.id) : undefined;
+  const providerStatusId = typeof status?.id === 'number' ? String(status.id) : undefined;
+  const providerTaskId = number(deployment?.task_id);
+  const environment = string(deployment?.environment) ?? string(status?.environment);
+  return {
+    ...(providerDeploymentId ? { providerDeploymentId } : {}),
+    ...(environment ? { environment } : {}),
+    ...(providerStatusId ? { providerStatusId } : {}),
+    ...(providerTaskId !== undefined ? { providerTaskId } : {}),
+    revision,
+    lifecycle: state.lifecycle,
+    outcome: state.outcome,
+  };
 }
 
 export function routeGitHubEvent(event: string, payload: Record<string, unknown>, sparkAppId?: number): GitHubEventRequest {
@@ -101,6 +124,29 @@ export function routeGitHubEvent(event: string, payload: Record<string, unknown>
       kind: 'evaluate', action, installationId, repositoryId, repositoryFullName,
       pullRequestNumber: number(pullRequest.number),
       headSha: string(checkRun?.head_sha), payload,
+    };
+  }
+  if (event === 'deployment' && action === 'created') {
+    const deployment = object(payload.deployment);
+    const revision = string(deployment?.sha);
+    if (!revision) return { kind: 'ignore', action, payload };
+    return {
+      kind: 'deployment', action, installationId, repositoryId, repositoryFullName,
+      deployment: deploymentContext(deployment, revision, { lifecycle: 'QUEUED', outcome: 'UNKNOWN' }, undefined),
+      payload,
+    };
+  }
+  if (event === 'deployment_status' && action === 'created') {
+    const status = object(payload.status);
+    const deployment = object(payload.deployment);
+    const state = string(status?.state);
+    const revision = string(deployment?.sha);
+    if (!state || !revision) return { kind: 'ignore', action, payload };
+    const normalized = normalizeGitHubDeploymentState(state, string(status?.environment_guidance) ?? null);
+    return {
+      kind: 'deployment', action, installationId, repositoryId, repositoryFullName,
+      deployment: deploymentContext(deployment, revision, normalized, status),
+      payload,
     };
   }
   return { kind: 'ignore', action, payload };

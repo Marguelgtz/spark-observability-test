@@ -1,4 +1,4 @@
-import type { Project, SparkInput } from '@spark/core';
+import type { ProcessLifecycle, ProcessOutcome, Project, SparkInput } from '@spark/core';
 
 export interface GitHubRepository {
   id: number;
@@ -129,7 +129,7 @@ export interface GitHubEvaluationSource {
 }
 
 export interface GitHubEventRequest {
-  kind: 'installation' | 'installation_repositories' | 'pull_request_lifecycle' | 'evaluate' | 'ignore';
+  kind: 'installation' | 'installation_repositories' | 'pull_request_lifecycle' | 'deployment' | 'evaluate' | 'ignore';
   action: string;
   installationId?: number;
   repositoryId?: number;
@@ -144,6 +144,15 @@ export interface GitHubEventRequest {
     mergeSha?: string;
     occurredAt: string;
     evaluate: boolean;
+  };
+  deployment?: {
+    providerDeploymentId?: string;
+    providerStatusId?: string;
+    providerTaskId?: number;
+    environment?: string;
+    revision: string;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
   };
   payload: Record<string, unknown>;
 }
