@@ -9,11 +9,14 @@ function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
 }
 
 function routeLabel(kind: DashboardRoute['kind']): string {
+  if (kind === 'dashboard' || kind === 'overview') return 'Dashboard';
+  if (kind === 'activity') return 'Activity';
+  if (kind === 'settings') return 'Settings';
   if (kind === 'pull-request') return 'Pull request';
   if (kind === 'run' || kind === 'evaluation') return 'Evaluation';
   if (kind === 'account') return 'Account';
   if (kind === 'not-found') return 'Spark';
-  return 'Activity';
+  return 'Spark';
 }
 
 function loadingContent(kind: DashboardRoute['kind']): HTMLElement {
@@ -40,7 +43,7 @@ function loadingContent(kind: DashboardRoute['kind']): HTMLElement {
     return wrap;
   }
 
-  if (kind === 'account') {
+  if (kind === 'account' || kind === 'settings') {
     wrap.append(node('div', 'skeleton route-skeleton-title'));
     for (let index = 0; index < 3; index += 1) wrap.append(node('div', 'skeleton route-skeleton-line'));
     return wrap;
@@ -59,10 +62,18 @@ function loadingContent(kind: DashboardRoute['kind']): HTMLElement {
   return wrap;
 }
 
+function primaryRoute(kind: DashboardRoute['kind']): 'dashboard' | 'activity' | 'settings' | undefined {
+  if (kind === 'dashboard' || kind === 'overview') return 'dashboard';
+  if (kind === 'activity' || kind === 'pull-request' || kind === 'run' || kind === 'evaluation') return 'activity';
+  if (kind === 'settings') return 'settings';
+  return undefined;
+}
+
 export interface PersistentAppShell {
   root: HTMLElement;
   outlet: HTMLElement;
   setViewer(viewer?: ViewerV1): void;
+  setRoute(kind: DashboardRoute['kind']): void;
   show(view: HTMLElement): void;
   showLoading(kind: DashboardRoute['kind']): void;
 }
@@ -79,10 +90,19 @@ export function createPersistentAppShell(): PersistentAppShell {
 
   const nav = node('nav', 'shell-nav');
   nav.setAttribute('aria-label', 'Primary');
-  const home = node('a', 'shell-nav-link', 'Home');
-  home.href = '/app';
-  home.dataset.routerLink = 'true';
-  nav.append(home);
+  const navLinks = new Map<'dashboard' | 'activity' | 'settings', HTMLAnchorElement>();
+  for (const [kind, label, href] of [
+    ['dashboard', 'Dashboard', '/app'],
+    ['activity', 'Activity', '/app/activity'],
+    ['settings', 'Settings', '/app/settings'],
+  ] as const) {
+    const link = node('a', 'shell-nav-link', label);
+    link.href = href;
+    link.dataset.routerLink = 'true';
+    link.dataset.nav = kind;
+    navLinks.set(kind, link);
+    nav.append(link);
+  }
   left.append(brand, nav);
 
   const identitySlot = node('div', 'shell-identity-slot');
@@ -105,6 +125,19 @@ export function createPersistentAppShell(): PersistentAppShell {
     avatar.height = 24;
     identity.append(avatar, node('span', 'viewer-login', viewer.login));
     identitySlot.append(identity);
+  }
+
+  function setRoute(kind: DashboardRoute['kind']): void {
+    const active = primaryRoute(kind);
+    for (const [route, link] of navLinks) {
+      if (route === active) {
+        link.setAttribute('aria-current', 'page');
+        link.classList.add('is-active');
+      } else {
+        link.removeAttribute('aria-current');
+        link.classList.remove('is-active');
+      }
+    }
   }
 
   function syncOutletAttributes(source?: HTMLElement): void {
@@ -138,5 +171,5 @@ export function createPersistentAppShell(): PersistentAppShell {
     outlet.replaceChildren(loadingContent(kind));
   }
 
-  return { root, outlet, setViewer, show, showLoading };
+  return { root, outlet, setViewer, setRoute, show, showLoading };
 }

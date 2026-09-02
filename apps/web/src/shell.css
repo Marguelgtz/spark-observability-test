@@ -23,8 +23,15 @@
 }
 
 .shell-nav-link:hover,
-.viewer-link:hover {
+.viewer-link:hover,
+.shell-nav-link.is-active {
   color: #171717;
+}
+
+.shell-nav-link.is-active {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
 }
 
 .shell-nav-link:focus-visible,
@@ -102,6 +109,10 @@
 @media (max-width: 640px) {
   .persistent-app-shell .shell-left {
     gap: 12px;
+  }
+
+  .shell-nav {
+    gap: 8px;
   }
 
   .shell-nav-link {
