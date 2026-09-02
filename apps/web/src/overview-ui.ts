@@ -2,6 +2,7 @@ import type { ActivityWindowV1, EvaluationSummaryV1, PullRequestActivityV1, View
 import { evidenceLabel, relativeTime, shortSha } from './format';
 import { renderOverviewInsightCanvases } from './insight-canvases';
 import type { NotableTransitionInsightsV1, OverviewDrilldownResponseV1, OverviewMetricV1 } from './overview-api';
+import { outcomeOverview } from './outcome-types';
 import type { ActivityUrlState } from './state';
 import { serializeActivityState } from './state';
 
@@ -26,8 +27,8 @@ const metricConfig: Record<OverviewMetricV1, { title: string; description: strin
     description: 'Open pull requests whose latest Spark state is HIGH or MEDIUM attention.',
   },
   'merged-unresolved': {
-    title: 'Merged unresolved',
-    description: 'Pull requests merged while Spark still had unresolved attention or evidence.',
+    title: 'Change outcomes',
+    description: 'What happened to observed changes at merge: resolution, pre-merge state, stabilization, and measured feedback.',
   },
 };
 
@@ -116,21 +117,33 @@ export function renderOverviewDrilldown(
   main.append(back);
 
   const config = metricConfig[response.metric];
+  const outcome = response.metric === 'merged-unresolved' ? outcomeOverview(response, transitions, state) : undefined;
+  const headlineTotal = outcome?.complete ? outcome.data.merges.total : response.total;
+  const headlineQualifier = outcome && !outcome.complete ? `unresolved in ${state.window}` : `in ${state.window}`;
   const heading = node('header', 'overview-detail-heading');
   const copy = node('div', 'overview-detail-heading-copy');
-  copy.append(node('p', 'eyebrow', 'CHANGE OVERVIEW'), node('h1', undefined, config.title), node('p', 'state-copy', config.description));
+  copy.append(node('p', 'eyebrow', response.metric === 'merged-unresolved' ? 'OUTCOME INTELLIGENCE' : 'CHANGE OVERVIEW'), node('h1', undefined, config.title), node('p', 'state-copy', config.description));
   const total = node('div', 'overview-detail-total');
-  total.append(node('strong', undefined, String(response.total)), node('span', undefined, `in ${state.window}`));
+  total.append(node('strong', undefined, String(headlineTotal)), node('span', undefined, headlineQualifier));
   heading.append(copy, total, windowControls(state, onWindow));
   main.append(heading, renderOverviewInsightCanvases(response, transitions, state, companion));
 
   if (response.metric === 'attention') {
     main.append(node('p', 'overview-chart-note', 'The headline count is the current active queue. Transition charts show notable changes observed during the selected window, not historical queue snapshots.'));
   }
+  if (outcome && !outcome.complete) {
+    main.append(node('p', 'overview-chart-note', 'This compatibility view only knows unresolved merges. Full resolved and unavailable merge denominators are supplied by the Phase 4 outcome aggregate.'));
+  }
 
   const section = node('section', 'overview-list-section');
   const sectionHeading = node('div', 'home-section-heading');
-  sectionHeading.append(node('h2', undefined, response.metric === 'evaluations' ? 'Evaluation history' : 'Pull requests'), node('span', 'home-section-count', String(response.total)));
+  const listTitle = response.metric === 'evaluations'
+    ? 'Evaluation history'
+    : response.metric === 'merged-unresolved'
+      ? 'Unresolved merges'
+      : 'Pull requests';
+  const listCount = outcome ? outcome.data.merges.unresolved : response.total;
+  sectionHeading.append(node('h2', undefined, listTitle), node('span', 'home-section-count', String(listCount)));
   section.append(sectionHeading);
 
   const list = node('div', 'overview-list');
@@ -172,7 +185,12 @@ export function renderOverviewDrilldown(
 
   if (!response.items.length) {
     const empty = node('div', 'empty-state');
-    empty.append(node('h2', undefined, 'Nothing in this window.'), node('p', 'state-copy', 'Try a broader time window or another repository.'));
+    empty.append(
+      node('h2', undefined, response.metric === 'merged-unresolved' ? 'No unresolved merges in this window.' : 'Nothing in this window.'),
+      node('p', 'state-copy', response.metric === 'merged-unresolved'
+        ? 'Resolved and unavailable outcomes may still be represented in the aggregate charts above.'
+        : 'Try a broader time window or another repository.'),
+    );
     list.append(empty);
   }
   section.append(list);

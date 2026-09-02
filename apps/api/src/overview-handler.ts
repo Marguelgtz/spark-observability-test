@@ -1,8 +1,10 @@
 import type { ActivityWindowV1 } from '@spark/dashboard-contracts';
+import type { OutcomeOverviewV1 } from '@spark/dashboard-contracts/outcome';
 import type { Env } from './app';
 import { readActivityDrilldown, type OverviewMetricV1 } from './activity-drilldown';
 import { readNotableTransitionInsights } from './activity-transitions';
 import { GitHubDashboardAuth } from './github-auth';
+import { readOutcomeOverview } from './outcome-overview';
 
 const WINDOWS: ActivityWindowV1[] = ['24h', '7d', '30d'];
 const METRICS: OverviewMetricV1[] = ['pull-requests', 'evaluations', 'attention', 'merged-unresolved'];
@@ -63,8 +65,13 @@ export async function handleOverviewRequest(request: Request, env: Env): Promise
   }
 
   if (!METRICS.includes(match[1] as OverviewMetricV1)) return json({ error: 'not found' }, 404);
-  return json(await readActivityDrilldown(env.DB, {
+  const metric = match[1] as OverviewMetricV1;
+  const drilldown = await readActivityDrilldown(env.DB, { ...input, metric });
+  if (metric !== 'merged-unresolved') return json(drilldown);
+
+  const outcomes: OutcomeOverviewV1 = await readOutcomeOverview(env.DB, {
     ...input,
-    metric: match[1] as OverviewMetricV1,
-  }));
+    githubUserId: principal.viewer.id,
+  });
+  return json({ ...drilldown, outcomes });
 }
