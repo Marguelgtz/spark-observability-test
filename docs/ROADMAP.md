@@ -2,6 +2,17 @@
 
 This is a directional roadmap and parking lot. It outlines the sequence of questions we must answer to validate the product. It is **not** a rigid commitment list.
 
+## Current product-experience execution
+
+The current dashboard work is a bounded presentation/legibility sequence on top of the existing deterministic evaluator and trajectory data:
+
+1. **Persistent shell and navigation** — keep context stable across Home → PR → Run.
+2. **Action-oriented Home** — surface active changes, attention, recovery, and merge quality.
+3. **Composable insight canvases** — pair related visualizations around one product question instead of presenting isolated chart cards.
+4. **Key moments and Change evolution** — keep the PR page analytical first, then expose a compact Initial → material changes → Latest → merge/close sequence at the bottom as a story-building aid while retaining forensic detail.
+
+The fourth item is intentionally constrained to existing trajectory/lifecycle/feedback data. It should not add evaluator logic, enforcement, RBAC, AI narration, new integrations, or new persistence unless a truthful retained moment cannot be derived from the existing contract.
+
 ## V0
 **Question: Will people install Spark for change observability?**
 

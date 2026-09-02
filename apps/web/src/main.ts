@@ -239,19 +239,21 @@ async function render(): Promise<void> {
       const trajectoryTask = abortable(api.getTrajectory(route.repositoryId, route.pullRequestNumber), signal);
       const [viewer, , favorites, trajectory] = await Promise.all([viewerTask, accountTask, favoritesTask, trajectoryTask]);
       if (generation !== routeGeneration || signal.aborted) return;
+      const activitySearch = currentActivitySearch();
+      const saveFeedback = (transitionId: string, input: Parameters<typeof api.saveTrajectoryFeedback>[3]) => api.saveTrajectoryFeedback(
+        route.repositoryId,
+        route.pullRequestNumber,
+        transitionId,
+        input,
+      );
       const pullRequestView = renderPullRequest(
         viewer,
         trajectory,
-        currentActivitySearch(),
+        activitySearch,
         favorites,
-        (transitionId, input) => api.saveTrajectoryFeedback(
-          route.repositoryId,
-          route.pullRequestNumber,
-          transitionId,
-          input,
-        ),
+        saveFeedback,
       );
-      enhancePullRequestWithSeverityTimeline(pullRequestView, trajectory);
+      enhancePullRequestWithSeverityTimeline(pullRequestView, trajectory, activitySearch, saveFeedback);
       shell.show(pullRequestView);
       return;
     }

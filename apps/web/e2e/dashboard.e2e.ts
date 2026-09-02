@@ -111,41 +111,53 @@ test('activity opens a pull request observability page', async ({ page }, testIn
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
   await expect(page).toHaveURL(/\/app\/repositories\/101\/pulls\/42/);
   await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Key moments', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Trajectory', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Observations' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Evaluation history' })).toBeVisible();
+  const forensics = page.getByTestId('pr-forensics');
+  await expect(forensics).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Observations', exact: true })).not.toBeVisible();
+  await forensics.getByText('Forensic details', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Observations', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evaluation history', exact: true })).toBeVisible();
   await expect(page.locator('.pr-run')).toHaveCount(3);
-  await expect(page.locator('.pr-section-kicker').getByText('Notable transitions', { exact: true })).toBeVisible();
   await page.screenshot({ path: `${screenshotDir}/pull-request-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
-test('Change Trajectory combines and explains causes at each run boundary', async ({ page }) => {
+test('Key moments combine and explain causes at each material run boundary', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
   const transitions = page.getByTestId('notable-transition');
   await expect(transitions).toHaveCount(2);
-  await expect(transitions.first().getByText('MEDIUM → HIGH', { exact: true })).toBeVisible();
-  await expect(transitions.first().getByText('integration-test: pending → failed', { exact: true })).toBeVisible();
-  await expect(transitions.first().getByText('Sensitive surface added: auth/security', { exact: true })).toBeVisible();
+  const latestTransition = transitions.nth(1);
+  await expect(latestTransition.getByText('Attention increased to HIGH', { exact: true })).toBeVisible();
+  await expect(latestTransition).toContainText('integration-test: pending → failed');
+  await expect(latestTransition).toContainText('Sensitive surface added: auth/security');
   await expect(page.getByText('3 runs analyzed', { exact: true })).toBeVisible();
 });
 
 test('material transition feedback is accessible, editable, and survives reload', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
-  const controls = page.getByTestId('transition-feedback').first();
-  await controls.getByText('Add optional context', { exact: true }).click();
-  await controls.getByLabel('Optional feedback context').fill('Helped identify the failing integration check.');
-  await controls.getByRole('button', { name: 'Useful', exact: true }).click();
-  await expect(controls.getByRole('status')).toHaveText('Saved as Useful');
-  await expect(controls.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const trigger = page.getByTestId('transition-feedback-trigger').first();
+  await expect(trigger).toHaveAttribute('aria-label', 'Give Spark feedback on this transition');
+  await trigger.click();
+  const drawer = page.getByTestId('transition-feedback-drawer');
+  await drawer.getByLabel('Optional feedback context').fill('Helped identify the failing integration check.');
+  await drawer.getByRole('button', { name: 'Useful', exact: true }).click();
+  await drawer.getByRole('button', { name: 'Save feedback', exact: true }).click();
+  await expect(drawer.getByRole('status')).toHaveText('Saved as Useful');
+  await expect(drawer.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
+  await page.keyboard.press('Escape');
   await page.reload();
-  const restored = page.getByTestId('transition-feedback').first();
+  const restoredTrigger = page.getByTestId('transition-feedback-trigger').first();
+  await expect(restoredTrigger).toHaveAttribute('aria-label', 'Edit Spark feedback on this transition');
+  await restoredTrigger.click();
+  const restored = page.getByTestId('transition-feedback-drawer');
   await expect(restored.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await restored.getByText('Edit optional context', { exact: true }).click();
   await expect(restored.getByLabel('Optional feedback context')).toHaveValue('Helped identify the failing integration check.');
   await restored.getByRole('button', { name: 'Fixed because of Spark', exact: true }).click();
+  await restored.getByRole('button', { name: 'Save feedback', exact: true }).click();
   await expect(restored.getByRole('status')).toHaveText('Saved as Fixed because of Spark');
 });
 
@@ -155,6 +167,7 @@ test('merged trajectory shows the selected pre-merge state as a terminal marker'
   const terminal = page.getByTestId('lifecycle-terminal');
   await expect(terminal).toBeVisible();
   await expect(terminal.getByText('Merged · HIGH', { exact: true })).toBeVisible();
+  await expect(terminal.getByText('Merged with unresolved attention', { exact: true })).toBeVisible();
   await expect(terminal.getByText(/selected pre-merge observation was HIGH with failed evidence/i)).toBeVisible();
   await expect(terminal.getByText('Unresolved at merge', { exact: true })).toBeVisible();
 });
