@@ -25,6 +25,7 @@ function understanding(): RepositoryUnderstanding {
             pipelineJobs: [],
             pipelineSteps: [],
             evidenceRuns: [],
+            deployments: [],
             completeness: [{ source: 'github-check-runs', state: 'COMPLETE' }],
         },
         areas: [],

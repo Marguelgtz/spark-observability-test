@@ -70,6 +70,7 @@ function fixture(revision = 'head'): RepositoryUnderstanding {
                 pipelineRunId: 'run:1', pipelineAttemptId: 'attempt:1', pipelineJobId: 'job:1',
                 pipelineStepId: 'step:1', source: { kind: 'ci' }, url: 'https://ci.local/check/1',
             }],
+            deployments: [],
             completeness: [{ source: 'github-check-runs', state: 'COMPLETE' }],
         },
         areas: [{ id: 'area:api', label: 'API', roles: ['FUNCTIONAL'], support: support() }],

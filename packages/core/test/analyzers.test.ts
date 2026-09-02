@@ -17,6 +17,7 @@ const observations: RepositoryObservations = {
     pipelineJobs: [],
     pipelineSteps: [],
     evidenceRuns: [],
+    deployments: [],
     completeness: [{ source: 'repository-tree', state: 'COMPLETE' }],
 };
 

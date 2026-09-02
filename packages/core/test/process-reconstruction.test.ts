@@ -54,6 +54,7 @@ function understanding(options: ChainOptions = {}): RepositoryUnderstanding {
                 pipelineRunId: item.pipelineRunId, pipelineAttemptId: item.pipelineAttemptId,
                 pipelineJobId: item.pipelineJobId, pipelineStepId: item.pipelineStepId, source: { kind: 'ci' },
             })),
+            deployments: [],
             completeness: options.completeness ?? [{ source: 'github-actions', state: 'COMPLETE' }],
         },
         areas: [],

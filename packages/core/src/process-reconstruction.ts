@@ -242,6 +242,13 @@ export function reconstructProcessState(
                 pipelineStepId: evidenceRun.pipelineStepId,
             }, retained);
         }
+        for (const deployment of olderUnderstanding.observations.deployments) {
+            mergeTerminalExecution(merged.observations.deployments, deployment, merged, olderUnderstanding, {
+                id: deployment.id,
+                kind: 'deployment',
+                pipelineRunId: deployment.pipelineRunId,
+            }, retained);
+        }
     }
 
     const result: ProcessStateReconstruction = {

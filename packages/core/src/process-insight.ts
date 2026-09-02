@@ -17,7 +17,8 @@ import { normalizeRepositoryUnderstanding } from './understanding-normalize';
 export type ProcessInsightKind =
     | 'NORMAL_LIFECYCLE' | 'FAILURE_LOCALIZED' | 'FAILURE_DOMAIN'
     | 'REPRODUCTION_CANDIDATE' | 'BLOCKED_DOWNSTREAM' | 'MATRIX_RESULT'
-    | 'FLAKE_CANDIDATE' | 'MISSING_EXPECTED' | 'VERIFICATION_GAP' | 'RECOVERY';
+    | 'FLAKE_CANDIDATE' | 'MISSING_EXPECTED' | 'VERIFICATION_GAP' | 'RECOVERY'
+    | 'DEPLOYMENT_STATE';
 
 export type FailureDomain =
     | 'SETUP' | 'DEPENDENCY_INSTALL' | 'STATIC_ANALYSIS' | 'BUILD'

@@ -31,6 +31,7 @@ function fixture(): RepositoryUnderstanding {
             pipelineJobs: [],
             pipelineSteps: [],
             evidenceRuns: [],
+            deployments: [],
             completeness: [{ source: 'tree', state: 'COMPLETE' }, { source: 'changes', state: 'COMPLETE' }],
         },
         areas: [

@@ -7,6 +7,7 @@ export type PipelineRunId = string;
 export type PipelineAttemptId = string;
 export type PipelineJobId = string;
 export type PipelineStepId = string;
+export type DeploymentId = string;
 
 /** Where an observed process is in its lifecycle, independent of its result. */
 export type ProcessLifecycle =
@@ -72,7 +73,8 @@ export interface ChangeObservation {
     kind: 'change';
     id: ObservationId;
     repositoryId: RepositoryId;
-    baseRevision: RevisionId;
+    /** May be unavailable for provider events that observe one exact revision without a diff. */
+    baseRevision?: RevisionId;
     headRevision: RevisionId;
     artifacts: ArtifactChangeObservation[];
     source: ObservationSource;
@@ -205,6 +207,36 @@ export interface EvidenceRunObservation {
     url?: string;
 }
 
+export type DeploymentApprovalState =
+    | 'NOT_REQUIRED'
+    | 'WAITING'
+    | 'APPROVED'
+    | 'REJECTED'
+    | 'UNKNOWN';
+
+/** Provider-neutral deployment state for one exact repository revision. */
+export interface DeploymentObservation {
+    kind: 'deployment';
+    id: DeploymentId;
+    repositoryId: RepositoryId;
+    revision: RevisionId;
+    environment: string;
+    ref?: string;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
+    approvalState: DeploymentApprovalState;
+    /** Attached only when the provider directly identifies the originating run. */
+    pipelineRunId?: PipelineRunId;
+    providerStatusId?: string;
+    createdAt?: string;
+    startedAt?: string;
+    completedAt?: string;
+    source: ObservationSource;
+    url?: string;
+    environmentUrl?: string;
+    logUrl?: string;
+}
+
 export interface RepositoryObservations {
     snapshot: RepositorySnapshotObservation;
     change: ChangeObservation;
@@ -215,6 +247,7 @@ export interface RepositoryObservations {
     pipelineJobs: PipelineJobObservation[];
     pipelineSteps: PipelineStepObservation[];
     evidenceRuns: EvidenceRunObservation[];
+    deployments: DeploymentObservation[];
     /** Acquisition truth remains independent for each source or dimension. */
     completeness: SourceCompleteness[];
 }

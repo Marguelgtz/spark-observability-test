@@ -34,6 +34,7 @@ function record(overrides: Partial<ProcessObservationRecord>): ProcessObservatio
                 pipelineJobs: [],
                 pipelineSteps: [],
                 evidenceRuns: [],
+                deployments: [],
                 completeness: [{ source: 'github-actions', state: 'COMPLETE' }],
             },
             areas: [],

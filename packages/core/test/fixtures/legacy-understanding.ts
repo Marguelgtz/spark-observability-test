@@ -167,6 +167,7 @@ export function legacyInputAsUnderstanding(input: SparkInput): RepositoryUnderst
             pipelineJobs: [],
             pipelineSteps: [],
             evidenceRuns,
+            deployments: [],
             completeness: [{
                 source: 'changed-files',
                 state: input.analysis?.changedFiles === 'incomplete' ? 'PARTIAL' : 'COMPLETE',
