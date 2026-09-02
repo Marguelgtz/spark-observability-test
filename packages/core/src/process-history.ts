@@ -1,5 +1,9 @@
 import { canonicalJson } from './process-export';
-import { currentEvidenceRuns, evidenceProcessIdentity } from './evidence-matching';
+import {
+    currentEvidenceRuns,
+    evidenceAcquisitionIsComplete,
+    evidenceProcessIdentity,
+} from './evidence-matching';
 import {
     classifyProcessFailureDomain,
     deriveProcessInsights,
@@ -30,6 +34,7 @@ export interface ProcessHistoryLimits {
     maxFlakeRecoveries: number;
     maxFailureFingerprints: number;
     maxProcessRelationships: number;
+    maxRelationshipEvidenceIds: number;
     maxDriftSignals: number;
 }
 
@@ -41,6 +46,7 @@ export const DEFAULT_PROCESS_HISTORY_LIMITS: ProcessHistoryLimits = {
     maxFlakeRecoveries: 500,
     maxFailureFingerprints: 500,
     maxProcessRelationships: 1_000,
+    maxRelationshipEvidenceIds: 100,
     maxDriftSignals: 500,
 };
 
@@ -695,6 +701,228 @@ export function deriveProcessFailureFingerprints(
         failureOccurrenceCount: occurrences.length,
         fingerprints,
         completeness: historyIsPartial(historical) ? 'PARTIAL' : 'COMPLETE',
+        truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
+    };
+}
+
+export type HistoricalRelationshipTarget =
+    | { kind: 'AREA'; id: string; label: string }
+    | { kind: 'BOUNDARY'; id: string; label: string };
+
+export type HistoricalRelationshipProcess =
+    | { kind: 'PIPELINE_DEFINITION'; id: string }
+    | { kind: 'LOGICAL_JOB'; id: string }
+    | { kind: 'EVIDENCE_NAME'; id: string };
+
+export interface HistoricalProcessRelationship {
+    id: string;
+    target: HistoricalRelationshipTarget;
+    process: HistoricalRelationshipProcess;
+    attributedObservationCount: number;
+    attributedRevisionCount: number;
+    attributedChangedRevisionCount: number;
+    eligibleChangedRevisionDenominator: number;
+    excludedIncompleteChangedRevisionCount: number;
+    changedRevisionCoverage: HistoricalRate;
+    evidenceRunIds: string[];
+}
+
+export interface ProcessRelationshipReport {
+    schemaVersion: 'process-relationships/v1';
+    repositoryId: string;
+    window: ProcessHistoryWindow;
+    relationships: HistoricalProcessRelationship[];
+    completeness: 'COMPLETE' | 'PARTIAL';
+    truncation: ProcessHistoryTruncation[];
+}
+
+function supportedClaim(support: readonly ClaimSupport[]): ClaimSupport | undefined {
+    return support.find(item => item.confidence === 'SUPPORTED'
+        && item.completeness.state === 'COMPLETE'
+        && (item.derivation === 'DECLARED' || item.derivation === 'DETERMINISTIC'));
+}
+
+function latestRevisionRecords(historical: HistoricalWindowData): RetainedRecord[] {
+    const byRevision = new Map<string, RetainedRecord>();
+    for (const retained of historical.records) {
+        const current = byRevision.get(retained.record.revision);
+        if (!current || recordOrder(current.record, retained.record) <= 0) {
+            byRevision.set(retained.record.revision, retained);
+        }
+    }
+    return [...byRevision.values()].sort((a, b) => recordOrder(a.record, b.record));
+}
+
+function pathContains(root: string, path: string): boolean {
+    const normalized = root.replace(/\/+$/, '');
+    return path === normalized || path.startsWith(`${normalized}/`);
+}
+
+function changedTargets(understanding: RepositoryUnderstanding): Set<string> {
+    const changedIds = new Set(understanding.observations.change.artifacts.map(item => item.artifactId));
+    const changedArtifacts = understanding.observations.artifacts.filter(item => changedIds.has(item.id));
+    const targets = new Set<string>();
+    const changedAreas = new Set<string>();
+    for (const membership of understanding.memberships) {
+        if (!supportedClaim(membership.support)) continue;
+        const target = membership.target;
+        const changed = target.kind === 'ARTIFACT'
+            ? changedIds.has(target.artifactId)
+            : changedArtifacts.some(artifact => pathContains(target.path, artifact.path));
+        if (changed) {
+            changedAreas.add(membership.areaId);
+            targets.add(`AREA\u0000${membership.areaId}`);
+        }
+    }
+    for (const boundary of understanding.boundaries) {
+        if (!supportedClaim(boundary.support)) continue;
+        if (boundary.artifactIds.some(id => changedIds.has(id))
+            || boundary.connectedAreaIds.some(id => changedAreas.has(id))) {
+            targets.add(`BOUNDARY\u0000${boundary.id}`);
+        }
+    }
+    return targets;
+}
+
+function attributionTargets(
+    understanding: RepositoryUnderstanding,
+    target: RepositoryUnderstanding['evidenceAttributions'][number]['target'],
+): HistoricalRelationshipTarget[] {
+    if (target.kind === 'AREA') {
+        const area = understanding.areas.find(item => item.id === target.areaId);
+        return area ? [{ kind: 'AREA', id: area.id, label: area.label }] : [];
+    }
+    if (target.kind === 'BOUNDARY') {
+        const boundary = understanding.boundaries.find(item => item.id === target.boundaryId);
+        return boundary ? [{ kind: 'BOUNDARY', id: boundary.id, label: boundary.label }] : [];
+    }
+    if (target.kind !== 'ARTIFACT') return [];
+    const artifact = understanding.observations.artifacts.find(item => item.id === target.artifactId);
+    const targets: HistoricalRelationshipTarget[] = [];
+    for (const membership of understanding.memberships) {
+        if (!supportedClaim(membership.support)) continue;
+        const matches = (membership.target.kind === 'ARTIFACT' && membership.target.artifactId === target.artifactId)
+            || (membership.target.kind === 'PATH' && artifact && pathContains(membership.target.path, artifact.path));
+        if (!matches) continue;
+        const area = understanding.areas.find(item => item.id === membership.areaId);
+        if (area) targets.push({ kind: 'AREA', id: area.id, label: area.label });
+    }
+    for (const boundary of understanding.boundaries) {
+        if (supportedClaim(boundary.support) && boundary.artifactIds.includes(target.artifactId)) {
+            targets.push({ kind: 'BOUNDARY', id: boundary.id, label: boundary.label });
+        }
+    }
+    return [...new Map(targets.map(item => [`${item.kind}\u0000${item.id}`, item])).values()]
+        .sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`));
+}
+
+function relationshipProcesses(
+    evidence: EvidenceRunObservation,
+    understanding: RepositoryUnderstanding,
+): HistoricalRelationshipProcess[] {
+    const identity = evidenceProcessIdentity(evidence, understanding);
+    const processes: HistoricalRelationshipProcess[] = [{ kind: 'EVIDENCE_NAME', id: evidence.name }];
+    if (identity.pipelineDefinitionId) processes.push({ kind: 'PIPELINE_DEFINITION', id: identity.pipelineDefinitionId });
+    if (identity.logicalJobId) processes.push({ kind: 'LOGICAL_JOB', id: identity.logicalJobId });
+    return processes.sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`));
+}
+
+interface RelationshipAccumulator {
+    target: HistoricalRelationshipTarget;
+    process: HistoricalRelationshipProcess;
+    revisions: Set<string>;
+    changedRevisions: Set<string>;
+    evidenceRunIds: Set<string>;
+}
+
+/** CI-804 — measured target/process relationships over latest per-revision state. */
+export function deriveHistoricalProcessRelationships(
+    records: readonly ProcessObservationRecord[],
+    repositoryId: string,
+    partialLimits: Partial<ProcessHistoryLimits> = {},
+): ProcessRelationshipReport {
+    const limits = { ...DEFAULT_PROCESS_HISTORY_LIMITS, ...partialLimits };
+    const historical = buildHistoricalWindow(records, repositoryId, limits);
+    const revisions = latestRevisionRecords(historical);
+    const changedByTarget = new Map<string, Set<string>>();
+    const eligibleChangedByTarget = new Map<string, Set<string>>();
+    for (const retained of revisions) {
+        const understanding = retained.record.understanding;
+        for (const target of changedTargets(understanding)) {
+            const changed = changedByTarget.get(target) ?? new Set<string>();
+            changed.add(retained.record.revision);
+            changedByTarget.set(target, changed);
+            if (evidenceAcquisitionIsComplete(understanding)) {
+                const eligible = eligibleChangedByTarget.get(target) ?? new Set<string>();
+                eligible.add(retained.record.revision);
+                eligibleChangedByTarget.set(target, eligible);
+            }
+        }
+    }
+    const grouped = new Map<string, RelationshipAccumulator>();
+    for (const retained of revisions) {
+        const understanding = retained.record.understanding;
+        const evidence = new Map(currentEvidenceRuns(understanding).map(item => [item.id, item]));
+        const changed = changedTargets(understanding);
+        for (const attribution of understanding.evidenceAttributions) {
+            if (!supportedClaim(attribution.support)) continue;
+            const run = evidence.get(attribution.evidenceRunId);
+            if (!run) continue;
+            for (const target of attributionTargets(understanding, attribution.target)) {
+                for (const process of relationshipProcesses(run, understanding)) {
+                    const targetKey = `${target.kind}\u0000${target.id}`;
+                    const key = `${targetKey}\u0000${process.kind}\u0000${process.id}`;
+                    const accumulator = grouped.get(key) ?? {
+                        target, process, revisions: new Set<string>(), changedRevisions: new Set<string>(),
+                        evidenceRunIds: new Set<string>(),
+                    };
+                    accumulator.revisions.add(retained.record.revision);
+                    accumulator.evidenceRunIds.add(run.id);
+                    if (changed.has(targetKey) && evidenceAcquisitionIsComplete(understanding)) {
+                        accumulator.changedRevisions.add(retained.record.revision);
+                    }
+                    grouped.set(key, accumulator);
+                }
+            }
+        }
+    }
+    const allRelationships: HistoricalProcessRelationship[] = [...grouped.values()].map(item => {
+        const targetKey = `${item.target.kind}\u0000${item.target.id}`;
+        const changed = changedByTarget.get(targetKey)?.size ?? 0;
+        const eligible = eligibleChangedByTarget.get(targetKey)?.size ?? 0;
+        const allEvidenceIds = [...item.evidenceRunIds].sort();
+        const evidenceRunIds = allEvidenceIds.slice(0, Math.max(0, limits.maxRelationshipEvidenceIds));
+        const id = `process-relationship:${item.target.kind.toLowerCase()}:${item.target.id}:${item.process.kind.toLowerCase()}:${item.process.id}`;
+        if (evidenceRunIds.length < allEvidenceIds.length) historical.truncation.push({
+            collection: `relationships.${id}.evidenceRunIds`,
+            observedCount: allEvidenceIds.length,
+            retainedCount: evidenceRunIds.length,
+        });
+        return {
+            id,
+            target: item.target,
+            process: item.process,
+            attributedObservationCount: allEvidenceIds.length,
+            attributedRevisionCount: item.revisions.size,
+            attributedChangedRevisionCount: item.changedRevisions.size,
+            eligibleChangedRevisionDenominator: eligible,
+            excludedIncompleteChangedRevisionCount: changed - eligible,
+            changedRevisionCoverage: rate(item.changedRevisions.size, eligible, limits.minimumRateDenominator),
+            evidenceRunIds,
+        };
+    }).sort((a, b) => a.id.localeCompare(b.id));
+    const relationships = allRelationships.slice(0, Math.max(0, limits.maxProcessRelationships));
+    if (relationships.length < allRelationships.length) historical.truncation.push({
+        collection: 'relationships', observedCount: allRelationships.length, retainedCount: relationships.length,
+    });
+    const hasIncompleteChangedRevision = [...changedByTarget.entries()].some(([target, changed]) =>
+        changed.size > (eligibleChangedByTarget.get(target)?.size ?? 0));
+    return {
+        schemaVersion: 'process-relationships/v1',
+        repositoryId,
+        window: historical.window,
+        relationships,
+        completeness: historyIsPartial(historical) || hasIncompleteChangedRevision ? 'PARTIAL' : 'COMPLETE',
         truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
     };
 }

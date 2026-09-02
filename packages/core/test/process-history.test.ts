@@ -3,6 +3,8 @@ import {
     deriveProcessRuntimeBaselines,
     deriveProcessFlakeEvidence,
     deriveProcessFailureFingerprints,
+    deriveHistoricalProcessRelationships,
+    type ClaimSupport,
     type ProcessLifecycle,
     type ProcessObservationRecord,
     type ProcessOutcome,
@@ -22,6 +24,13 @@ interface JobInput {
 interface AttemptInput {
     id: string;
     attempt: number;
+}
+
+function claimSupport(): ClaimSupport[] {
+    return [{
+        provenance: { kind: 'WORKFLOW_ANALYZER', source: 'test' }, derivation: 'DECLARED',
+        confidence: 'SUPPORTED', evidence: [], completeness: { state: 'COMPLETE' },
+    }];
 }
 
 function understanding(
@@ -261,6 +270,79 @@ describe('historical process runtime baselines', () => {
         expect(bounded.truncation).toContainEqual({
             collection: 'failureFingerprints', observedCount: 2, retainedCount: 1,
         });
+    });
+
+    it('measures area/workflow and boundary/evidence relationships with eligible changed revisions', () => {
+        const attributedRevision = (index: number, includeAttribution: boolean, complete = true) => {
+            const payload = understanding(`revision:${index}`, `run:${index}`, [
+                { id: `attempt:${index}:1`, attempt: 1 },
+            ], [{
+                id: `job:${index}:1`, attemptId: `attempt:${index}:1`, lifecycle: 'COMPLETED', outcome: 'PASSED',
+            }]);
+            payload.observations.change.artifacts = [{ artifactId: `artifact:${index}`, status: 'MODIFIED' }];
+            payload.observations.artifacts = [{
+                kind: 'artifact', id: `artifact:${index}`, repositoryId: 'repository:1', revision: `revision:${index}`,
+                path: 'packages/api/index.ts', artifactKind: 'FILE', source: { kind: 'vcs' },
+            }];
+            payload.areas = [{ id: 'area:api', label: 'API', roles: ['FUNCTIONAL'], support: claimSupport() }];
+            payload.memberships = [{
+                id: 'membership:api', areaId: 'area:api', target: { kind: 'PATH', path: 'packages/api' },
+                support: claimSupport(),
+            }];
+            payload.boundaries = [{
+                id: 'boundary:api', kind: 'PUBLIC_INTERFACE', label: 'API boundary',
+                artifactIds: [`artifact:${index}`], connectedAreaIds: ['area:api'], support: claimSupport(),
+            }];
+            payload.observations.evidenceRuns = [{
+                kind: 'evidence-run', id: `evidence:${index}`, repositoryId: 'repository:1', revision: `revision:${index}`,
+                name: 'verify', evidenceKind: 'github-check-run', lifecycle: 'COMPLETED', outcome: 'PASSED',
+                pipelineRunId: `run:${index}`, pipelineAttemptId: `attempt:${index}:1`, pipelineJobId: `job:${index}:1`,
+                source: { kind: 'ci' },
+            }];
+            payload.observations.completeness.push({
+                source: 'github-check-runs', state: complete ? 'COMPLETE' : 'PARTIAL',
+            });
+            if (includeAttribution) payload.evidenceAttributions = [
+                {
+                    id: `attribution:area:${index}`, evidenceRunId: `evidence:${index}`,
+                    target: { kind: 'AREA', areaId: 'area:api' }, support: claimSupport(),
+                },
+                {
+                    id: `attribution:boundary:${index}`, evidenceRunId: `evidence:${index}`,
+                    target: { kind: 'BOUNDARY', boundaryId: 'boundary:api' }, support: claimSupport(),
+                },
+            ];
+            return record(index, payload);
+        };
+
+        const report = deriveHistoricalProcessRelationships([
+            attributedRevision(1, true), attributedRevision(2, false),
+        ], 'repository:1', { minimumRateDenominator: 1 });
+        const areaWorkflow = report.relationships.find(item =>
+            item.target.kind === 'AREA' && item.process.kind === 'PIPELINE_DEFINITION');
+        expect(areaWorkflow).toMatchObject({
+            target: { id: 'area:api' }, process: { id: 'definition:verify' },
+            attributedObservationCount: 1, attributedRevisionCount: 1,
+            attributedChangedRevisionCount: 1, eligibleChangedRevisionDenominator: 2,
+            excludedIncompleteChangedRevisionCount: 0,
+            changedRevisionCoverage: { count: 1, denominator: 2, value: 0.5 },
+            evidenceRunIds: ['evidence:1'],
+        });
+        expect(report.relationships).toContainEqual(expect.objectContaining({
+            target: expect.objectContaining({ kind: 'BOUNDARY', id: 'boundary:api' }),
+            process: { kind: 'EVIDENCE_NAME', id: 'verify' },
+        }));
+
+        const partial = deriveHistoricalProcessRelationships([
+            attributedRevision(1, true), attributedRevision(2, false, false),
+        ], 'repository:1', { minimumRateDenominator: 1 });
+        expect(partial.relationships.find(item =>
+            item.target.kind === 'AREA' && item.process.kind === 'PIPELINE_DEFINITION')).toMatchObject({
+            eligibleChangedRevisionDenominator: 1,
+            excludedIncompleteChangedRevisionCount: 1,
+            changedRevisionCoverage: { count: 1, denominator: 1, value: 1 },
+        });
+        expect(partial.completeness).toBe('PARTIAL');
     });
 
     it('deduplicates record identities deterministically across caller order', () => {
