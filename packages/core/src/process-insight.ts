@@ -1,6 +1,7 @@
 /** G7 — bounded deterministic CI/CD insights. */
 import type {
-    ClaimConfidence, ClaimDerivation, ClaimSupport, EvidenceExpectationSelector,
+    ClaimConfidence, ClaimDerivation, ClaimSupport, DeploymentApprovalState, DeploymentObservation,
+    EvidenceExpectationSelector,
     EvidenceRunObservation, PipelineJobObservation, PipelineStepObservation,
     ProcessLifecycle, ProcessOutcome, RepositoryUnderstanding, SourceCompleteness,
     UnderstandingTarget,
@@ -130,10 +131,21 @@ export interface RecoveryDetail {
     resolvingObservationId: string;
 }
 
+export interface DeploymentStateDetail {
+    insightKind: 'DEPLOYMENT_STATE';
+    deploymentId: string;
+    environment: string;
+    lifecycle: ProcessLifecycle;
+    outcome: ProcessOutcome;
+    approvalState: DeploymentApprovalState;
+    pipelineRunId?: string;
+}
+
 export type ProcessInsightDetail =
     | NormalLifecycleDetail | FailureLocalizedDetail | FailureDomainDetail
     | ReproductionCandidateDetail | BlockedDownstreamDetail | MatrixResultDetail
-    | FlakeCandidateDetail | MissingExpectedDetail | VerificationGapDetail | RecoveryDetail;
+    | FlakeCandidateDetail | MissingExpectedDetail | VerificationGapDetail | RecoveryDetail
+    | DeploymentStateDetail;
 
 export interface ProcessInsightLimits {
     maxInsights: number;
@@ -309,6 +321,81 @@ function lifecycleInsight(understanding: RepositoryUnderstanding, scope: Current
             cancelledCount: cancelled, failedCount: 0,
         },
     };
+}
+
+type DeploymentStateKind =
+    | 'WAITING_APPROVAL' | 'QUEUED' | 'RUNNING' | 'SUCCESS' | 'FAILURE' | 'CANCELLED' | 'UNKNOWN';
+
+function deploymentStateKind(deployment: DeploymentObservation): DeploymentStateKind {
+    if (deployment.approvalState === 'WAITING'
+        && (deployment.lifecycle === 'QUEUED' || deployment.lifecycle === 'RUNNING')) return 'WAITING_APPROVAL';
+    if (deployment.lifecycle === 'QUEUED') return 'QUEUED';
+    if (deployment.lifecycle === 'RUNNING') return 'RUNNING';
+    if (deployment.lifecycle === 'COMPLETED' && deployment.outcome === 'PASSED') return 'SUCCESS';
+    if (deployment.lifecycle === 'COMPLETED' && deployment.outcome === 'FAILED') return 'FAILURE';
+    if (deployment.lifecycle === 'CANCELLED') return 'CANCELLED';
+    return 'UNKNOWN';
+}
+
+function deploymentStateSummary(deployment: DeploymentObservation, stateKind: DeploymentStateKind): string {
+    const subject = `deployment ${deployment.id} to environment ${deployment.environment}`;
+    switch (stateKind) {
+        case 'WAITING_APPROVAL': return `${subject} is waiting for approval; waiting is not a failure`;
+        case 'QUEUED': return `${subject} is queued`;
+        case 'RUNNING': return `${subject} is running`;
+        case 'SUCCESS': return `${subject} completed successfully`;
+        case 'FAILURE': return `${subject} failed`;
+        case 'CANCELLED': return `${subject} was cancelled`;
+        default: return `${subject} reported a state Spark cannot interpret; its state is unknown`;
+    }
+}
+
+/**
+ * Derives CI-710: one bounded, provenance-bearing state insight per observed
+ * deployment. Waiting for approval is never reported as failure; an
+ * uninterpretable provider state stays UNKNOWN; and any partial acquisition
+ * lowers confidence to TENTATIVE instead of claiming full support.
+ */
+function deploymentStateInsights(understanding: RepositoryUnderstanding): ProcessInsight[] {
+    const deployments = understanding.observations.deployments;
+    if (deployments.length === 0) return [];
+    const acquisitionComplete = understanding.observations.completeness
+        .every(item => item.state === 'COMPLETE');
+    const change = understanding.observations.change;
+    return deployments.map(deployment => {
+        const stateKind = deploymentStateKind(deployment);
+        const confidence: ClaimConfidence = stateKind === 'UNKNOWN'
+            ? 'UNKNOWN'
+            : acquisitionComplete
+                ? 'SUPPORTED'
+                : 'TENTATIVE';
+        return {
+            kind: 'process-insight' as const,
+            id: `process-insight:deployment-state:${deployment.id}`,
+            insightKind: 'DEPLOYMENT_STATE' as const,
+            repositoryId: change.repositoryId,
+            revision: change.headRevision,
+            derivation: 'DETERMINISTIC' as const,
+            confidence,
+            summary: deploymentStateSummary(deployment, stateKind),
+            supportingObservationIds: sortUnique([
+                deployment.id,
+                ...(deployment.pipelineRunId ? [deployment.pipelineRunId] : []),
+            ]),
+            areaIds: [],
+            boundaryIds: [],
+            completeness: [...understanding.observations.completeness],
+            detail: {
+                insightKind: 'DEPLOYMENT_STATE' as const,
+                deploymentId: deployment.id,
+                environment: deployment.environment,
+                lifecycle: deployment.lifecycle,
+                outcome: deployment.outcome,
+                approvalState: deployment.approvalState,
+                ...(deployment.pipelineRunId ? { pipelineRunId: deployment.pipelineRunId } : {}),
+            },
+        };
+    });
 }
 
 function failureLocations(understanding: RepositoryUnderstanding, scope: CurrentScope): FailureLocation[] {
@@ -732,7 +819,7 @@ function projection(
     };
 }
 
-/** Derives CI-701 through CI-709. CI-710 remains blocked on deployment observations. */
+/** Derives CI-701 through CI-710 from exact-revision observations. */
 export function deriveProcessInsights(
     input: RepositoryUnderstanding,
     partialLimits: Partial<ProcessInsightLimits> = {},
@@ -756,6 +843,7 @@ export function deriveProcessInsights(
         ...matrixAndFlakeInsights(understanding, scope, limits, truncation),
         ...missingExpectedInsights(understanding, scope),
         ...verificationGapInsights(understanding, scope),
+        ...deploymentStateInsights(understanding),
     );
     return projection(understanding, normalized.issues.length, insights, limits, truncation);
 }

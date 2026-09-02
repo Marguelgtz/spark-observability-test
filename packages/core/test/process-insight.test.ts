@@ -277,3 +277,116 @@ describe('deterministic process insights', () => {
         }));
     });
 });
+
+describe('deployment state insights (CI-710)', () => {
+    function deployment(overrides: Partial<import('../src').DeploymentObservation> = {}): import('../src').DeploymentObservation {
+        return {
+            kind: 'deployment',
+            id: 'deployment:production:1',
+            repositoryId: 'repository:1',
+            revision: 'head',
+            environment: 'production',
+            lifecycle: 'QUEUED',
+            outcome: 'UNKNOWN',
+            approvalState: 'UNKNOWN',
+            source: { kind: 'ci' },
+            ...overrides,
+        };
+    }
+
+    function deploymentInsights(understanding: RepositoryUnderstanding): import('../src').ProcessInsight[] {
+        return deriveProcessInsights(understanding).insights.filter(item => item.insightKind === 'DEPLOYMENT_STATE');
+    }
+
+    it('reports waiting for approval without calling it a failure', () => {
+        const understanding = fixture();
+        understanding.observations.deployments = [deployment({
+            approvalState: 'WAITING', providerStatusId: '6101',
+        })];
+        understanding.observations.completeness = [
+            { source: 'github-deployments', state: 'COMPLETE' },
+            { source: 'github-deployment-statuses', state: 'COMPLETE' },
+            { source: 'github-deployment-environments', state: 'COMPLETE' },
+        ];
+
+        const [insight] = deploymentInsights(understanding);
+        expect(insight).toMatchObject({
+            id: 'process-insight:deployment-state:deployment:production:1',
+            derivation: 'DETERMINISTIC',
+            confidence: 'SUPPORTED',
+            summary: 'deployment deployment:production:1 to environment production is waiting for approval; waiting is not a failure',
+            supportingObservationIds: ['deployment:production:1'],
+            detail: {
+                insightKind: 'DEPLOYMENT_STATE',
+                deploymentId: 'deployment:production:1',
+                environment: 'production',
+                lifecycle: 'QUEUED',
+                outcome: 'UNKNOWN',
+                approvalState: 'WAITING',
+            },
+        });
+        expect(insight?.completeness.map(item => item.source)).toEqual([
+            'github-deployment-environments', 'github-deployment-statuses', 'github-deployments',
+        ]);
+    });
+
+    const DEPLOYMENT_STATES: Array<[string, Partial<import('../src').DeploymentObservation>, string]> = [
+        ['queued', { lifecycle: 'QUEUED', outcome: 'UNKNOWN', approvalState: 'NOT_REQUIRED' }, 'is queued'],
+        ['running', { lifecycle: 'RUNNING', outcome: 'UNKNOWN', approvalState: 'APPROVED' }, 'is running'],
+        ['success', { lifecycle: 'COMPLETED', outcome: 'PASSED', approvalState: 'APPROVED' }, 'completed successfully'],
+        ['failure', { lifecycle: 'COMPLETED', outcome: 'FAILED', approvalState: 'NOT_REQUIRED' }, 'failed'],
+        ['cancelled', { lifecycle: 'CANCELLED', outcome: 'UNKNOWN', approvalState: 'UNKNOWN' }, 'was cancelled'],
+    ];
+    it.each(DEPLOYMENT_STATES)('keeps the %s deployment state distinct', (label, state, phrase) => {
+        const understanding = fixture();
+        understanding.observations.deployments = [deployment(state)];
+        understanding.observations.completeness = [{ source: 'github-deployments', state: 'COMPLETE' }];
+
+        const [insight] = deploymentInsights(understanding);
+        expect(insight?.summary).toBe(`deployment deployment:production:1 to environment production ${phrase}`);
+        expect(insight).toMatchObject({
+            confidence: 'SUPPORTED',
+            detail: { ...state, deploymentId: 'deployment:production:1' },
+        });
+    });
+
+    it('keeps an uninterpretable provider state unknown', () => {
+        const understanding = fixture();
+        understanding.observations.deployments = [deployment({ lifecycle: 'UNKNOWN', outcome: 'UNKNOWN' })];
+        understanding.observations.completeness = [{ source: 'github-deployments', state: 'COMPLETE' }];
+
+        const [insight] = deploymentInsights(understanding);
+        expect(insight).toMatchObject({
+            confidence: 'UNKNOWN',
+            summary: 'deployment deployment:production:1 to environment production reported a state Spark cannot interpret; its state is unknown',
+        });
+    });
+
+    it('lowers confidence to tentative when any acquisition dimension is partial', () => {
+        const understanding = fixture();
+        understanding.observations.deployments = [deployment({ lifecycle: 'RUNNING', approvalState: 'APPROVED' })];
+        understanding.observations.completeness = [
+            { source: 'github-deployments', state: 'COMPLETE' },
+            { source: 'github-deployment-statuses', state: 'PARTIAL', observedCount: 5, expectedCount: 7, reason: 'bounded to 5 statuses' },
+        ];
+
+        const [insight] = deploymentInsights(understanding);
+        expect(insight).toMatchObject({ confidence: 'TENTATIVE' });
+        expect(insight?.completeness.some(item => item.state === 'PARTIAL')).toBe(true);
+    });
+
+    it('links the CI run that the provider identified as the deployment origin', () => {
+        const understanding = fixture();
+        understanding.observations.deployments = [deployment({
+            lifecycle: 'RUNNING', approvalState: 'APPROVED', pipelineRunId: 'run:1',
+        })];
+
+        const [insight] = deploymentInsights(understanding);
+        expect(insight?.supportingObservationIds).toEqual(['deployment:production:1', 'run:1']);
+        expect(insight?.detail).toMatchObject({ pipelineRunId: 'run:1' });
+    });
+
+    it('derives no deployment insight when no deployment was observed', () => {
+        expect(deploymentInsights(fixture())).toHaveLength(0);
+    });
+});
