@@ -23,8 +23,15 @@
 }
 
 .shell-nav-link:hover,
-.viewer-link:hover {
+.viewer-link:hover,
+.shell-nav-link.is-active {
   color: #171717;
+}
+
+.shell-nav-link.is-active {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 5px;
 }
 
 .shell-nav-link:focus-visible,
@@ -39,6 +46,44 @@
 
 .route-outlet[aria-busy="true"] {
   opacity: 0.86;
+}
+
+.shell-preference-warning {
+  width: min(var(--layout-standard), calc(100% - var(--layout-gutter) - var(--layout-gutter)));
+  margin: 16px auto -24px;
+  border: 1px solid #d9b86c;
+  border-radius: 7px;
+  background: #fff8e8;
+  padding: 9px 12px;
+  color: #654c17;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.persistent-app-shell[data-density="compact"] .main-column {
+  padding-top: 34px;
+}
+
+.persistent-app-shell[data-density="compact"] .evaluation-row,
+.persistent-app-shell[data-density="compact"] .dashboard-change-row,
+.persistent-app-shell[data-density="compact"] .overview-list-row {
+  padding-block: 9px;
+}
+
+.persistent-app-shell[data-density="compact"] .evaluation-body,
+.persistent-app-shell[data-density="compact"] .dashboard-change-body,
+.persistent-app-shell[data-density="compact"] .overview-list-body {
+  gap: 2px;
+}
+
+.persistent-app-shell[data-density="compact"] .pr-section {
+  padding-block: 20px;
+}
+
+.persistent-app-shell[data-density="compact"] .pr-run {
+  min-height: 104px;
+  gap: 6px;
+  padding: 9px;
 }
 
 .route-loading {
@@ -100,8 +145,16 @@
 }
 
 @media (max-width: 640px) {
+  .shell-preference-warning {
+    margin-bottom: -12px;
+  }
+
   .persistent-app-shell .shell-left {
     gap: 12px;
+  }
+
+  .shell-nav {
+    gap: 8px;
   }
 
   .shell-nav-link {

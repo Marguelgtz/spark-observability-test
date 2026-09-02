@@ -22,6 +22,7 @@ import type { D1Database } from './d1';
 import type { StoredEvaluationDetailV1 } from './evaluation-detail';
 import { buildPullRequestDetail, type PullRequestHistoryAggregate } from './pull-request-insights';
 import { buildTrajectory } from './change-trajectory';
+import { readActivityHome } from './activity-home';
 
 const EVAL_TIME_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', COALESCE(d.evaluated_at, e.updated_at))";
 const REPOSITORY_SCOPE_SQL = 'SELECT CAST(value AS INTEGER) FROM json_each(?)';
@@ -47,6 +48,7 @@ interface PullRequestActivityRow extends ActivityRow {
   low_count: number;
   medium_count: number;
   high_count: number;
+  total_count?: number | null;
 }
 
 interface HistoryRow extends ActivityRow {}
@@ -312,7 +314,17 @@ export class D1DashboardReader implements DashboardReader {
         selectedRepositoryId: query.repositoryId,
         counts: { LOW: 0, MEDIUM: 0, HIGH: 0 },
         repositories: [],
+        total: 0,
         pullRequests: [],
+        overview: {
+          observedPRs: 0,
+          totalEvaluations: 0,
+          activePRsNeedingAttention: 0,
+          mergedUnresolved: 0,
+          recovery: { recoveredPRs: 0, failedToClearEvents: 0, waitingToClearEvents: 0 },
+        },
+        needsAttention: { total: 0, preview: [] },
+        hasObservedHistory: false,
         pagination: { nextCursor: null },
       };
     }
@@ -370,10 +382,33 @@ export class D1DashboardReader implements DashboardReader {
       where.push('l.attention = ?');
       bindings.push(query.attention);
     }
+    if (query.q) {
+      const escaped = query.q.toLocaleLowerCase().replace(/[\\%_]/g, '\\$&');
+      where.push("(LOWER(l.full_name) LIKE ? ESCAPE '\\' OR LOWER(l.head_sha) LIKE ? ESCAPE '\\' OR CAST(l.pull_request_number AS TEXT) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(l.normalized_json, '')) LIKE ? ESCAPE '\\')");
+      const pattern = `%${escaped}%`;
+      bindings.push(pattern, pattern, pattern, pattern);
+    }
+    if (query.favoritesOnly) {
+      const keys = query.favoritePullRequestKeys ?? [];
+      if (!keys.length) where.push('0 = 1');
+      else {
+        where.push("CAST(l.repository_id AS TEXT) || ':' || CAST(l.pull_request_number AS TEXT) IN (SELECT value FROM json_each(?))");
+        bindings.push(JSON.stringify(keys));
+      }
+    }
+    const total = query.q || query.favoritesOnly
+      ? Number((await this.db.prepare(
+        `WITH ranked AS (${rankedSql}) SELECT COUNT(*) AS count FROM ranked l WHERE ${where.join(' AND ')}`,
+      ).bind(repositoryScope, ...bindings.slice(1)).first<{ count: number }>())?.count ?? 0)
+      : query.attention === 'ALL'
+        ? counts.LOW + counts.MEDIUM + counts.HIGH
+        : counts[query.attention];
     const cursor = decodeCursor(query.cursor);
+    const cursorWhere: string[] = [];
+    const cursorBindings: unknown[] = [];
     if (cursor) {
-      where.push('(l.evaluated_at < ? OR (l.evaluated_at = ? AND l.repository_id < ?) OR (l.evaluated_at = ? AND l.repository_id = ? AND l.pull_request_number < ?))');
-      bindings.push(cursor.t, cursor.t, cursor.r, cursor.t, cursor.r, cursor.p);
+      cursorWhere.push('(l.evaluated_at < ? OR (l.evaluated_at = ? AND l.repository_id < ?) OR (l.evaluated_at = ? AND l.repository_id = ? AND l.pull_request_number < ?))');
+      cursorBindings.push(cursor.t, cursor.t, cursor.r, cursor.t, cursor.r, cursor.p);
     }
     const limit = Math.max(1, Math.min(query.limit ?? 50, 100));
     const activityResult = await this.db.prepare(
@@ -398,12 +433,18 @@ export class D1DashboardReader implements DashboardReader {
        LEFT JOIN history h
          ON h.repository_id = l.repository_id AND h.pull_request_number = l.pull_request_number
        WHERE ${where.join(' AND ')}
+       ${cursorWhere.length ? `AND ${cursorWhere.join(' AND ')}` : ''}
        ORDER BY l.evaluated_at DESC, l.repository_id DESC, l.pull_request_number DESC
        LIMIT ?`,
-    ).bind(repositoryScope, repositoryScope, ...bindings.slice(1), limit + 1).all<PullRequestActivityRow>();
+    ).bind(repositoryScope, repositoryScope, ...bindings.slice(1), ...cursorBindings, limit + 1).all<PullRequestActivityRow>();
     const rows = activityResult.results ?? [];
     const page = rows.slice(0, limit);
     const last = page.at(-1);
+    const home = await readActivityHome(this.db, {
+      repositoryIds,
+      repositoryId: query.repositoryId,
+      start,
+    });
 
     return {
       version: 1,
@@ -412,7 +453,14 @@ export class D1DashboardReader implements DashboardReader {
       selectedRepositoryId: query.repositoryId,
       counts,
       repositories,
+      total,
       pullRequests: page.map(pullRequestActivityFromRow),
+      overview: home.overview,
+      needsAttention: {
+        total: home.needsAttentionTotal,
+        preview: home.needsAttentionRows.map((row) => pullRequestActivityFromRow(row)),
+      },
+      hasObservedHistory: home.hasObservedHistory,
       pagination: {
         nextCursor: rows.length > limit && last
           ? encodeCursor({ t: last.evaluated_at, r: last.repository_id, p: last.pull_request_number })

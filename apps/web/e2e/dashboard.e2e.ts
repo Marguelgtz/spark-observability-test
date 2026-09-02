@@ -10,6 +10,9 @@ test('signed-out state', async ({ page }) => {
   await page.goto('/app?fixture=signed-out');
   await expect(page.getByTestId('signed-out')).toBeVisible();
   await expect(page.getByTestId('sign-in')).toHaveText('Sign in with GitHub');
+  // R8.1 (D3): a signed-out visitor has no authenticated destinations, so the
+  // Dashboard/Activity/Settings nav is hidden rather than showing dead links.
+  await expect(page.locator('nav.shell-nav')).toBeHidden();
 });
 
 test('loading state has stable shell', async ({ page }) => {
@@ -17,15 +20,43 @@ test('loading state has stable shell', async ({ page }) => {
   await expect(page.getByTestId('loading')).toBeVisible();
 });
 
-test('activity renders one row per pull request and captures screenshot', async ({ page }, testInfo) => {
+test('dashboard, activity, and settings are distinct primary routes', async ({ page }) => {
   await page.goto('/app?window=7d&attention=ALL');
+  await expect(page.getByTestId('change-overview')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('activity-search')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Recent activity', exact: true })).toBeVisible();
+  await page.getByTestId('recent-activity').locator('summary').click();
+  await expect(page.getByRole('link', { name: 'View all activity →', exact: true })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Activity', exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/activity/);
+  await expect(page.getByTestId('activity-view')).toBeVisible();
+  await expect(page.getByTestId('activity-search')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Activity', exact: true })).toHaveAttribute('aria-current', 'page');
+
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/settings/);
+  await expect(page.getByTestId('settings-view')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Settings', exact: true })).toHaveAttribute('aria-current', 'page');
+});
+
+test('legacy activity-only dashboard query redirects to activity and preserves filters', async ({ page }) => {
+  await page.goto('/app?window=7d&attention=HIGH&q=checkout&favorites=1');
+  await expect(page).toHaveURL(/\/app\/activity\?window=7d&attention=HIGH&q=checkout&favorites=1/);
+  await expect(page.getByTestId('activity-search')).toHaveValue('checkout');
+  await expect(page.getByTestId('favorites-only')).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('activity renders one row per pull request and captures screenshot', async ({ page }, testInfo) => {
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await expect(page.getByTestId('activity-view')).toBeVisible();
   await expect(page.locator('.evaluation-row')).toHaveCount(5);
   await page.screenshot({ path: `${screenshotDir}/activity-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
 test('pull request history expands into a horizontal evaluation rail', async ({ page }, testInfo) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   const toggle = page.getByTestId('history-toggle-101-42');
   await expect(toggle).toContainText('3');
   await expect(page.getByTestId('history-toggle-202-120')).toHaveClass(/is-singular/);
@@ -39,7 +70,7 @@ test('pull request history expands into a horizontal evaluation rail', async ({ 
 });
 
 test('attention, time, and repository filters are URL-owned', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByTestId('attention-HIGH').click();
   await expect(page).toHaveURL(/attention=HIGH/);
   await expect(page.locator('.evaluation-row')).toHaveCount(1);
@@ -54,7 +85,7 @@ test('attention, time, and repository filters are URL-owned', async ({ page }) =
 });
 
 test('search and favorites filter the activity view and survive reload', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   const search = page.getByTestId('activity-search');
   await search.fill('checkout');
   await expect(page).toHaveURL(/q=checkout/);
@@ -77,7 +108,7 @@ test('search and favorites filter the activity view and survive reload', async (
 });
 
 test('same-SHA evaluations can be favorited independently by run ID', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByTestId('history-toggle-101-42').click();
   const history = page.getByTestId('history-101-42');
   const favorites = history.locator('.favorite-button');
@@ -92,7 +123,7 @@ test('same-SHA evaluations can be favorited independently by run ID', async ({ p
 });
 
 test('filtered empty state can reset attention', async ({ page }) => {
-  await page.goto('/app?window=24h&attention=HIGH&repositoryId=202');
+  await page.goto('/app/activity?window=24h&attention=HIGH&repositoryId=202');
   await expect(page.getByTestId('empty-result')).toBeVisible();
   await page.getByRole('button', { name: 'Show all attention' }).click();
   await expect(page).toHaveURL(/attention=ALL/);
@@ -106,46 +137,61 @@ test('API error state is explicit', async ({ page }) => {
 });
 
 test('activity opens a pull request observability page', async ({ page }, testInfo) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByRole('link', { name: 'Open pull request 42: API authentication changes' }).click();
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
   await expect(page).toHaveURL(/\/app\/repositories\/101\/pulls\/42/);
+  await expect(page.getByRole('link', { name: '← Activity' })).toHaveAttribute('href', /\/app\/activity\?window=7d&attention=ALL/);
   await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Trajectory' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Observations' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Evaluation history' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Key moments', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Trajectory', exact: true })).toBeVisible();
+  const forensics = page.getByTestId('pr-forensics');
+  await expect(forensics).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Observations', exact: true })).not.toBeVisible();
+  await forensics.getByText('Forensic details', { exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Observations', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Evaluation history', exact: true })).toBeVisible();
   await expect(page.locator('.pr-run')).toHaveCount(3);
-  await expect(page.locator('.pr-section-kicker').getByText('Notable transitions', { exact: true })).toBeVisible();
   await page.screenshot({ path: `${screenshotDir}/pull-request-${suffix(testInfo.project.name)}.png`, fullPage: true });
 });
 
-test('Change Trajectory combines and explains causes at each run boundary', async ({ page }) => {
+test('Key moments combine and explain causes at each material run boundary', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
   const transitions = page.getByTestId('notable-transition');
   await expect(transitions).toHaveCount(2);
-  await expect(transitions.first().getByText('MEDIUM → HIGH', { exact: true })).toBeVisible();
-  await expect(transitions.first().getByText('integration-test: pending → failed', { exact: true })).toBeVisible();
-  await expect(transitions.first().getByText('Sensitive surface added: auth/security', { exact: true })).toBeVisible();
+  const latestTransition = transitions.nth(1);
+  await expect(latestTransition.getByText('Attention increased to HIGH', { exact: true })).toBeVisible();
+  await expect(latestTransition).toContainText('integration-test: pending → failed');
+  await expect(latestTransition).toContainText('Sensitive surface added: auth/security');
   await expect(page.getByText('3 runs analyzed', { exact: true })).toBeVisible();
 });
 
 test('material transition feedback is accessible, editable, and survives reload', async ({ page }) => {
   await page.goto('/app/repositories/101/pulls/42?window=7d&attention=ALL');
 
-  const controls = page.getByTestId('transition-feedback').first();
-  await controls.getByText('Add optional context', { exact: true }).click();
-  await controls.getByLabel('Optional feedback context').fill('Helped identify the failing integration check.');
-  await controls.getByRole('button', { name: 'Useful', exact: true }).click();
-  await expect(controls.getByRole('status')).toHaveText('Saved as Useful');
-  await expect(controls.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  const trigger = page.getByTestId('transition-feedback-trigger').first();
+  await expect(trigger).toHaveAttribute('aria-label', 'Give Spark feedback on this transition');
+  await trigger.click();
+  const drawer = page.getByTestId('transition-feedback-drawer');
+  await drawer.getByLabel('Optional feedback context').fill('Helped identify the failing integration check.');
+  await drawer.getByRole('button', { name: 'Useful', exact: true }).click();
+  // dispatchEvent (not click): the modal drawer can intercept pointer events on its Save
+  // button under headless mobile CI; a dispatched click targets the button directly.
+  await drawer.getByRole('button', { name: 'Save feedback', exact: true }).dispatchEvent('click');
+  await expect(drawer.getByRole('status')).toHaveText('Saved as Useful');
+  await expect(drawer.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
+  await page.keyboard.press('Escape');
   await page.reload();
-  const restored = page.getByTestId('transition-feedback').first();
+  const restoredTrigger = page.getByTestId('transition-feedback-trigger').first();
+  await expect(restoredTrigger).toHaveAttribute('aria-label', 'Edit Spark feedback on this transition');
+  await restoredTrigger.click();
+  const restored = page.getByTestId('transition-feedback-drawer');
   await expect(restored.getByRole('button', { name: 'Useful', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await restored.getByText('Edit optional context', { exact: true }).click();
   await expect(restored.getByLabel('Optional feedback context')).toHaveValue('Helped identify the failing integration check.');
   await restored.getByRole('button', { name: 'Fixed because of Spark', exact: true }).click();
+  await restored.getByRole('button', { name: 'Save feedback', exact: true }).dispatchEvent('click');
   await expect(restored.getByRole('status')).toHaveText('Saved as Fixed because of Spark');
 });
 
@@ -155,6 +201,7 @@ test('merged trajectory shows the selected pre-merge state as a terminal marker'
   const terminal = page.getByTestId('lifecycle-terminal');
   await expect(terminal).toBeVisible();
   await expect(terminal.getByText('Merged · HIGH', { exact: true })).toBeVisible();
+  await expect(terminal.getByText('Merged with unresolved attention', { exact: true })).toBeVisible();
   await expect(terminal.getByText(/selected pre-merge observation was HIGH with failed evidence/i)).toBeVisible();
   await expect(terminal.getByText('Unresolved at merge', { exact: true })).toBeVisible();
 });
@@ -174,7 +221,7 @@ test('pull request page drills into latest immutable run and keeps PR context', 
 });
 
 test('same SHA observations remain individually inspectable by run ID', async ({ page }) => {
-  await page.goto('/app?window=7d&attention=ALL');
+  await page.goto('/app/activity?window=7d&attention=ALL');
   await page.getByTestId('history-toggle-101-42').click();
   const history = page.getByTestId('history-101-42');
   const cards = history.locator('.history-card');
@@ -206,7 +253,7 @@ test('legacy SHA route remains latest-by-SHA compatibility', async ({ page }) =>
 });
 
 test('legacy evaluation has a truthful unavailable state through the PR page', async ({ page }) => {
-  await page.goto('/app?window=30d&attention=ALL');
+  await page.goto('/app/activity?window=30d&attention=ALL');
   await page.getByRole('link', { name: 'Open pull request 37: Initial repository mapping' }).click();
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
   await page.getByRole('link', { name: 'View latest evaluation' }).click();
@@ -217,9 +264,10 @@ test('legacy evaluation has a truthful unavailable state through the PR page', a
 });
 
 test('back navigation preserves activity filters through the PR layer', async ({ page }) => {
-  await page.goto('/app?window=24h&attention=HIGH');
+  await page.goto('/app/activity?window=24h&attention=HIGH');
   await page.locator('.evaluation-main-link').first().click();
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
+  await expect(page.getByRole('link', { name: '← Activity' })).toHaveAttribute('href', /\/app\/activity\?window=24h&attention=HIGH/);
   await page.goBack();
   await expect(page).toHaveURL(/window=24h/);
   await expect(page).toHaveURL(/attention=HIGH/);

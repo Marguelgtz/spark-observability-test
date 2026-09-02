@@ -1,10 +1,63 @@
 export type AttentionLevelV1 = 'LOW' | 'MEDIUM' | 'HIGH';
 export type AttentionFilterV1 = 'ALL' | AttentionLevelV1;
 export type ActivityWindowV1 = '24h' | '7d' | '30d';
+export type PreviewSize = 5 | 10 | 15;
 export type EvidenceStatusV1 = 'PASSED' | 'PENDING' | 'FAILED' | 'MISSING' | 'UNKNOWN';
 export type EvidenceHealthV1 = 'CLEAR' | 'FAILED' | 'PENDING_OR_MISSING' | 'UNKNOWN';
 export type EvaluationObservationSourceV1 = 'LIVE' | 'BACKFILL';
 export type HistoryCompletenessV1 = 'COMPLETE' | 'PARTIAL_BACKFILL';
+export type DashboardDensityV1 = 'COMFORTABLE' | 'COMPACT';
+
+export interface DashboardSettingsInputV1 {
+  defaultWindow: ActivityWindowV1;
+  previewSize: PreviewSize;
+  density: DashboardDensityV1;
+  collapseSecondarySections: boolean;
+  defaultRepositoryId: number | null;
+}
+
+export interface DashboardSettingsV1 extends DashboardSettingsInputV1 {
+  version: 1;
+  revision: number;
+  /** Null only for synthesized defaults that have never been persisted. */
+  updatedAt: string | null;
+}
+
+export const DASHBOARD_SETTINGS_DEFAULTS: Readonly<DashboardSettingsInputV1> = {
+  defaultWindow: '7d',
+  previewSize: 15,
+  density: 'COMFORTABLE',
+  collapseSecondarySections: true,
+  defaultRepositoryId: null,
+};
+
+const DASHBOARD_SETTINGS_INPUT_KEYS = new Set<keyof DashboardSettingsInputV1>([
+  'defaultWindow',
+  'previewSize',
+  'density',
+  'collapseSecondarySections',
+  'defaultRepositoryId',
+]);
+
+export function parseDashboardSettingsInputV1(value: unknown): DashboardSettingsInputV1 | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).length !== DASHBOARD_SETTINGS_INPUT_KEYS.size
+    || Object.keys(input).some((key) => !DASHBOARD_SETTINGS_INPUT_KEYS.has(key as keyof DashboardSettingsInputV1))) return undefined;
+  if (input.defaultWindow !== '24h' && input.defaultWindow !== '7d' && input.defaultWindow !== '30d') return undefined;
+  if (input.previewSize !== 5 && input.previewSize !== 10 && input.previewSize !== 15) return undefined;
+  if (input.density !== 'COMFORTABLE' && input.density !== 'COMPACT') return undefined;
+  if (typeof input.collapseSecondarySections !== 'boolean') return undefined;
+  if (input.defaultRepositoryId !== null
+    && (!Number.isSafeInteger(input.defaultRepositoryId) || Number(input.defaultRepositoryId) <= 0)) return undefined;
+  return {
+    defaultWindow: input.defaultWindow,
+    previewSize: input.previewSize,
+    density: input.density,
+    collapseSecondarySections: input.collapseSecondarySections,
+    defaultRepositoryId: input.defaultRepositoryId === null ? null : Number(input.defaultRepositoryId),
+  };
+}
 
 export interface ViewerV1 {
   version: 1;
@@ -290,6 +343,23 @@ export interface PullRequestTrajectoryV1 {
   truncated: boolean;
 }
 
+export interface ActivityOverviewV1 {
+  observedPRs: number;
+  totalEvaluations: number;
+  activePRsNeedingAttention: number;
+  mergedUnresolved: number;
+  recovery: {
+    recoveredPRs: number;
+    failedToClearEvents: number;
+    waitingToClearEvents: number;
+  };
+}
+
+export interface NeedsAttentionV1 {
+  total: number;
+  preview: PullRequestActivityV1[];
+}
+
 export interface ActivityResponseV1 {
   version: 1;
   selectedWindow: ActivityWindowV1;
@@ -297,7 +367,12 @@ export interface ActivityResponseV1 {
   selectedRepositoryId: number | null;
   counts: Record<AttentionLevelV1, number>;
   repositories: ObservedRepositoryV1[];
+  /** Exact number of pull requests matching the current server-side filters. */
+  total?: number;
   pullRequests: PullRequestActivityV1[];
+  overview?: ActivityOverviewV1;
+  needsAttention?: NeedsAttentionV1;
+  hasObservedHistory?: boolean;
   /** @deprecated V1 compatibility alias containing the latest evaluation for each returned PR. */
   evaluations?: EvaluationSummaryV1[];
   pagination: { nextCursor: string | null };
@@ -309,6 +384,10 @@ export interface ActivityQueryV1 {
   repositoryId: number | null;
   cursor?: string | null;
   limit?: number;
+  q?: string;
+  favoritesOnly?: boolean;
+  /** Server-resolved favorite PR identities. Not serialized by clients. */
+  favoritePullRequestKeys?: string[];
 }
 
 export interface ChangedFileV1 {

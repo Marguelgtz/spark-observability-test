@@ -4,6 +4,16 @@
   "private": true,
   "types": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./outcome": "./src/outcome.ts",
+    "./behavior": "./src/behavior.ts",
+    "./dashboard": "./src/dashboard.ts"
+  },
+  "typesVersions": {
+    "*": {
+      "outcome": ["src/outcome.ts"],
+      "behavior": ["src/behavior.ts"],
+      "dashboard": ["src/dashboard.ts"]
+    }
   }
 }

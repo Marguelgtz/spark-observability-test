@@ -4,16 +4,19 @@ import type {
   ActivityWindowV1,
   AttentionFilterV1,
   DashboardFavoriteV1,
+  DashboardSettingsInputV1,
   PullRequestTrajectoryV1,
   SaveTrajectoryFeedbackV1,
   TrajectoryFeedbackClassificationV1,
 } from '@spark/dashboard-contracts';
+import { parseDashboardSettingsInputV1 } from '@spark/dashboard-contracts';
 import { createInstallationToken, GitHubApiClient, routeGitHubEvent, verifyWebhookSignature } from '@spark/github';
 import type { DashboardAuthorizer, DashboardPrincipal } from './dashboard-access';
 import { D1DashboardReader, type DashboardReader } from './dashboard-reader';
 import { D1SparkStore, type D1Database } from './d1';
 import { D1DashboardFavoriteStore, type DashboardFavoriteStore } from './dashboard-favorites';
 import { D1DashboardFeedbackStore, type DashboardFeedbackStore } from './dashboard-feedback';
+import { D1DashboardSettingsStore, defaultDashboardSettings, type DashboardSettingsStore } from './dashboard-settings';
 import { GitHubDashboardAuth } from './github-auth';
 import { SparkOrchestrator } from './orchestrator';
 import type { SparkStore } from './contracts';
@@ -40,16 +43,17 @@ export interface WebhookDependencies {
   dashboardAuth?: GitHubDashboardAuth;
   dashboardFavoriteStore?: DashboardFavoriteStore;
   dashboardFeedbackStore?: DashboardFeedbackStore;
+  dashboardSettingsStore?: DashboardSettingsStore;
 }
 
 export interface WorkerExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
 
-function json(body: unknown, status = 200): Response {
+function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
 }
 
@@ -93,12 +97,17 @@ function parseActivityQuery(url: URL): ActivityQueryV1 | undefined {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) return undefined;
   }
 
+  const q = url.searchParams.get('q')?.trim();
+  if (q && q.length > 100) return undefined;
+
   return {
     window: windowValue as ActivityWindowV1,
     attention: attentionValue as AttentionFilterV1,
     repositoryId,
     cursor: url.searchParams.get('cursor'),
     limit,
+    ...(q ? { q } : {}),
+    ...(url.searchParams.get('favorites') === '1' ? { favoritesOnly: true } : {}),
   };
 }
 
@@ -145,6 +154,41 @@ async function parseFavorite(request: Request): Promise<DashboardFavoriteV1 | un
   };
 }
 
+async function parseSettings(request: Request): Promise<DashboardSettingsInputV1 | undefined> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    return undefined;
+  }
+  return parseDashboardSettingsInputV1(value);
+}
+
+function settingsRevision(request: Request): number | undefined {
+  const match = /^(?:W\/)?(?:"settings-(\d+)"|settings-(\d+))$/.exec((request.headers.get('if-match') ?? '').trim());
+  if (!match) return undefined;
+  const revision = Number(match[1] ?? match[2]);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : undefined;
+}
+
+function settingsEtag(revision: number): string {
+  return `"settings-${revision}"`;
+}
+
+function trustedSettingsOrigin(request: Request, env: Env): boolean {
+  const origin = request.headers.get('origin');
+  if (!origin) return false;
+  const allowed = new Set([new URL(request.url).origin]);
+  if (env.SPARK_PUBLIC_ORIGIN) {
+    try {
+      allowed.add(new URL(env.SPARK_PUBLIC_ORIGIN).origin);
+    } catch {
+      // Invalid deployment configuration must not broaden write access.
+    }
+  }
+  return allowed.has(origin);
+}
+
 const FEEDBACK_CLASSIFICATIONS: TrajectoryFeedbackClassificationV1[] = [
   'USEFUL',
   'EXPECTED',
@@ -185,6 +229,37 @@ async function handleDashboardRequest(
   if (request.method === 'GET' && url.pathname === '/api/me') return json(principal.viewer);
   if (request.method === 'GET' && url.pathname === '/api/account') return json(account(principal, env));
 
+  if (url.pathname === '/api/settings') {
+    const settingsStore = dependencies.dashboardSettingsStore ?? new D1DashboardSettingsStore(env.DB);
+    if (request.method === 'GET') {
+      const persisted = await settingsStore.get(principal.viewer.id);
+      const settings = persisted
+        ? {
+          ...persisted,
+          defaultRepositoryId: persisted.defaultRepositoryId !== null
+            && principal.repositoryIds.includes(persisted.defaultRepositoryId)
+            ? persisted.defaultRepositoryId
+            : null,
+        }
+        : defaultDashboardSettings();
+      return json(settings, 200, { etag: settingsEtag(settings.revision) });
+    }
+    if (request.method === 'PUT') {
+      if (!trustedSettingsOrigin(request, env)) return json({ error: 'untrusted origin' }, 403);
+      const expectedRevision = settingsRevision(request);
+      if (expectedRevision === undefined) return json({ error: 'invalid If-Match' }, 400);
+      const input = await parseSettings(request);
+      if (!input) return json({ error: 'invalid settings' }, 400);
+      if (input.defaultRepositoryId !== null && !principal.repositoryIds.includes(input.defaultRepositoryId)) {
+        return json({ error: 'not found' }, 404);
+      }
+      const saved = await settingsStore.replace(principal.viewer.id, expectedRevision, input);
+      if (!saved) return json({ error: 'settings changed' }, 412);
+      return json(saved, 200, { etag: settingsEtag(saved.revision) });
+    }
+    return json({ error: 'method not allowed' }, 405, { allow: 'GET, PUT' });
+  }
+
   const favoriteStore = dependencies.dashboardFavoriteStore ?? new D1DashboardFavoriteStore(env.DB);
   if (request.method === 'GET' && url.pathname === '/api/favorites') {
     return json(await favoriteStore.list(principal.viewer.id, principal.repositoryIds));
@@ -209,6 +284,10 @@ async function handleDashboardRequest(
     if (!query) return json({ error: 'invalid activity query' }, 400);
     if (query.repositoryId !== null && !principal.repositoryIds.includes(query.repositoryId)) {
       return json({ error: 'not found' }, 404);
+    }
+    if (query.favoritesOnly) {
+      const saved = await favoriteStore.list(principal.viewer.id, principal.repositoryIds);
+      query.favoritePullRequestKeys = [...new Set(saved.favorites.map((favorite) => `${favorite.repositoryId}:${favorite.pullRequestNumber}`))];
     }
     return json(await reader.activity(query, principal.repositoryIds));
   }
