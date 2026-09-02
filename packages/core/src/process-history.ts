@@ -1,6 +1,10 @@
 import { canonicalJson } from './process-export';
 import { currentEvidenceRuns, evidenceProcessIdentity } from './evidence-matching';
-import { deriveProcessInsights } from './process-insight';
+import {
+    classifyProcessFailureDomain,
+    deriveProcessInsights,
+    type FailureDomain,
+} from './process-insight';
 import {
     normalizeProcessObservation,
     type ProcessObservationRecord,
@@ -541,6 +545,155 @@ export function deriveProcessFlakeEvidence(
         recoveryCount: allRecoveries.length,
         recoveryRate: rate(allRecoveries.length, eligible.length, limits.minimumRateDenominator),
         recoveries,
+        completeness: historyIsPartial(historical) ? 'PARTIAL' : 'COMPLETE',
+        truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
+    };
+}
+
+export interface FailureFingerprintIdentity {
+    level: 'STEP' | 'JOB';
+    pipelineDefinitionId?: string;
+    logicalJobId?: string;
+    jobName: string;
+    stepName?: string;
+    domain: FailureDomain;
+}
+
+export interface HistoricalFailureFingerprint {
+    id: string;
+    identity: FailureFingerprintIdentity;
+    occurrenceCount: number;
+    failureDenominator: number;
+    share: HistoricalRate;
+    distinctRevisionCount: number;
+    firstObservedAt: string;
+    lastObservedAt: string;
+    recurrence: 'OBSERVED_ONCE' | 'RECURRING';
+    occurrenceIds: string[];
+}
+
+export interface ProcessFailureFingerprintReport {
+    schemaVersion: 'process-failure-fingerprints/v1';
+    repositoryId: string;
+    window: ProcessHistoryWindow;
+    failureOccurrenceCount: number;
+    fingerprints: HistoricalFailureFingerprint[];
+    completeness: 'COMPLETE' | 'PARTIAL';
+    truncation: ProcessHistoryTruncation[];
+}
+
+interface FailureOccurrence {
+    id: string;
+    revision: string;
+    observedAt: string;
+    identity: FailureFingerprintIdentity;
+}
+
+function failureOccurrences(historical: HistoricalWindowData): FailureOccurrence[] {
+    const occurrences: FailureOccurrence[] = [];
+    for (const job of historical.jobs.filter(sample => terminal(sample.lifecycle) && sample.outcome === 'FAILED')) {
+        const failedSteps = new Map<string, { id: string; name: string }>();
+        for (const retained of historical.records) {
+            for (const step of retained.record.understanding.observations.pipelineSteps) {
+                if (step.pipelineJobId === job.id && terminal(step.lifecycle) && step.outcome === 'FAILED') {
+                    failedSteps.set(step.id, { id: step.id, name: step.name });
+                }
+            }
+        }
+        if (failedSteps.size > 0) {
+            for (const step of [...failedSteps.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+                const classification = classifyProcessFailureDomain([step.name, job.name]);
+                occurrences.push({
+                    id: step.id,
+                    revision: job.revision,
+                    observedAt: job.observedAt,
+                    identity: {
+                        level: 'STEP',
+                        pipelineDefinitionId: job.pipelineDefinitionId,
+                        logicalJobId: job.logicalJobId,
+                        jobName: job.name,
+                        stepName: step.name,
+                        domain: classification.domain,
+                    },
+                });
+            }
+        } else {
+            const classification = classifyProcessFailureDomain([job.name]);
+            occurrences.push({
+                id: job.id,
+                revision: job.revision,
+                observedAt: job.observedAt,
+                identity: {
+                    level: 'JOB',
+                    pipelineDefinitionId: job.pipelineDefinitionId,
+                    logicalJobId: job.logicalJobId,
+                    jobName: job.name,
+                    domain: classification.domain,
+                },
+            });
+        }
+    }
+    return occurrences.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function fingerprintKey(identity: FailureFingerprintIdentity): string {
+    return canonicalJson(identity);
+}
+
+/** CI-803 — recurrence of structured failure identities without log parsing. */
+export function deriveProcessFailureFingerprints(
+    records: readonly ProcessObservationRecord[],
+    repositoryId: string,
+    partialLimits: Partial<ProcessHistoryLimits> = {},
+): ProcessFailureFingerprintReport {
+    const limits = { ...DEFAULT_PROCESS_HISTORY_LIMITS, ...partialLimits };
+    const historical = buildHistoricalWindow(records, repositoryId, limits);
+    const occurrences = failureOccurrences(historical);
+    const grouped = new Map<string, FailureOccurrence[]>();
+    for (const occurrence of occurrences) {
+        const key = fingerprintKey(occurrence.identity);
+        grouped.set(key, [...(grouped.get(key) ?? []), occurrence]);
+    }
+    const allFingerprints: HistoricalFailureFingerprint[] = [...grouped.entries()].map(([key, items]) => {
+        const ordered = [...items].sort((a, b) => {
+            const aTime = parseTime(a.observedAt) ?? Number.NEGATIVE_INFINITY;
+            const bTime = parseTime(b.observedAt) ?? Number.NEGATIVE_INFINITY;
+            return aTime - bTime || a.id.localeCompare(b.id);
+        });
+        const identity = ordered[0].identity;
+        const stableSubject = [
+            identity.pipelineDefinitionId ?? 'unknown',
+            identity.logicalJobId ?? identity.jobName,
+            identity.level,
+            identity.stepName ?? identity.jobName,
+            identity.domain,
+        ].join(':');
+        return {
+            id: `failure-fingerprint:${stableSubject}`,
+            identity,
+            occurrenceCount: ordered.length,
+            failureDenominator: occurrences.length,
+            share: rate(ordered.length, occurrences.length, limits.minimumRateDenominator),
+            distinctRevisionCount: new Set(ordered.map(item => item.revision)).size,
+            firstObservedAt: ordered[0].observedAt,
+            lastObservedAt: ordered.at(-1)!.observedAt,
+            recurrence: ordered.length > 1 ? 'RECURRING' as const : 'OBSERVED_ONCE' as const,
+            occurrenceIds: ordered.map(item => item.id).sort(),
+            _sortKey: key,
+        };
+    }).sort((a, b) => b.occurrenceCount - a.occurrenceCount
+        || a.id.localeCompare(b.id))
+        .map(({ _sortKey: _, ...item }) => item);
+    const fingerprints = allFingerprints.slice(0, Math.max(0, limits.maxFailureFingerprints));
+    if (fingerprints.length < allFingerprints.length) historical.truncation.push({
+        collection: 'failureFingerprints', observedCount: allFingerprints.length, retainedCount: fingerprints.length,
+    });
+    return {
+        schemaVersion: 'process-failure-fingerprints/v1',
+        repositoryId,
+        window: historical.window,
+        failureOccurrenceCount: occurrences.length,
+        fingerprints,
         completeness: historyIsPartial(historical) ? 'PARTIAL' : 'COMPLETE',
         truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
     };

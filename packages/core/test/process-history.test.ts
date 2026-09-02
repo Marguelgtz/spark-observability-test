@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     deriveProcessRuntimeBaselines,
     deriveProcessFlakeEvidence,
+    deriveProcessFailureFingerprints,
     type ProcessLifecycle,
     type ProcessObservationRecord,
     type ProcessOutcome,
@@ -213,6 +214,53 @@ describe('historical process runtime baselines', () => {
         expect(report.eligibleRetrySequenceCount).toBe(0);
         expect(report.recoveryCount).toBe(0);
         expect(report.recoveries).toEqual([]);
+    });
+
+    it('tracks recurring structured failure fingerprints without double-counting snapshots', () => {
+        const failedWithStep = (index: number, stepName: string) => {
+            const payload = understanding(`revision:${index}`, `run:${index}`, [
+                { id: `attempt:${index}:1`, attempt: 1 },
+            ], [{
+                id: `job:${index}:1`, attemptId: `attempt:${index}:1`, lifecycle: 'COMPLETED', outcome: 'FAILED',
+            }]);
+            payload.observations.pipelineSteps.push({
+                kind: 'pipeline-step', id: `step:${index}:1`, pipelineJobId: `job:${index}:1`, sequence: 1,
+                name: stepName, lifecycle: 'COMPLETED', outcome: 'FAILED', source: { kind: 'ci' },
+            });
+            return record(index, payload);
+        };
+        const first = failedWithStep(1, 'Typecheck');
+        const repeatedSnapshot = structuredClone(first);
+        repeatedSnapshot.recordId = 'record:1:later-snapshot';
+        repeatedSnapshot.observedAt = '2026-09-01T10:05:00Z';
+        repeatedSnapshot.ingestedAt = '2026-09-01T10:05:00Z';
+        const report = deriveProcessFailureFingerprints([
+            first,
+            repeatedSnapshot,
+            failedWithStep(2, 'Typecheck'),
+            failedWithStep(3, 'Run unit tests'),
+        ], 'repository:1', { minimumRateDenominator: 1 });
+
+        expect(report.failureOccurrenceCount).toBe(3);
+        expect(report.fingerprints[0]).toMatchObject({
+            identity: { level: 'STEP', stepName: 'Typecheck', domain: 'STATIC_ANALYSIS' },
+            occurrenceCount: 2,
+            failureDenominator: 3,
+            share: { count: 2, denominator: 3, value: 2 / 3 },
+            distinctRevisionCount: 2,
+            recurrence: 'RECURRING',
+            occurrenceIds: ['step:1:1', 'step:2:1'],
+        });
+        expect(report.fingerprints[1]).toMatchObject({
+            identity: { stepName: 'Run unit tests', domain: 'TEST' }, recurrence: 'OBSERVED_ONCE',
+        });
+
+        const bounded = deriveProcessFailureFingerprints([first, failedWithStep(3, 'Run unit tests')], 'repository:1', {
+            maxFailureFingerprints: 1,
+        });
+        expect(bounded.truncation).toContainEqual({
+            collection: 'failureFingerprints', observedCount: 2, retainedCount: 1,
+        });
     });
 
     it('deduplicates record identities deterministically across caller order', () => {
