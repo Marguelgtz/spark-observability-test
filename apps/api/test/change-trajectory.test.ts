@@ -113,6 +113,29 @@ describe('Change Trajectory engine', () => {
     });
   });
 
+  it('compares projected labels as sorted sets rather than ordered lists', () => {
+    const previous = run('run:1', 1, 'LOW', 'PASSED', {
+      directAreas: ['web', 'api', 'web'],
+      affectedAreas: ['workers', 'checkout', 'workers'],
+      sensitiveSurfaces: ['deployment', 'auth/security', 'deployment'],
+    });
+    const current = run('run:2', 2, 'LOW', 'PASSED', {
+      directAreas: ['api', 'web'],
+      affectedAreas: ['checkout', 'workers'],
+      sensitiveSurfaces: ['auth/security', 'deployment'],
+    });
+
+    const delta = deriveTransitionDelta(previous, current);
+
+    expect(delta.areas).toEqual({
+      directAdded: [],
+      directRemoved: [],
+      affectedAdded: [],
+      affectedRemoved: [],
+    });
+    expect(delta.sensitiveSurfaces).toEqual({ added: [], removed: [] });
+  });
+
   it('preserves same-SHA pending, failed, and passed boundaries as two explained transitions', () => {
     const trajectory = buildTrajectory([
       run('run:3', 3, 'LOW', 'PASSED', {}, 'same-sha'),
