@@ -56,6 +56,7 @@ export interface OverviewDrilldownResponseV1 {
   total: number;
   trend: ActivityTrendPointV1[];
   items: OverviewDrilldownItemV1[];
+  pagination?: { nextCursor: string | null };
   truncated: boolean;
 }
 
@@ -170,6 +171,7 @@ async function fixtureOverview(metric: OverviewMetricV1, state: ActivityUrlState
     total: items.length,
     trend: fixtureTrend(state.window, now, runs, lifecycles),
     items: items.slice(0, 100),
+    pagination: { nextCursor: null },
     truncated: items.length > 100,
   };
 }
@@ -223,15 +225,22 @@ async function fixtureTransitions(state: ActivityUrlState): Promise<NotableTrans
   };
 }
 
-function overviewParams(state: ActivityUrlState): URLSearchParams {
+function overviewParams(state: ActivityUrlState, cursor?: string | null, limit?: number): URLSearchParams {
   const params = new URLSearchParams({ window: state.window });
   if (state.repositoryId !== null) params.set('repositoryId', String(state.repositoryId));
+  if (cursor) params.set('cursor', cursor);
+  if (limit !== undefined) params.set('limit', String(limit));
   return params;
 }
 
-export async function getOverviewDrilldown(metric: OverviewMetricV1, state: ActivityUrlState): Promise<OverviewDrilldownResponseV1> {
+export async function getOverviewDrilldown(
+  metric: OverviewMetricV1,
+  state: ActivityUrlState,
+  cursor?: string | null,
+  limit = 15,
+): Promise<OverviewDrilldownResponseV1> {
   if (__SPARK_FIXTURE_API__) return fixtureOverview(metric, state);
-  const response = await fetch(`/api/overview/${metric}?${overviewParams(state).toString()}`, {
+  const response = await fetch(`/api/overview/${metric}?${overviewParams(state, cursor, limit).toString()}`, {
     credentials: 'include',
     headers: { accept: 'application/json' },
   });

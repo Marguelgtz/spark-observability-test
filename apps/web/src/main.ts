@@ -6,6 +6,7 @@ import './overview.css';
 import './account.css';
 import './pr.css';
 import './behavior.css';
+import './progressive-list.css';
 import type { AccountV1, ActivityResponseV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
@@ -30,6 +31,7 @@ import { legacyActivityRedirect, navigate, parseRoute } from './router';
 import { renderSettingsPlaceholder } from './settings-ui';
 import { parseActivityState, serializeActivityState, withActivityState, type ActivityUrlState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderNotFound, renderSignedOut } from './ui';
+import { DEFAULT_PREVIEW_SIZE } from './progressive-list';
 
 const mount = document.querySelector<HTMLElement>('#app')!;
 if (!mount) throw new Error('Missing #app mount');
@@ -169,12 +171,22 @@ function activityView(
     setClientFilters(query, favoritesOnly) {
       const next = withActivityState(state, { query: query.trim() || undefined, favoritesOnly });
       const search = serializeActivityState(next);
-      window.history.replaceState(null, '', `${routeBase}${search ? `?${search}` : ''}`);
+      navigate(`${routeBase}${search ? `?${search}` : ''}`);
+    },
+    loadMore(cursor) {
+      return api.getActivity({
+        ...state,
+        cursor,
+        limit: DEFAULT_PREVIEW_SIZE,
+        q: state.query,
+        favoritesOnly: state.favoritesOnly,
+      });
     },
     loadHistory(repositoryId, pullRequestNumber) {
       return api.getPullRequestHistory(repositoryId, pullRequestNumber);
     },
     favorites,
+    previewSize: DEFAULT_PREVIEW_SIZE,
   });
 }
 
@@ -262,7 +274,13 @@ async function render(): Promise<void> {
 
     if (route.kind === 'activity') {
       const state = parseActivityState(window.location.search);
-      const activityTask = abortable(api.getActivity(state), signal);
+      const activityTask = abortable(api.getActivity({
+        ...state,
+        cursor: null,
+        limit: DEFAULT_PREVIEW_SIZE,
+        q: state.query,
+        favoritesOnly: state.favoritesOnly,
+      }), signal);
       const [viewer, , favorites, activity] = await Promise.all([
         viewerTask,
         accountTask,
@@ -304,6 +322,8 @@ async function render(): Promise<void> {
         },
         transitions,
         companion,
+        (cursor) => getOverviewDrilldown(route.metric, state, cursor, DEFAULT_PREVIEW_SIZE),
+        DEFAULT_PREVIEW_SIZE,
       );
       if (behaviorPatterns) enhanceOverviewWithBehaviorPatterns(overviewView, behaviorPatterns, state);
       shell.show(overviewView);

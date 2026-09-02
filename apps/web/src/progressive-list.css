@@ -1,0 +1,44 @@
+.progressive-list-controls.has-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 2.5rem;
+  margin-top: 0.75rem;
+}
+
+.progressive-list-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.progressive-list-button {
+  border: 1px solid var(--border, #d8d8d4);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.45rem 0.8rem;
+}
+
+.progressive-list-button:hover,
+.progressive-list-button:focus-visible {
+  border-color: currentColor;
+}
+
+.progressive-list-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.progressive-list-retry {
+  color: var(--danger, #9b2c2c);
+}

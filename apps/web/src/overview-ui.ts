@@ -5,6 +5,7 @@ import type { NotableTransitionInsightsV1, OverviewDrilldownResponseV1, Overview
 import { outcomeOverview } from './outcome-types';
 import type { ActivityUrlState } from './state';
 import { serializeActivityState } from './state';
+import { DEFAULT_PREVIEW_SIZE, progressiveList, type PreviewSize } from './progressive-list';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const element = document.createElement(tag);
@@ -100,6 +101,42 @@ function evaluationItem(evaluation: EvaluationSummaryV1, state: ActivityUrlState
   return link;
 }
 
+function overviewItemElement(item: OverviewDrilldownResponseV1['items'][number], state: ActivityUrlState): HTMLElement {
+  if (item.kind === 'evaluation') return evaluationItem(item.evaluation, state);
+  if (item.kind === 'pull-request') return pullRequestItem(item.activity, state, item.lifecycle?.unresolvedAtMerge === true);
+  const latest = item.latest;
+  const pseudoActivity: PullRequestActivityV1 = {
+    repository: item.repository,
+    pullRequest: item.pullRequest,
+    latest: latest ?? {
+      repository: item.repository,
+      pullRequest: item.pullRequest,
+      headSha: item.lifecycle.mergeSha ?? 'unknown',
+      attention: item.lifecycle.preMergeAttention ?? 'MEDIUM',
+      topReasons: ['Merged before unresolved Spark attention cleared'],
+      changeSummary: { files: 0, extensions: [] },
+      sensitiveSurfaces: [],
+      evidenceSummary: { passed: 0, pending: 0, failed: 0, missing: 0, unknown: 1 },
+      evaluatedAt: item.lifecycle.mergedAt ?? item.lifecycle.lastEventAt,
+      githubCheckUrl: item.pullRequest.url,
+      detailAvailable: false,
+    },
+    history: { runCount: latest ? 1 : 0, attentionCounts: { LOW: 0, MEDIUM: 0, HIGH: 0 } },
+  };
+  const row = pullRequestItem(pseudoActivity, state, true);
+  const context = row.querySelector<HTMLElement>('.overview-list-context');
+  if (context && item.lifecycle.mergedAt) context.textContent = `${item.repository.owner}/${item.repository.name} · #${item.pullRequest.number} · merged ${relativeTime(item.lifecycle.mergedAt)}`;
+  const signal = row.querySelector<HTMLElement>('.overview-list-signal');
+  if (signal) signal.textContent = `${item.lifecycle.preMergeAttention ?? 'Unknown'} attention · ${item.lifecycle.preMergeEvidenceHealth ?? 'unknown evidence'}`;
+  return row;
+}
+
+function overviewItemIdentity(item: OverviewDrilldownResponseV1['items'][number]): string {
+  if (item.kind === 'evaluation') return `evaluation:${item.evaluation.runId ?? `${item.evaluation.repository.id}:${item.evaluation.headSha}:${item.evaluation.evaluatedAt}`}`;
+  if (item.kind === 'pull-request') return `pull-request:${item.activity.repository.id}:${item.activity.pullRequest.number}`;
+  return `merge:${item.repository.id}:${item.pullRequest.number}`;
+}
+
 export function renderOverviewDrilldown(
   viewer: ViewerV1,
   response: OverviewDrilldownResponseV1,
@@ -107,6 +144,8 @@ export function renderOverviewDrilldown(
   onWindow: (window: ActivityWindowV1) => void,
   transitions: NotableTransitionInsightsV1,
   companion?: OverviewDrilldownResponseV1,
+  loadMore?: (cursor: string) => Promise<OverviewDrilldownResponseV1>,
+  previewSize: PreviewSize = DEFAULT_PREVIEW_SIZE,
 ): HTMLElement {
   const main = node('main', 'overview-detail-page');
   main.dataset.testid = `overview-${response.metric}`;
@@ -146,42 +185,23 @@ export function renderOverviewDrilldown(
   sectionHeading.append(node('h2', undefined, listTitle), node('span', 'home-section-count', String(listCount)));
   section.append(sectionHeading);
 
-  const list = node('div', 'overview-list');
-  for (const item of response.items) {
-    if (item.kind === 'evaluation') {
-      list.append(evaluationItem(item.evaluation, state));
-      continue;
-    }
-    if (item.kind === 'pull-request') {
-      list.append(pullRequestItem(item.activity, state, item.lifecycle?.unresolvedAtMerge === true));
-      continue;
-    }
-    const latest = item.latest;
-    const pseudoActivity: PullRequestActivityV1 = {
-      repository: item.repository,
-      pullRequest: item.pullRequest,
-      latest: latest ?? {
-        repository: item.repository,
-        pullRequest: item.pullRequest,
-        headSha: item.lifecycle.mergeSha ?? 'unknown',
-        attention: item.lifecycle.preMergeAttention ?? 'MEDIUM',
-        topReasons: ['Merged before unresolved Spark attention cleared'],
-        changeSummary: { files: 0, extensions: [] },
-        sensitiveSurfaces: [],
-        evidenceSummary: { passed: 0, pending: 0, failed: 0, missing: 0, unknown: 1 },
-        evaluatedAt: item.lifecycle.mergedAt ?? item.lifecycle.lastEventAt,
-        githubCheckUrl: item.pullRequest.url,
-        detailAvailable: false,
-      },
-      history: { runCount: latest ? 1 : 0, attentionCounts: { LOW: 0, MEDIUM: 0, HIGH: 0 } },
-    };
-    const row = pullRequestItem(pseudoActivity, state, true);
-    const context = row.querySelector<HTMLElement>('.overview-list-context');
-    if (context && item.lifecycle.mergedAt) context.textContent = `${item.repository.owner}/${item.repository.name} · #${item.pullRequest.number} · merged ${relativeTime(item.lifecycle.mergedAt)}`;
-    const signal = row.querySelector<HTMLElement>('.overview-list-signal');
-    if (signal) signal.textContent = `${item.lifecycle.preMergeAttention ?? 'Unknown'} attention · ${item.lifecycle.preMergeEvidenceHealth ?? 'unknown evidence'}`;
-    list.append(row);
-  }
+  const list = response.items.length
+    ? progressiveList({
+      items: response.items,
+      total: response.total,
+      nextCursor: response.pagination?.nextCursor ?? null,
+      previewSize,
+      identity: overviewItemIdentity,
+      renderItem: (item) => overviewItemElement(item, state),
+      ...(loadMore ? { loadMore: async (cursor: string) => {
+        const page = await loadMore(cursor);
+        return { items: page.items, nextCursor: page.pagination?.nextCursor ?? null, total: page.total };
+      } } : {}),
+      className: 'overview-list',
+      testId: 'overview-progressive-list',
+      itemLabel: response.metric === 'evaluations' ? 'evaluations' : 'pull requests',
+    })
+    : node('div', 'overview-list');
 
   if (!response.items.length) {
     const empty = node('div', 'empty-state');
@@ -194,7 +214,7 @@ export function renderOverviewDrilldown(
     list.append(empty);
   }
   section.append(list);
-  if (response.truncated) section.append(node('p', 'overview-truncated', `Showing the latest ${response.items.length} of ${response.total}.`));
+  if (response.truncated && !response.pagination?.nextCursor) section.append(node('p', 'overview-truncated', `Showing the latest ${response.items.length} of ${response.total}.`));
   main.append(section);
   void viewer;
   return main;

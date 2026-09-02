@@ -278,7 +278,22 @@ export function buildFixtureActivity(query: ActivityQueryV1, now = FIXTURE_NOW):
   };
 
   const attentionScoped = query.attention === 'ALL' ? repositoryScoped : repositoryScoped.filter((item) => item.attention === query.attention);
-  const cursorScoped = query.cursor ? attentionScoped.filter((item) => item.evaluatedAt < query.cursor!) : attentionScoped;
+  const normalizedQuery = query.q?.toLocaleLowerCase();
+  const searchScoped = normalizedQuery ? attentionScoped.filter((item) => [
+    item.pullRequest.title,
+    item.repository.owner,
+    item.repository.name,
+    `${item.repository.owner}/${item.repository.name}`,
+    String(item.pullRequest.number),
+    item.headSha,
+    ...item.topReasons,
+    ...item.sensitiveSurfaces,
+  ].join(' ').toLocaleLowerCase().includes(normalizedQuery)) : attentionScoped;
+  const favoriteKeys = new Set(query.favoritePullRequestKeys ?? []);
+  const favoriteScoped = query.favoritesOnly
+    ? searchScoped.filter((item) => favoriteKeys.has(`${item.repository.id}:${item.pullRequest.number}`))
+    : searchScoped;
+  const cursorScoped = query.cursor ? favoriteScoped.filter((item) => item.evaluatedAt < query.cursor!) : favoriteScoped;
   const sorted = [...cursorScoped].sort((a, b) => Date.parse(b.evaluatedAt) - Date.parse(a.evaluatedAt));
   const limit = Math.max(1, Math.min(query.limit ?? 25, 50));
   const page = sorted.slice(0, limit);
@@ -291,6 +306,7 @@ export function buildFixtureActivity(query: ActivityQueryV1, now = FIXTURE_NOW):
     selectedRepositoryId: query.repositoryId,
     counts,
     repositories,
+    total: favoriteScoped.length,
     pullRequests: page.map(activityFromLatest),
     pagination: { nextCursor }
   };
