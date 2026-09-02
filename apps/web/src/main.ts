@@ -8,14 +8,10 @@ import type { AccountV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
 import { createPersistentAppShell } from './app-shell';
-import {
-  enhanceHomeWithEvaluationVolume,
-  enhanceOverviewWithEvaluationVolume,
-  enhancePullRequestWithSeverityTimeline,
-} from './context-insight-enhancers';
+import { enhancePullRequestWithSeverityTimeline } from './context-insight-enhancers';
 import { FavoriteStore } from './favorites';
 import { enhanceActivityHome } from './home-ui';
-import { getOverviewDrilldown } from './overview-api';
+import { getNotableTransitionInsights, getOverviewDrilldown } from './overview-api';
 import { renderOverviewDrilldown } from './overview-ui';
 import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
 import { navigate, parseRoute } from './router';
@@ -144,8 +140,18 @@ async function render(): Promise<void> {
     if (route.kind === 'activity') {
       const state = parseActivityState(window.location.search);
       const activityTask = abortable(api.getActivity(state), signal);
-      const overviewTask = abortable(getOverviewDrilldown('merged-unresolved', state), signal).catch(() => undefined);
-      const [viewer, account, favorites, activity, overviewDetail] = await Promise.all([viewerTask, accountTask, favoritesTask, activityTask, overviewTask]);
+      const mergeOverviewTask = abortable(getOverviewDrilldown('merged-unresolved', state), signal).catch(() => undefined);
+      const evaluationOverviewTask = abortable(getOverviewDrilldown('evaluations', state), signal);
+      const transitionsTask = abortable(getNotableTransitionInsights(state), signal);
+      const [viewer, account, favorites, activity, mergeOverview, evaluationOverview, transitions] = await Promise.all([
+        viewerTask,
+        accountTask,
+        favoritesTask,
+        activityTask,
+        mergeOverviewTask,
+        evaluationOverviewTask,
+        transitionsTask,
+      ]);
       if (generation !== routeGeneration || signal.aborted) return;
 
       const view = renderActivity(viewer, activity, state, {
@@ -175,23 +181,45 @@ async function render(): Promise<void> {
         },
         favorites,
       });
-      const homeView = enhanceActivityHome(view, account, activity, state, overviewDetail);
-      enhanceHomeWithEvaluationVolume(homeView, overviewDetail);
-      shell.show(homeView);
+      shell.show(enhanceActivityHome(
+        view,
+        account,
+        activity,
+        state,
+        mergeOverview,
+        evaluationOverview,
+        transitions,
+      ));
       return;
     }
 
     if (route.kind === 'overview') {
       const state = parseActivityState(window.location.search);
       const overviewTask = abortable(getOverviewDrilldown(route.metric, state), signal);
-      const [viewer, , , overview] = await Promise.all([viewerTask, accountTask, favoritesTask, overviewTask]);
+      const transitionsTask = abortable(getNotableTransitionInsights(state), signal);
+      const companionTask = route.metric === 'evaluations'
+        ? abortable(getOverviewDrilldown('pull-requests', state), signal)
+        : Promise.resolve(undefined);
+      const [viewer, , , overview, transitions, companion] = await Promise.all([
+        viewerTask,
+        accountTask,
+        favoritesTask,
+        overviewTask,
+        transitionsTask,
+        companionTask,
+      ]);
       if (generation !== routeGeneration || signal.aborted) return;
-      const overviewView = renderOverviewDrilldown(viewer, overview, state, (value) => {
-        const next = withActivityState(state, { window: value, attention: 'ALL' });
-        navigate(`/app/overview/${route.metric}?${serializeActivityState(next)}`);
-      });
-      enhanceOverviewWithEvaluationVolume(overviewView, overview);
-      shell.show(overviewView);
+      shell.show(renderOverviewDrilldown(
+        viewer,
+        overview,
+        state,
+        (value) => {
+          const next = withActivityState(state, { window: value, attention: 'ALL' });
+          navigate(`/app/overview/${route.metric}?${serializeActivityState(next)}`);
+        },
+        transitions,
+        companion,
+      ));
       return;
     }
 

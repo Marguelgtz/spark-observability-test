@@ -111,7 +111,7 @@ test('activity opens a pull request observability page', async ({ page }, testIn
   await expect(page.getByTestId('pull-request-detail')).toBeVisible();
   await expect(page).toHaveURL(/\/app\/repositories\/101\/pulls\/42/);
   await expect(page.getByRole('heading', { name: 'API authentication changes' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Trajectory' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Trajectory', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Observations' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Evaluation history' })).toBeVisible();
   await expect(page.locator('.pr-run')).toHaveCount(3);
