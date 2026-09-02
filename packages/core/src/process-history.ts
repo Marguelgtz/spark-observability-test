@@ -1,9 +1,13 @@
 import { canonicalJson } from './process-export';
+import { currentEvidenceRuns, evidenceProcessIdentity } from './evidence-matching';
+import { deriveProcessInsights } from './process-insight';
 import {
     normalizeProcessObservation,
     type ProcessObservationRecord,
 } from './process-observation';
 import type {
+    ClaimSupport,
+    EvidenceRunObservation,
     PipelineJobObservation,
     ProcessLifecycle,
     ProcessOutcome,
@@ -19,6 +23,10 @@ export interface ProcessHistoryLimits {
     minimumRateDenominator: number;
     /** Minimum valid durations required before median/p90 values are published. */
     minimumDurationSamples: number;
+    maxFlakeRecoveries: number;
+    maxFailureFingerprints: number;
+    maxProcessRelationships: number;
+    maxDriftSignals: number;
 }
 
 export const DEFAULT_PROCESS_HISTORY_LIMITS: ProcessHistoryLimits = {
@@ -26,6 +34,10 @@ export const DEFAULT_PROCESS_HISTORY_LIMITS: ProcessHistoryLimits = {
     maxBaselines: 500,
     minimumRateDenominator: 5,
     minimumDurationSamples: 5,
+    maxFlakeRecoveries: 500,
+    maxFailureFingerprints: 500,
+    maxProcessRelationships: 1_000,
+    maxDriftSignals: 500,
 };
 
 export interface HistoricalRate {
@@ -123,6 +135,7 @@ interface HistoricalJobSample {
     attempt: number;
     logicalJobId?: string;
     name: string;
+    matrix?: Record<string, string | number | boolean>;
     lifecycle: ProcessLifecycle;
     outcome: ProcessOutcome;
     startedAt?: string;
@@ -217,6 +230,7 @@ function jobSamples(records: readonly RetainedRecord[]): HistoricalJobSample[] {
                 attempt: attempt.attempt,
                 logicalJobId: job.logicalJobId,
                 name: job.name,
+                matrix: job.matrix ? { ...job.matrix } : undefined,
                 lifecycle: job.lifecycle,
                 outcome: job.outcome,
                 startedAt: job.startedAt,
@@ -430,6 +444,104 @@ export function deriveProcessRuntimeBaselines(
         limits,
         baselines,
         completeness: partial ? 'PARTIAL' : 'COMPLETE',
+        truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
+    };
+}
+
+export interface HistoricalFlakeRecovery {
+    id: string;
+    revision: string;
+    pipelineRunId: string;
+    pipelineDefinitionId?: string;
+    logicalJobId: string;
+    matrix: Record<string, string | number | boolean>;
+    failedPipelineJobId: string;
+    failedAttempt: number;
+    passedPipelineJobId: string;
+    passedAttempt: number;
+    classification: 'SAME_REVISION_RETRY_RECOVERY';
+    caveat: string;
+}
+
+export interface ProcessFlakeEvidenceReport {
+    schemaVersion: 'process-flake-evidence/v1';
+    repositoryId: string;
+    window: ProcessHistoryWindow;
+    eligibleRetrySequenceCount: number;
+    recoveryCount: number;
+    recoveryRate: HistoricalRate;
+    recoveries: HistoricalFlakeRecovery[];
+    completeness: 'COMPLETE' | 'PARTIAL';
+    truncation: ProcessHistoryTruncation[];
+}
+
+function historyIsPartial(historical: HistoricalWindowData): boolean {
+    return historical.truncation.length > 0
+        || historical.window.incoherentRecordCount > 0
+        || historical.window.truncatedPayloadRecordCount > 0
+        || historical.window.normalizationIssueCount > 0;
+}
+
+/** CI-802 — measured same-revision retry recovery with an eligible-sequence denominator. */
+export function deriveProcessFlakeEvidence(
+    records: readonly ProcessObservationRecord[],
+    repositoryId: string,
+    partialLimits: Partial<ProcessHistoryLimits> = {},
+): ProcessFlakeEvidenceReport {
+    const limits = { ...DEFAULT_PROCESS_HISTORY_LIMITS, ...partialLimits };
+    const historical = buildHistoricalWindow(records, repositoryId, limits);
+    const groups = new Map<string, HistoricalJobSample[]>();
+    for (const job of historical.jobs) {
+        if (!job.logicalJobId) continue;
+        const key = [
+            job.revision,
+            job.pipelineRunId,
+            job.pipelineDefinitionId ?? 'unknown',
+            job.logicalJobId,
+            canonicalJson(job.matrix ?? {}),
+        ].join('\u0000');
+        groups.set(key, [...(groups.get(key) ?? []), job]);
+    }
+    const eligible = [...groups.values()].filter(samples =>
+        new Set(samples.map(sample => sample.attempt)).size > 1);
+    const allRecoveries: HistoricalFlakeRecovery[] = [];
+    for (const samples of eligible) {
+        const ordered = [...samples].sort((a, b) => a.attempt - b.attempt || a.id.localeCompare(b.id));
+        const failure = ordered.find(sample => terminal(sample.lifecycle) && sample.outcome === 'FAILED');
+        const recovery = failure
+            ? ordered.find(sample => sample.attempt > failure.attempt
+                && sample.lifecycle === 'COMPLETED' && sample.outcome === 'PASSED')
+            : undefined;
+        if (!failure || !recovery || !failure.logicalJobId) continue;
+        allRecoveries.push({
+            id: `flake-recovery:${failure.id}:${recovery.id}`,
+            revision: failure.revision,
+            pipelineRunId: failure.pipelineRunId,
+            pipelineDefinitionId: failure.pipelineDefinitionId,
+            logicalJobId: failure.logicalJobId,
+            matrix: { ...(failure.matrix ?? {}) },
+            failedPipelineJobId: failure.id,
+            failedAttempt: failure.attempt,
+            passedPipelineJobId: recovery.id,
+            passedAttempt: recovery.attempt,
+            classification: 'SAME_REVISION_RETRY_RECOVERY',
+            caveat: 'Measured retry recovery does not prove intrinsic flakiness; environment and external dependencies remain possible causes.',
+        });
+    }
+    allRecoveries.sort((a, b) => a.id.localeCompare(b.id));
+    const recoveries = allRecoveries.slice(0, Math.max(0, limits.maxFlakeRecoveries));
+    if (recoveries.length < allRecoveries.length) historical.truncation.push({
+        collection: 'flakeRecoveries', observedCount: allRecoveries.length, retainedCount: recoveries.length,
+    });
+    return {
+        schemaVersion: 'process-flake-evidence/v1',
+        repositoryId,
+        window: historical.window,
+        eligibleRetrySequenceCount: eligible.length,
+        recoveryCount: allRecoveries.length,
+        recoveryRate: rate(allRecoveries.length, eligible.length, limits.minimumRateDenominator),
+        recoveries,
+        completeness: historyIsPartial(historical) ? 'PARTIAL' : 'COMPLETE',
         truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
     };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     deriveProcessRuntimeBaselines,
+    deriveProcessFlakeEvidence,
     type ProcessLifecycle,
     type ProcessObservationRecord,
     type ProcessOutcome,
@@ -164,6 +165,54 @@ describe('historical process runtime baselines', () => {
         expect(report.baselines[0].retry).toEqual({
             retriedRunCount: 1, runDenominator: 5, value: 0.2, sufficientHistory: true,
         });
+    });
+
+    it('measures same-revision retry recovery with eligible sequences as the denominator', () => {
+        const recovered = understanding('revision:1', 'run:1', [
+            { id: 'attempt:1:1', attempt: 1 }, { id: 'attempt:1:2', attempt: 2 },
+        ], [
+            { id: 'job:1:1', attemptId: 'attempt:1:1', lifecycle: 'COMPLETED', outcome: 'FAILED' },
+            { id: 'job:1:2', attemptId: 'attempt:1:2', lifecycle: 'COMPLETED', outcome: 'PASSED' },
+        ]);
+        recovered.observations.pipelineJobs.forEach(job => { job.matrix = { node: 20 }; });
+        const notRecovered = understanding('revision:2', 'run:2', [
+            { id: 'attempt:2:1', attempt: 1 }, { id: 'attempt:2:2', attempt: 2 },
+        ], [
+            { id: 'job:2:1', attemptId: 'attempt:2:1', lifecycle: 'COMPLETED', outcome: 'FAILED' },
+            { id: 'job:2:2', attemptId: 'attempt:2:2', lifecycle: 'COMPLETED', outcome: 'FAILED' },
+        ]);
+        notRecovered.observations.pipelineJobs.forEach(job => { job.matrix = { node: 20 }; });
+
+        const report = deriveProcessFlakeEvidence([record(1, recovered), record(2, notRecovered)], 'repository:1', {
+            minimumRateDenominator: 1,
+        });
+        expect(report).toMatchObject({
+            eligibleRetrySequenceCount: 2,
+            recoveryCount: 1,
+            recoveryRate: { count: 1, denominator: 2, value: 0.5, sufficientHistory: true },
+        });
+        expect(report.recoveries[0]).toMatchObject({
+            revision: 'revision:1', matrix: { node: 20 }, failedAttempt: 1, passedAttempt: 2,
+            classification: 'SAME_REVISION_RETRY_RECOVERY',
+        });
+    });
+
+    it('does not collapse different matrix coordinates into flake evidence', () => {
+        const payload = understanding('revision:1', 'run:1', [
+            { id: 'attempt:1:1', attempt: 1 }, { id: 'attempt:1:2', attempt: 2 },
+        ], [
+            { id: 'job:1:1', attemptId: 'attempt:1:1', lifecycle: 'COMPLETED', outcome: 'FAILED' },
+            { id: 'job:1:2', attemptId: 'attempt:1:2', lifecycle: 'COMPLETED', outcome: 'PASSED' },
+        ]);
+        payload.observations.pipelineJobs[0].matrix = { node: 20 };
+        payload.observations.pipelineJobs[1].matrix = { node: 22 };
+
+        const report = deriveProcessFlakeEvidence([record(1, payload)], 'repository:1', {
+            minimumRateDenominator: 1,
+        });
+        expect(report.eligibleRetrySequenceCount).toBe(0);
+        expect(report.recoveryCount).toBe(0);
+        expect(report.recoveries).toEqual([]);
     });
 
     it('deduplicates record identities deterministically across caller order', () => {
