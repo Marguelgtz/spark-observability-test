@@ -290,6 +290,23 @@ export interface PullRequestTrajectoryV1 {
   truncated: boolean;
 }
 
+export interface ActivityOverviewV1 {
+  observedPRs: number;
+  totalEvaluations: number;
+  activePRsNeedingAttention: number;
+  mergedUnresolved: number;
+  recovery: {
+    recoveredPRs: number;
+    failedToClearEvents: number;
+    waitingToClearEvents: number;
+  };
+}
+
+export interface NeedsAttentionV1 {
+  total: number;
+  preview: PullRequestActivityV1[];
+}
+
 export interface ActivityResponseV1 {
   version: 1;
   selectedWindow: ActivityWindowV1;
@@ -298,6 +315,9 @@ export interface ActivityResponseV1 {
   counts: Record<AttentionLevelV1, number>;
   repositories: ObservedRepositoryV1[];
   pullRequests: PullRequestActivityV1[];
+  overview?: ActivityOverviewV1;
+  needsAttention?: NeedsAttentionV1;
+  hasObservedHistory?: boolean;
   /** @deprecated V1 compatibility alias containing the latest evaluation for each returned PR. */
   evaluations?: EvaluationSummaryV1[];
   pagination: { nextCursor: string | null };

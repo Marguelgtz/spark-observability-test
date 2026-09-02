@@ -1,12 +1,22 @@
 import './styles.css';
 import './shell.css';
+import './home.css';
+import './overview.css';
 import './account.css';
 import './pr.css';
-import type { ViewerV1 } from '@spark/dashboard-contracts';
+import type { AccountV1, ViewerV1 } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
 import { createDashboardApi, UnauthorizedError } from './api';
 import { createPersistentAppShell } from './app-shell';
+import {
+  enhanceHomeWithEvaluationVolume,
+  enhanceOverviewWithEvaluationVolume,
+  enhancePullRequestWithSeverityTimeline,
+} from './context-insight-enhancers';
 import { FavoriteStore } from './favorites';
+import { enhanceActivityHome } from './home-ui';
+import { getOverviewDrilldown } from './overview-api';
+import { renderOverviewDrilldown } from './overview-ui';
 import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
 import { navigate, parseRoute } from './router';
 import { parseActivityState, serializeActivityState, withActivityState } from './state';
@@ -20,6 +30,7 @@ const shell = createPersistentAppShell();
 mount.replaceChildren(shell.root);
 
 let viewerPromise: Promise<ViewerV1> | undefined;
+let accountPromise: Promise<AccountV1> | undefined;
 let favoritesPromise: Promise<FavoriteStore> | undefined;
 let resolvedViewer: ViewerV1 | undefined;
 let routeGeneration = 0;
@@ -39,6 +50,22 @@ function cachedViewer(): Promise<ViewerV1> {
       });
   }
   return viewerPromise;
+}
+
+function cachedAccount(): Promise<AccountV1> {
+  if (!accountPromise) {
+    accountPromise = api.getAccount()
+      .then((account) => {
+        resolvedViewer = account.viewer;
+        shell.setViewer(account.viewer);
+        return account;
+      })
+      .catch((error) => {
+        accountPromise = undefined;
+        throw error;
+      });
+  }
+  return accountPromise;
 }
 
 function cachedFavorites(): Promise<FavoriteStore> {
@@ -110,16 +137,18 @@ async function render(): Promise<void> {
   shell.showLoading(route.kind);
 
   const viewerTask = abortable(cachedViewer(), signal);
+  const accountTask = abortable(cachedAccount(), signal);
   const favoritesTask = abortable(cachedFavorites(), signal);
 
   try {
     if (route.kind === 'activity') {
       const state = parseActivityState(window.location.search);
       const activityTask = abortable(api.getActivity(state), signal);
-      const [viewer, favorites, activity] = await Promise.all([viewerTask, favoritesTask, activityTask]);
+      const overviewTask = abortable(getOverviewDrilldown('merged-unresolved', state), signal).catch(() => undefined);
+      const [viewer, account, favorites, activity, overviewDetail] = await Promise.all([viewerTask, accountTask, favoritesTask, activityTask, overviewTask]);
       if (generation !== routeGeneration || signal.aborted) return;
 
-      shell.show(renderActivity(viewer, activity, state, {
+      const view = renderActivity(viewer, activity, state, {
         setWindow(value) {
           const next = withActivityState(state, { window: value });
           navigate(`/app?${serializeActivityState(next)}`);
@@ -145,13 +174,29 @@ async function render(): Promise<void> {
           return api.getPullRequestHistory(repositoryId, pullRequestNumber);
         },
         favorites,
-      }));
+      });
+      const homeView = enhanceActivityHome(view, account, activity, state, overviewDetail);
+      enhanceHomeWithEvaluationVolume(homeView, overviewDetail);
+      shell.show(homeView);
+      return;
+    }
+
+    if (route.kind === 'overview') {
+      const state = parseActivityState(window.location.search);
+      const overviewTask = abortable(getOverviewDrilldown(route.metric, state), signal);
+      const [viewer, , , overview] = await Promise.all([viewerTask, accountTask, favoritesTask, overviewTask]);
+      if (generation !== routeGeneration || signal.aborted) return;
+      const overviewView = renderOverviewDrilldown(viewer, overview, state, (value) => {
+        const next = withActivityState(state, { window: value, attention: 'ALL' });
+        navigate(`/app/overview/${route.metric}?${serializeActivityState(next)}`);
+      });
+      enhanceOverviewWithEvaluationVolume(overviewView, overview);
+      shell.show(overviewView);
       return;
     }
 
     if (route.kind === 'account') {
-      const accountTask = abortable(api.getAccount(), signal);
-      const [viewer, , account] = await Promise.all([viewerTask, favoritesTask, accountTask]);
+      const [viewer, account] = await Promise.all([viewerTask, accountTask, favoritesTask]);
       if (generation !== routeGeneration || signal.aborted) return;
       shell.setViewer(viewer);
       shell.show(renderAccountPage(account, () => {
@@ -164,9 +209,9 @@ async function render(): Promise<void> {
 
     if (route.kind === 'pull-request') {
       const trajectoryTask = abortable(api.getTrajectory(route.repositoryId, route.pullRequestNumber), signal);
-      const [viewer, favorites, trajectory] = await Promise.all([viewerTask, favoritesTask, trajectoryTask]);
+      const [viewer, , favorites, trajectory] = await Promise.all([viewerTask, accountTask, favoritesTask, trajectoryTask]);
       if (generation !== routeGeneration || signal.aborted) return;
-      shell.show(renderPullRequest(
+      const pullRequestView = renderPullRequest(
         viewer,
         trajectory,
         currentActivitySearch(),
@@ -177,13 +222,15 @@ async function render(): Promise<void> {
           transitionId,
           input,
         ),
-      ));
+      );
+      enhancePullRequestWithSeverityTimeline(pullRequestView, trajectory);
+      shell.show(pullRequestView);
       return;
     }
 
     if (route.kind === 'run') {
       const runTask = abortable(api.getRun(route.repositoryId, route.runId), signal);
-      const [viewer, favorites, response] = await Promise.all([viewerTask, favoritesTask, runTask]);
+      const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, runTask]);
       if (generation !== routeGeneration || signal.aborted) return;
       shell.show(renderEvaluation(viewer, response, currentActivitySearch(), favorites));
       const summary = response.status === 'available' ? response.detail : response.summary;
@@ -203,7 +250,7 @@ async function render(): Promise<void> {
 
     if (route.kind === 'evaluation') {
       const evaluationTask = abortable(api.getEvaluation(route.repositoryId, route.headSha), signal);
-      const [viewer, favorites, response] = await Promise.all([viewerTask, favoritesTask, evaluationTask]);
+      const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, evaluationTask]);
       if (generation !== routeGeneration || signal.aborted) return;
       shell.show(renderEvaluation(viewer, response, currentActivitySearch(), favorites));
       const summary = response.status === 'available' ? response.detail : response.summary;
@@ -216,7 +263,7 @@ async function render(): Promise<void> {
       return;
     }
 
-    const [viewer] = await Promise.all([viewerTask, favoritesTask]);
+    const [viewer] = await Promise.all([viewerTask, accountTask, favoritesTask]);
     if (generation !== routeGeneration || signal.aborted) return;
     shell.show(renderNotFound(viewer));
   } catch (error) {

@@ -5,6 +5,7 @@ import type {
   PullRequestActivityV1,
 } from '@spark/dashboard-contracts';
 import { handleRequest, type Env, type WorkerExecutionContext } from './app';
+import { handleOverviewRequest, isOverviewRequest } from './overview-handler';
 
 interface CompatibleRepository {
   id: number;
@@ -80,6 +81,7 @@ async function withActivityV1Compatibility(request: Request, response: Response)
 
 export default {
   async fetch(request: Request, env: Env, context: WorkerExecutionContext): Promise<Response> {
+    if (isOverviewRequest(request)) return handleOverviewRequest(request, env);
     const response = await handleRequest(request, env, context);
     return withActivityV1Compatibility(request, response);
   },

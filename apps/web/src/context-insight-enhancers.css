@@ -1,0 +1,96 @@
+.context-volume-chart {
+  min-width: 0;
+}
+
+.pr-severity-chart {
+  margin: 18px 0 0;
+  padding: 16px 16px 10px;
+  border: 1px solid #deded8;
+  border-radius: 10px;
+  background: #fafaf8;
+}
+
+.pr-severity-caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.pr-severity-caption strong {
+  font-size: 13px;
+}
+
+.pr-severity-caption span,
+.pr-severity-note {
+  color: #74746f;
+  font-size: 11px;
+}
+
+.pr-severity-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 190px;
+}
+
+.pr-severity-grid {
+  stroke: #dfdfd9;
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.pr-severity-level,
+.pr-severity-time {
+  fill: #777771;
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.pr-severity-level {
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.pr-severity-level.is-high { fill: #8d2f2a; }
+.pr-severity-level.is-medium { fill: #855f1d; }
+.pr-severity-level.is-low { fill: #346844; }
+
+.pr-severity-path {
+  fill: none;
+  stroke: #3f3f3b;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pr-severity-point {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.pr-severity-point.is-high { fill: #8d2f2a; }
+.pr-severity-point.is-medium { fill: #9a6d1d; }
+.pr-severity-point.is-low { fill: #3e7650; }
+
+.pr-severity-note {
+  margin: 2px 0 0;
+  line-height: 1.45;
+}
+
+@media (max-width: 620px) {
+  .pr-severity-chart {
+    padding-inline: 10px;
+  }
+
+  .pr-severity-caption {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .pr-severity-svg {
+    min-height: 165px;
+  }
+}

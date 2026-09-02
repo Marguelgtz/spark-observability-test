@@ -106,7 +106,7 @@ describe('dashboard row normalization', () => {
     });
   });
 
-  it('binds large repository scopes as one JSON value instead of one D1 variable per repository', async () => {
+  it('binds large repository scopes as one JSON value across activity and home queries', async () => {
     const statements: Array<{ query: string; bindings: unknown[] }> = [];
     const db = {
       prepare(query: string) {
@@ -133,7 +133,7 @@ describe('dashboard row normalization', () => {
       limit: 25,
     }, repositoryIds, new Date('2026-08-28T00:00:00.000Z'));
 
-    expect(statements).toHaveLength(3);
+    expect(statements).toHaveLength(6);
     expect(statements.every(statement => statement.query.includes('json_each(?)'))).toBe(true);
     expect(Math.max(...statements.map(statement => statement.bindings.length))).toBeLessThan(100);
     expect(statements.every(statement => statement.bindings.includes(JSON.stringify(repositoryIds)))).toBe(true);
