@@ -454,6 +454,21 @@ describe('historical process runtime baselines', () => {
         expect(abstained.completeness).toBe('PARTIAL');
     });
 
+    it('keeps every historical projection deterministic across caller order', () => {
+        const ordered = [completedRecord(1, 'FAILED', 10), completedRecord(2, 'PASSED', 20)];
+        const reversed = [...ordered].reverse();
+        expect(deriveProcessRuntimeBaselines(reversed, 'repository:1'))
+            .toEqual(deriveProcessRuntimeBaselines(ordered, 'repository:1'));
+        expect(deriveProcessFlakeEvidence(reversed, 'repository:1'))
+            .toEqual(deriveProcessFlakeEvidence(ordered, 'repository:1'));
+        expect(deriveProcessFailureFingerprints(reversed, 'repository:1'))
+            .toEqual(deriveProcessFailureFingerprints(ordered, 'repository:1'));
+        expect(deriveHistoricalProcessRelationships(reversed, 'repository:1'))
+            .toEqual(deriveHistoricalProcessRelationships(ordered, 'repository:1'));
+        expect(deriveProcessDrift(reversed, 'repository:1'))
+            .toEqual(deriveProcessDrift(ordered, 'repository:1'));
+    });
+
     it('deduplicates record identities deterministically across caller order', () => {
         const original = completedRecord(1, 'PASSED', 10);
         const laterCopy = structuredClone(original);
