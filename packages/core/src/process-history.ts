@@ -33,9 +33,11 @@ export interface ProcessHistoryLimits {
     minimumDurationSamples: number;
     maxFlakeRecoveries: number;
     maxFailureFingerprints: number;
+    maxFingerprintOccurrenceIds: number;
     maxProcessRelationships: number;
     maxRelationshipEvidenceIds: number;
     maxDriftSignals: number;
+    maxDriftSupportingObservationIds: number;
 }
 
 export const DEFAULT_PROCESS_HISTORY_LIMITS: ProcessHistoryLimits = {
@@ -45,9 +47,11 @@ export const DEFAULT_PROCESS_HISTORY_LIMITS: ProcessHistoryLimits = {
     minimumDurationSamples: 5,
     maxFlakeRecoveries: 500,
     maxFailureFingerprints: 500,
+    maxFingerprintOccurrenceIds: 100,
     maxProcessRelationships: 1_000,
     maxRelationshipEvidenceIds: 100,
     maxDriftSignals: 500,
+    maxDriftSupportingObservationIds: 100,
 };
 
 export interface HistoricalRate {
@@ -674,8 +678,16 @@ export function deriveProcessFailureFingerprints(
             identity.stepName ?? identity.jobName,
             identity.domain,
         ].join(':');
+        const id = `failure-fingerprint:${stableSubject}`;
+        const allOccurrenceIds = ordered.map(item => item.id).sort();
+        const occurrenceIds = allOccurrenceIds.slice(0, Math.max(0, limits.maxFingerprintOccurrenceIds));
+        if (occurrenceIds.length < allOccurrenceIds.length) historical.truncation.push({
+            collection: `failureFingerprints.${id}.occurrenceIds`,
+            observedCount: allOccurrenceIds.length,
+            retainedCount: occurrenceIds.length,
+        });
         return {
-            id: `failure-fingerprint:${stableSubject}`,
+            id,
             identity,
             occurrenceCount: ordered.length,
             failureDenominator: occurrences.length,
@@ -684,7 +696,7 @@ export function deriveProcessFailureFingerprints(
             firstObservedAt: ordered[0].observedAt,
             lastObservedAt: ordered.at(-1)!.observedAt,
             recurrence: ordered.length > 1 ? 'RECURRING' as const : 'OBSERVED_ONCE' as const,
-            occurrenceIds: ordered.map(item => item.id).sort(),
+            occurrenceIds,
             _sortKey: key,
         };
     }).sort((a, b) => b.occurrenceCount - a.occurrenceCount
@@ -823,7 +835,10 @@ function relationshipProcesses(
     const identity = evidenceProcessIdentity(evidence, understanding);
     const processes: HistoricalRelationshipProcess[] = [{ kind: 'EVIDENCE_NAME', id: evidence.name }];
     if (identity.pipelineDefinitionId) processes.push({ kind: 'PIPELINE_DEFINITION', id: identity.pipelineDefinitionId });
-    if (identity.logicalJobId) processes.push({ kind: 'LOGICAL_JOB', id: identity.logicalJobId });
+    if (identity.logicalJobId) processes.push({
+        kind: 'LOGICAL_JOB',
+        id: `${identity.pipelineDefinitionId ?? 'unknown'}:${identity.logicalJobId}`,
+    });
     return processes.sort((a, b) => `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`));
 }
 
@@ -923,6 +938,293 @@ export function deriveHistoricalProcessRelationships(
         window: historical.window,
         relationships,
         completeness: historyIsPartial(historical) || hasIncompleteChangedRevision ? 'PARTIAL' : 'COMPLETE',
+        truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
+    };
+}
+
+export type ProcessDriftKind =
+    | 'WORKFLOW_ABSENT'
+    | 'JOB_SLOWER'
+    | 'NEW_MATRIX_DIMENSION'
+    | 'NEW_DEPENDENCY'
+    | 'NEW_VERIFICATION_GAP';
+
+export interface ProcessDriftSignal {
+    id: string;
+    driftKind: ProcessDriftKind;
+    repositoryId: string;
+    revision: string;
+    summary: string;
+    confidence: 'SUPPORTED' | 'TENTATIVE';
+    supportingObservationIds: string[];
+    detail:
+        | {
+            driftKind: 'WORKFLOW_ABSENT';
+            pipelineDefinitionId: string;
+            previousRevision: string;
+        }
+        | {
+            driftKind: 'JOB_SLOWER';
+            pipelineJobId: string;
+            logicalJobId: string;
+            matrix: Record<string, string | number | boolean>;
+            durationMs: number;
+            baselineP90Ms: number;
+            baselineSampleCount: number;
+        }
+        | {
+            driftKind: 'NEW_MATRIX_DIMENSION';
+            pipelineJobId: string;
+            logicalJobId: string;
+            dimension: string;
+            priorExecutionCount: number;
+        }
+        | {
+            driftKind: 'NEW_DEPENDENCY';
+            pipelineDefinitionId: string;
+            logicalJobId: string;
+            dependencyLogicalJobId: string;
+            priorDefinitionCount: number;
+        }
+        | {
+            driftKind: 'NEW_VERIFICATION_GAP';
+            verificationGapInsightId: string;
+            areaIds: string[];
+            boundaryIds: string[];
+            previousRevision: string;
+        };
+}
+
+export interface ProcessDriftCoverage {
+    historicalRevisionCount: number;
+    previousRevision?: string;
+    currentRevision?: string;
+    workflowComparisonEligible: boolean;
+    gapComparisonEligible: boolean;
+    durationSubjectsEvaluated: number;
+    durationSubjectsExcludedInsufficientHistory: number;
+}
+
+export interface ProcessDriftReport {
+    schemaVersion: 'process-drift/v1';
+    repositoryId: string;
+    window: ProcessHistoryWindow;
+    coverage: ProcessDriftCoverage;
+    signals: ProcessDriftSignal[];
+    completeness: 'COMPLETE' | 'PARTIAL';
+    truncation: ProcessHistoryTruncation[];
+}
+
+function sourceComplete(understanding: RepositoryUnderstanding, source: string): boolean {
+    return understanding.observations.completeness.some(item => item.source === source && item.state === 'COMPLETE');
+}
+
+function jobSubjectKey(job: HistoricalJobSample): string | undefined {
+    return job.logicalJobId
+        ? `${job.pipelineDefinitionId ?? 'unknown'}\u0000${job.logicalJobId}\u0000${canonicalJson(job.matrix ?? {})}`
+        : undefined;
+}
+
+function jobDuration(job: HistoricalJobSample): number | undefined {
+    const started = parseTime(job.startedAt);
+    const completed = parseTime(job.completedAt);
+    return started !== undefined && completed !== undefined && completed >= started ? completed - started : undefined;
+}
+
+function p90(values: readonly number[]): number {
+    const ordered = [...values].sort((a, b) => a - b);
+    return ordered[Math.max(0, Math.ceil(0.9 * ordered.length) - 1)];
+}
+
+function definitionDependencies(understanding: RepositoryUnderstanding): Map<string, Set<string>> {
+    const dependencies = new Map<string, Set<string>>();
+    for (const definition of understanding.observations.pipelineDefinitions) {
+        for (const job of definition.jobs) {
+            dependencies.set(
+                `${definition.id}\u0000${job.id}`,
+                new Set(job.needs ?? []),
+            );
+        }
+    }
+    return dependencies;
+}
+
+/** CI-805 — bounded, abstention-aware process drift over retained revisions. */
+export function deriveProcessDrift(
+    records: readonly ProcessObservationRecord[],
+    repositoryId: string,
+    partialLimits: Partial<ProcessHistoryLimits> = {},
+): ProcessDriftReport {
+    const limits = { ...DEFAULT_PROCESS_HISTORY_LIMITS, ...partialLimits };
+    const historical = buildHistoricalWindow(records, repositoryId, limits);
+    const revisions = latestRevisionRecords(historical);
+    const current = revisions.at(-1);
+    const previous = revisions.at(-2);
+    const coverage: ProcessDriftCoverage = {
+        historicalRevisionCount: revisions.length,
+        previousRevision: previous?.record.revision,
+        currentRevision: current?.record.revision,
+        workflowComparisonEligible: false,
+        gapComparisonEligible: false,
+        durationSubjectsEvaluated: 0,
+        durationSubjectsExcludedInsufficientHistory: 0,
+    };
+    const signals: ProcessDriftSignal[] = [];
+    if (current) {
+        const currentUnderstanding = current.record.understanding;
+        const currentRevision = current.record.revision;
+        if (previous) {
+            const previousUnderstanding = previous.record.understanding;
+            coverage.workflowComparisonEligible = sourceComplete(currentUnderstanding, 'github-workflow-files')
+                && sourceComplete(previousUnderstanding, 'github-workflow-files');
+            if (coverage.workflowComparisonEligible) {
+                const currentDefinitions = new Set(currentUnderstanding.observations.pipelineDefinitions.map(item => item.id));
+                for (const definition of previousUnderstanding.observations.pipelineDefinitions) {
+                    if (currentDefinitions.has(definition.id)) continue;
+                    signals.push({
+                        id: `process-drift:workflow-absent:${currentRevision}:${definition.id}`,
+                        driftKind: 'WORKFLOW_ABSENT', repositoryId, revision: currentRevision,
+                        summary: `${definition.name} was present at ${previous.record.revision} and is absent from the complete workflow acquisition at ${currentRevision}`,
+                        confidence: 'SUPPORTED', supportingObservationIds: [definition.id, current.record.recordId, previous.record.recordId],
+                        detail: {
+                            driftKind: 'WORKFLOW_ABSENT', pipelineDefinitionId: definition.id,
+                            previousRevision: previous.record.revision,
+                        },
+                    });
+                }
+            }
+
+            coverage.gapComparisonEligible = evidenceAcquisitionIsComplete(currentUnderstanding)
+                && evidenceAcquisitionIsComplete(previousUnderstanding);
+            if (coverage.gapComparisonEligible) {
+                const previousGaps = new Set(deriveProcessInsights(previousUnderstanding).insights
+                    .filter(item => item.insightKind === 'VERIFICATION_GAP').map(item => item.id));
+                for (const gap of deriveProcessInsights(currentUnderstanding).insights
+                    .filter(item => item.insightKind === 'VERIFICATION_GAP')) {
+                    if (previousGaps.has(gap.id)) continue;
+                    signals.push({
+                        id: `process-drift:new-gap:${currentRevision}:${gap.id}`,
+                        driftKind: 'NEW_VERIFICATION_GAP', repositoryId, revision: currentRevision,
+                        summary: `verification gap ${gap.id} is newly observed at ${currentRevision}`,
+                        confidence: 'SUPPORTED',
+                        supportingObservationIds: [current.record.recordId, ...gap.supportingObservationIds].sort(),
+                        detail: {
+                            driftKind: 'NEW_VERIFICATION_GAP', verificationGapInsightId: gap.id,
+                            areaIds: [...gap.areaIds], boundaryIds: [...gap.boundaryIds],
+                            previousRevision: previous.record.revision,
+                        },
+                    });
+                }
+            }
+        }
+
+        const currentJobs = historical.jobs.filter(job => job.revision === currentRevision);
+        const priorJobs = historical.jobs.filter(job => job.revision !== currentRevision);
+        const priorBySubject = new Map<string, HistoricalJobSample[]>();
+        for (const job of priorJobs) {
+            const key = jobSubjectKey(job);
+            if (key) priorBySubject.set(key, [...(priorBySubject.get(key) ?? []), job]);
+        }
+        for (const job of currentJobs) {
+            const key = jobSubjectKey(job);
+            if (!key || !job.logicalJobId) continue;
+            const baselineJobs = priorBySubject.get(key) ?? [];
+            const durations = baselineJobs.flatMap(sample => {
+                const duration = jobDuration(sample);
+                return duration === undefined ? [] : [duration];
+            });
+            const duration = jobDuration(job);
+            if (duration !== undefined) {
+                if (durations.length >= limits.minimumDurationSamples) {
+                    coverage.durationSubjectsEvaluated += 1;
+                    const baselineP90Ms = p90(durations);
+                    if (duration > baselineP90Ms) signals.push({
+                        id: `process-drift:job-slower:${currentRevision}:${job.id}`,
+                        driftKind: 'JOB_SLOWER', repositoryId, revision: currentRevision,
+                        summary: `${job.name} took ${String(duration)}ms, above its ${String(durations.length)}-sample historical p90 of ${String(baselineP90Ms)}ms`,
+                        confidence: 'SUPPORTED',
+                        supportingObservationIds: [job.id, ...baselineJobs.map(item => item.id)].sort(),
+                        detail: {
+                            driftKind: 'JOB_SLOWER', pipelineJobId: job.id, logicalJobId: job.logicalJobId,
+                            matrix: { ...(job.matrix ?? {}) }, durationMs: duration, baselineP90Ms,
+                            baselineSampleCount: durations.length,
+                        },
+                    });
+                } else {
+                    coverage.durationSubjectsExcludedInsufficientHistory += 1;
+                }
+            } else {
+                coverage.durationSubjectsExcludedInsufficientHistory += 1;
+            }
+
+            const comparablePrior = priorJobs.filter(sample =>
+                sample.pipelineDefinitionId === job.pipelineDefinitionId && sample.logicalJobId === job.logicalJobId);
+            if (comparablePrior.length > 0) {
+                const priorDimensions = new Set(comparablePrior.flatMap(sample => Object.keys(sample.matrix ?? {})));
+                for (const dimension of Object.keys(job.matrix ?? {}).sort()) {
+                    if (priorDimensions.has(dimension)) continue;
+                    signals.push({
+                        id: `process-drift:new-matrix-dimension:${currentRevision}:${job.id}:${dimension}`,
+                        driftKind: 'NEW_MATRIX_DIMENSION', repositoryId, revision: currentRevision,
+                        summary: `${job.name} introduced matrix dimension ${dimension} after ${String(comparablePrior.length)} prior execution(s)`,
+                        confidence: 'SUPPORTED',
+                        supportingObservationIds: [job.id, ...comparablePrior.map(item => item.id)].sort(),
+                        detail: {
+                            driftKind: 'NEW_MATRIX_DIMENSION', pipelineJobId: job.id,
+                            logicalJobId: job.logicalJobId, dimension, priorExecutionCount: comparablePrior.length,
+                        },
+                    });
+                }
+            }
+        }
+
+        const currentDependencies = definitionDependencies(currentUnderstanding);
+        const priorDependencyMaps = revisions.slice(0, -1).map(item => definitionDependencies(item.record.understanding));
+        for (const [subject, needs] of [...currentDependencies.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+            const priorSets = priorDependencyMaps.flatMap(map => map.has(subject) ? [map.get(subject)!] : []);
+            if (priorSets.length === 0) continue;
+            const priorNeeds = new Set(priorSets.flatMap(item => [...item]));
+            const separator = subject.indexOf('\u0000');
+            const definitionId = subject.slice(0, separator);
+            const logicalJobId = subject.slice(separator + 1);
+            for (const dependency of [...needs].sort()) {
+                if (priorNeeds.has(dependency)) continue;
+                signals.push({
+                    id: `process-drift:new-dependency:${currentRevision}:${definitionId}:${logicalJobId}:${dependency}`,
+                    driftKind: 'NEW_DEPENDENCY', repositoryId, revision: currentRevision,
+                    summary: `${logicalJobId} newly depends on ${dependency} after ${String(priorSets.length)} prior definition(s)`,
+                    confidence: 'SUPPORTED', supportingObservationIds: [definitionId, current.record.recordId],
+                    detail: {
+                        driftKind: 'NEW_DEPENDENCY', pipelineDefinitionId: definitionId, logicalJobId,
+                        dependencyLogicalJobId: dependency, priorDefinitionCount: priorSets.length,
+                    },
+                });
+            }
+        }
+    }
+    signals.sort((a, b) => a.id.localeCompare(b.id));
+    const retainedSignals = signals.slice(0, Math.max(0, limits.maxDriftSignals));
+    if (retainedSignals.length < signals.length) historical.truncation.push({
+        collection: 'driftSignals', observedCount: signals.length, retainedCount: retainedSignals.length,
+    });
+    const boundedSignals = retainedSignals.map(signal => {
+        const allSupportingObservationIds = [...new Set(signal.supportingObservationIds)].sort();
+        const supportingObservationIds = allSupportingObservationIds
+            .slice(0, Math.max(0, limits.maxDriftSupportingObservationIds));
+        if (supportingObservationIds.length < allSupportingObservationIds.length) historical.truncation.push({
+            collection: `driftSignals.${signal.id}.supportingObservationIds`,
+            observedCount: allSupportingObservationIds.length,
+            retainedCount: supportingObservationIds.length,
+        });
+        return { ...signal, supportingObservationIds };
+    });
+    const abstained = !current || !previous
+        || !coverage.workflowComparisonEligible || !coverage.gapComparisonEligible
+        || coverage.durationSubjectsExcludedInsufficientHistory > 0;
+    return {
+        schemaVersion: 'process-drift/v1', repositoryId, window: historical.window, coverage,
+        signals: boundedSignals,
+        completeness: historyIsPartial(historical) || abstained ? 'PARTIAL' : 'COMPLETE',
         truncation: historical.truncation.sort((a, b) => a.collection.localeCompare(b.collection)),
     };
 }

@@ -4,6 +4,7 @@ import {
     deriveProcessFlakeEvidence,
     deriveProcessFailureFingerprints,
     deriveHistoricalProcessRelationships,
+    deriveProcessDrift,
     type ClaimSupport,
     type ProcessLifecycle,
     type ProcessObservationRecord,
@@ -343,6 +344,114 @@ describe('historical process runtime baselines', () => {
             changedRevisionCoverage: { count: 1, denominator: 1, value: 1 },
         });
         expect(partial.completeness).toBe('PARTIAL');
+    });
+
+    it('detects observable workflow, duration, matrix, and dependency drift with baselines', () => {
+        const prior = [1, 2, 3, 4, 5].map(index => {
+            const item = completedRecord(index, 'PASSED', index * 10);
+            item.understanding.observations.pipelineJobs[0].matrix = { node: 20 };
+            item.understanding.observations.pipelineJobs.push({
+                ...item.understanding.observations.pipelineJobs[0],
+                id: `job:${index}:matrix`, logicalJobId: 'matrix-test', matrix: { node: 20 },
+            });
+            item.understanding.observations.pipelineDefinitions.push({
+                kind: 'pipeline-definition', id: 'definition:legacy', repositoryId: 'repository:1',
+                revision: `revision:${index}`, name: 'Legacy', path: '.github/workflows/legacy.yml',
+                triggers: [{ event: 'pull_request' }], jobs: [], source: { kind: 'ci-definition' },
+            });
+            item.understanding.observations.completeness.push(
+                { source: 'github-workflow-files', state: 'COMPLETE' },
+                { source: 'github-check-runs', state: 'COMPLETE' },
+            );
+            return item;
+        });
+        const current = completedRecord(6, 'PASSED', 60);
+        current.understanding.observations.pipelineJobs[0].matrix = { node: 20 };
+        current.understanding.observations.pipelineJobs.push({
+            ...current.understanding.observations.pipelineJobs[0],
+            id: 'job:6:matrix', logicalJobId: 'matrix-test', matrix: { node: 20, os: 'linux' },
+        });
+        current.understanding.observations.pipelineDefinitions[0].jobs[0].needs = ['build'];
+        current.understanding.observations.pipelineDefinitions[0].jobs.push({ id: 'build', name: 'Build' });
+        current.understanding.observations.completeness.push(
+            { source: 'github-workflow-files', state: 'COMPLETE' },
+            { source: 'github-check-runs', state: 'COMPLETE' },
+        );
+
+        const report = deriveProcessDrift([...prior, current], 'repository:1');
+        expect(report.coverage).toMatchObject({
+            historicalRevisionCount: 6, previousRevision: 'revision:5', currentRevision: 'revision:6',
+            workflowComparisonEligible: true, gapComparisonEligible: true, durationSubjectsEvaluated: 1,
+        });
+        expect(report.signals).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                driftKind: 'WORKFLOW_ABSENT', detail: expect.objectContaining({ pipelineDefinitionId: 'definition:legacy' }),
+            }),
+            expect.objectContaining({
+                driftKind: 'JOB_SLOWER', detail: expect.objectContaining({
+                    pipelineJobId: 'job:6:1', durationMs: 60_000, baselineP90Ms: 50_000, baselineSampleCount: 5,
+                }),
+            }),
+            expect.objectContaining({
+                driftKind: 'NEW_MATRIX_DIMENSION', detail: expect.objectContaining({
+                    pipelineJobId: 'job:6:matrix', dimension: 'os', priorExecutionCount: 5,
+                }),
+            }),
+            expect.objectContaining({
+                driftKind: 'NEW_DEPENDENCY', detail: expect.objectContaining({
+                    logicalJobId: 'test', dependencyLogicalJobId: 'build', priorDefinitionCount: 5,
+                }),
+            }),
+        ]));
+    });
+
+    it('detects a newly observed verification gap only across complete acquisitions', () => {
+        const gapRecord = (index: number, attributed: boolean, complete = true) => {
+            const item = completedRecord(index, 'PASSED', 10);
+            const payload = item.understanding;
+            payload.observations.change.artifacts = [{ artifactId: `artifact:${index}`, status: 'MODIFIED' }];
+            payload.observations.artifacts = [{
+                kind: 'artifact', id: `artifact:${index}`, repositoryId: 'repository:1', revision: `revision:${index}`,
+                path: 'packages/api/index.ts', artifactKind: 'FILE', source: { kind: 'vcs' },
+            }];
+            payload.areas = [{ id: 'area:api', label: 'API', roles: ['FUNCTIONAL'], support: claimSupport() }];
+            payload.memberships = [{
+                id: 'membership:api', areaId: 'area:api', target: { kind: 'PATH', path: 'packages/api' },
+                support: claimSupport(),
+            }];
+            payload.observations.evidenceRuns = [{
+                kind: 'evidence-run', id: `evidence:${index}`, repositoryId: 'repository:1', revision: `revision:${index}`,
+                name: 'verify', evidenceKind: 'github-check-run', lifecycle: 'COMPLETED', outcome: 'PASSED',
+                pipelineRunId: `run:${index}`, pipelineAttemptId: `attempt:${index}:1`, pipelineJobId: `job:${index}:1`,
+                source: { kind: 'ci' },
+            }];
+            payload.observations.completeness.push(
+                { source: 'github-check-runs', state: complete ? 'COMPLETE' : 'PARTIAL' },
+                { source: 'github-workflow-files', state: 'COMPLETE' },
+            );
+            if (attributed) payload.evidenceAttributions = [{
+                id: `attribution:${index}`, evidenceRunId: `evidence:${index}`,
+                target: { kind: 'AREA', areaId: 'area:api' }, support: claimSupport(),
+            }];
+            return item;
+        };
+        const previous = gapRecord(1, true);
+        const current = gapRecord(2, false);
+        const report = deriveProcessDrift([previous, current], 'repository:1', {
+            minimumDurationSamples: 1,
+        });
+        expect(report.signals).toContainEqual(expect.objectContaining({
+            driftKind: 'NEW_VERIFICATION_GAP',
+            detail: expect.objectContaining({ areaIds: ['area:api'], previousRevision: 'revision:1' }),
+        }));
+
+        const partialCurrent = gapRecord(2, false, false);
+        const abstained = deriveProcessDrift([previous, partialCurrent], 'repository:1', {
+            minimumDurationSamples: 1,
+        });
+        expect(abstained.coverage.gapComparisonEligible).toBe(false);
+        expect(abstained.signals.some(item => item.driftKind === 'NEW_VERIFICATION_GAP')).toBe(false);
+        expect(abstained.completeness).toBe('PARTIAL');
     });
 
     it('deduplicates record identities deterministically across caller order', () => {
