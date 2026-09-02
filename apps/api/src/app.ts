@@ -4,6 +4,7 @@ import type {
   ActivityWindowV1,
   AttentionFilterV1,
   DashboardFavoriteV1,
+  DashboardSettingsInputV1,
   PullRequestTrajectoryV1,
   SaveTrajectoryFeedbackV1,
   TrajectoryFeedbackClassificationV1,
@@ -14,6 +15,7 @@ import { D1DashboardReader, type DashboardReader } from './dashboard-reader';
 import { D1SparkStore, type D1Database } from './d1';
 import { D1DashboardFavoriteStore, type DashboardFavoriteStore } from './dashboard-favorites';
 import { D1DashboardFeedbackStore, type DashboardFeedbackStore } from './dashboard-feedback';
+import { D1DashboardSettingsStore, defaultDashboardSettings, type DashboardSettingsStore } from './dashboard-settings';
 import { GitHubDashboardAuth } from './github-auth';
 import { SparkOrchestrator } from './orchestrator';
 import type { SparkStore } from './contracts';
@@ -40,16 +42,17 @@ export interface WebhookDependencies {
   dashboardAuth?: GitHubDashboardAuth;
   dashboardFavoriteStore?: DashboardFavoriteStore;
   dashboardFeedbackStore?: DashboardFeedbackStore;
+  dashboardSettingsStore?: DashboardSettingsStore;
 }
 
 export interface WorkerExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
 
-function json(body: unknown, status = 200): Response {
+function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
 }
 
@@ -150,6 +153,50 @@ async function parseFavorite(request: Request): Promise<DashboardFavoriteV1 | un
   };
 }
 
+const SETTINGS_KEYS = [
+  'collapseSecondarySections',
+  'defaultRepositoryId',
+  'defaultWindow',
+  'density',
+  'previewSize',
+];
+
+async function parseSettings(request: Request): Promise<DashboardSettingsInputV1 | undefined> {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    return undefined;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).sort().join(',') !== SETTINGS_KEYS.join(',')) return undefined;
+  if (input.defaultWindow !== '24h' && input.defaultWindow !== '7d' && input.defaultWindow !== '30d') return undefined;
+  if (input.previewSize !== 5 && input.previewSize !== 10 && input.previewSize !== 15) return undefined;
+  if (input.density !== 'COMFORTABLE' && input.density !== 'COMPACT') return undefined;
+  if (typeof input.collapseSecondarySections !== 'boolean') return undefined;
+  if (input.defaultRepositoryId !== null
+    && (!Number.isSafeInteger(input.defaultRepositoryId) || Number(input.defaultRepositoryId) <= 0)) return undefined;
+  return {
+    defaultWindow: input.defaultWindow,
+    previewSize: input.previewSize,
+    density: input.density,
+    collapseSecondarySections: input.collapseSecondarySections,
+    defaultRepositoryId: input.defaultRepositoryId === null ? null : Number(input.defaultRepositoryId),
+  };
+}
+
+function settingsRevision(request: Request): number | undefined {
+  const match = /^"settings-(\d+)"$/.exec(request.headers.get('if-match') ?? '');
+  if (!match) return undefined;
+  const revision = Number(match[1]);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : undefined;
+}
+
+function settingsEtag(revision: number): string {
+  return `"settings-${revision}"`;
+}
+
 const FEEDBACK_CLASSIFICATIONS: TrajectoryFeedbackClassificationV1[] = [
   'USEFUL',
   'EXPECTED',
@@ -189,6 +236,37 @@ async function handleDashboardRequest(
 
   if (request.method === 'GET' && url.pathname === '/api/me') return json(principal.viewer);
   if (request.method === 'GET' && url.pathname === '/api/account') return json(account(principal, env));
+
+  if (url.pathname === '/api/settings') {
+    const settingsStore = dependencies.dashboardSettingsStore ?? new D1DashboardSettingsStore(env.DB);
+    if (request.method === 'GET') {
+      const persisted = await settingsStore.get(principal.viewer.id);
+      const settings = persisted
+        ? {
+          ...persisted,
+          defaultRepositoryId: persisted.defaultRepositoryId !== null
+            && principal.repositoryIds.includes(persisted.defaultRepositoryId)
+            ? persisted.defaultRepositoryId
+            : null,
+        }
+        : defaultDashboardSettings();
+      return json(settings, 200, { etag: settingsEtag(settings.revision) });
+    }
+    if (request.method === 'PUT') {
+      if (request.headers.get('origin') !== url.origin) return json({ error: 'forbidden' }, 403);
+      const expectedRevision = settingsRevision(request);
+      if (expectedRevision === undefined) return json({ error: 'invalid If-Match' }, 400);
+      const input = await parseSettings(request);
+      if (!input) return json({ error: 'invalid settings' }, 400);
+      if (input.defaultRepositoryId !== null && !principal.repositoryIds.includes(input.defaultRepositoryId)) {
+        return json({ error: 'not found' }, 404);
+      }
+      const saved = await settingsStore.replace(principal.viewer.id, expectedRevision, input);
+      if (!saved) return json({ error: 'settings changed' }, 412);
+      return json(saved, 200, { etag: settingsEtag(saved.revision) });
+    }
+    return json({ error: 'method not allowed' }, 405, { allow: 'GET, PUT' });
+  }
 
   const favoriteStore = dependencies.dashboardFavoriteStore ?? new D1DashboardFavoriteStore(env.DB);
   if (request.method === 'GET' && url.pathname === '/api/favorites') {

@@ -7,9 +7,11 @@ import './account.css';
 import './pr.css';
 import './behavior.css';
 import './progressive-list.css';
+import './settings.css';
 import type { AccountV1, ActivityResponseV1, ViewerV1 } from '@spark/dashboard-contracts';
+import { DASHBOARD_SETTINGS_DEFAULTS } from '@spark/dashboard-contracts';
 import { renderAccountPage } from './account-ui';
-import { createDashboardApi, UnauthorizedError } from './api';
+import { createDashboardApi, UnauthorizedError, type LoadedDashboardSettings } from './api';
 import { createPersistentAppShell } from './app-shell';
 import { getBehaviorPatterns, getChangeBehavior } from './behavior-api';
 import { enhanceOverviewWithBehaviorPatterns, enhancePullRequestWithBehavior } from './behavior-ui';
@@ -28,7 +30,7 @@ import { getNotableTransitionInsights, getOverviewDrilldown } from './overview-a
 import { renderOverviewDrilldown } from './overview-ui';
 import { enhanceEvaluationWithPullRequestContext, renderPullRequest } from './pr-ui';
 import { legacyActivityRedirect, navigate, parseRoute } from './router';
-import { renderSettingsPlaceholder } from './settings-ui';
+import { renderSettings } from './settings-ui';
 import { parseActivityState, serializeActivityState, withActivityState, type ActivityUrlState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderNotFound, renderSignedOut } from './ui';
 import { DEFAULT_PREVIEW_SIZE } from './progressive-list';
@@ -43,6 +45,7 @@ mount.replaceChildren(shell.root);
 let viewerPromise: Promise<ViewerV1> | undefined;
 let accountPromise: Promise<AccountV1> | undefined;
 let favoritesPromise: Promise<FavoriteStore> | undefined;
+let settingsPromise: Promise<LoadedDashboardSettings> | undefined;
 let resolvedViewer: ViewerV1 | undefined;
 let routeGeneration = 0;
 let routeController: AbortController | undefined;
@@ -92,6 +95,29 @@ function cachedFavorites(): Promise<FavoriteStore> {
       });
   }
   return favoritesPromise;
+}
+
+function cachedSettings(force = false): Promise<LoadedDashboardSettings> {
+  if (force) settingsPromise = undefined;
+  if (!settingsPromise) {
+    settingsPromise = api.getSettings().catch((error) => {
+      settingsPromise = undefined;
+      throw error;
+    });
+  }
+  return settingsPromise;
+}
+
+function fallbackSettings(): LoadedDashboardSettings {
+  return {
+    settings: {
+      version: 1,
+      revision: 0,
+      ...DASHBOARD_SETTINGS_DEFAULTS,
+      updatedAt: null,
+    },
+    etag: '"settings-0"',
+  };
 }
 
 function abortedError(): DOMException {
@@ -331,10 +357,42 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'settings') {
-      const [viewer] = await Promise.all([viewerTask, accountTask, favoritesTask]);
+      const settingsTask = settle(abortable(cachedSettings(), signal));
+      const repositoriesTask = settle(abortable(api.getActivity({
+        window: '30d',
+        attention: 'ALL',
+        repositoryId: null,
+        cursor: null,
+        limit: 1,
+      }), signal));
+      void accountTask.catch(() => undefined);
+      void favoritesTask.catch(() => undefined);
+      const [viewer, loadedSettings, repositoryMetadata] = await Promise.all([
+        viewerTask,
+        settingsTask,
+        repositoriesTask,
+      ]);
       if (generation !== routeGeneration || signal.aborted) return;
       shell.setViewer(viewer);
-      shell.show(renderSettingsPlaceholder());
+      const warnings: string[] = [];
+      if (!loadedSettings.ok) warnings.push('Saved preferences could not be loaded. Safe defaults are shown for now.');
+      if (!repositoryMetadata.ok) warnings.push('Repository choices could not be loaded. You can still save the other preferences.');
+      shell.show(renderSettings(
+        loadedSettings.ok ? loadedSettings.value : fallbackSettings(),
+        repositoryMetadata.ok ? repositoryMetadata.value.repositories : [],
+        {
+          save(input, etag) {
+            return api.replaceSettings(input, etag).then((saved) => {
+              settingsPromise = Promise.resolve(saved);
+              return saved;
+            });
+          },
+          reload() {
+            return cachedSettings(true);
+          },
+        },
+        warnings.length ? { warning: warnings.join(' ') } : {},
+      ));
       return;
     }
 

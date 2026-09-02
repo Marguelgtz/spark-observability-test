@@ -4,6 +4,8 @@ import type {
   ActivityResponseV1,
   AttentionLevelV1,
   DashboardFavoriteV1,
+  DashboardSettingsInputV1,
+  DashboardSettingsV1,
   EvaluationDetailResponseV1,
   EvaluationSummaryV1,
   EvidenceHealthV1,
@@ -16,6 +18,7 @@ import type {
   TrajectoryFeedbackV1,
   ViewerV1
 } from '@spark/dashboard-contracts';
+import { DASHBOARD_SETTINGS_DEFAULTS } from '@spark/dashboard-contracts';
 import { buildFixtureActivity, fixtureViewer, getFixtureEvaluation, getFixturePullRequestHistory } from './fixtures';
 
 export interface DashboardApi {
@@ -36,7 +39,14 @@ export interface DashboardApi {
   getFavorites(): Promise<FavoritesResponseV1>;
   addFavorite(favorite: DashboardFavoriteV1): Promise<void>;
   removeFavorite(favorite: DashboardFavoriteV1): Promise<void>;
+  getSettings(): Promise<LoadedDashboardSettings>;
+  replaceSettings(settings: DashboardSettingsInputV1, etag: string): Promise<LoadedDashboardSettings>;
   logout(): Promise<void>;
+}
+
+export interface LoadedDashboardSettings {
+  settings: DashboardSettingsV1;
+  etag: string;
 }
 
 export class UnauthorizedError extends Error {
@@ -44,6 +54,17 @@ export class UnauthorizedError extends Error {
     super('Unauthorized');
     this.name = 'UnauthorizedError';
   }
+}
+
+export class SettingsConflictError extends Error {
+  constructor() {
+    super('Settings changed elsewhere');
+    this.name = 'SettingsConflictError';
+  }
+}
+
+function settingsEtag(response: Response, settings: DashboardSettingsV1): string {
+  return response.headers.get('etag') ?? `"settings-${settings.revision}"`;
 }
 
 export class HttpDashboardApi implements DashboardApi {
@@ -133,6 +154,31 @@ export class HttpDashboardApi implements DashboardApi {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(favorite),
     });
+  }
+
+  async getSettings(): Promise<LoadedDashboardSettings> {
+    const response = await fetch(`${this.baseUrl}/api/settings`, {
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    });
+    if (response.status === 401) throw new UnauthorizedError();
+    if (!response.ok) throw new Error(`Settings API request failed (${response.status})`);
+    const settings = await response.json() as DashboardSettingsV1;
+    return { settings, etag: settingsEtag(response, settings) };
+  }
+
+  async replaceSettings(settings: DashboardSettingsInputV1, etag: string): Promise<LoadedDashboardSettings> {
+    const response = await fetch(`${this.baseUrl}/api/settings`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { accept: 'application/json', 'content-type': 'application/json', 'if-match': etag },
+      body: JSON.stringify(settings),
+    });
+    if (response.status === 401) throw new UnauthorizedError();
+    if (response.status === 412) throw new SettingsConflictError();
+    if (!response.ok) throw new Error(`Settings API request failed (${response.status})`);
+    const saved = await response.json() as DashboardSettingsV1;
+    return { settings: saved, etag: settingsEtag(response, saved) };
   }
 
   logout(): Promise<void> {
@@ -493,6 +539,36 @@ export class FixtureDashboardApi implements DashboardApi {
     this.writeFavorites(this.readFavorites().filter((item) => JSON.stringify(item) !== key));
   }
 
+  async getSettings(): Promise<LoadedDashboardSettings> {
+    if (new URLSearchParams(globalThis.location?.search ?? '').get('settingsFailure') === 'load') {
+      throw new Error('Synthetic settings load failure');
+    }
+    const settings = this.readSettings() ?? {
+      version: 1 as const,
+      revision: 0,
+      ...DASHBOARD_SETTINGS_DEFAULTS,
+      updatedAt: null,
+    };
+    return { settings, etag: `"settings-${settings.revision}"` };
+  }
+
+  async replaceSettings(input: DashboardSettingsInputV1, etag: string): Promise<LoadedDashboardSettings> {
+    if (new URLSearchParams(globalThis.location?.search ?? '').get('settingsFailure') === 'save') {
+      throw new Error('Synthetic settings save failure');
+    }
+    const current = this.readSettings();
+    const revision = current?.revision ?? 0;
+    if (etag !== `"settings-${revision}"`) throw new SettingsConflictError();
+    const settings: DashboardSettingsV1 = {
+      version: 1,
+      revision: revision + 1,
+      ...input,
+      updatedAt: new Date().toISOString(),
+    };
+    this.writeSettings(settings);
+    return { settings, etag: `"settings-${settings.revision}"` };
+  }
+
   async logout(): Promise<void> {
     return undefined;
   }
@@ -511,6 +587,29 @@ export class FixtureDashboardApi implements DashboardApi {
   private writeFavorites(favorites: DashboardFavoriteV1[]): void {
     try {
       globalThis.localStorage?.setItem(`spark:fixture:favorites:v1:${fixtureViewer.id}`, JSON.stringify(favorites));
+    } catch {
+      // Fixture persistence is best effort when browser storage is unavailable.
+    }
+  }
+
+  private settingsKey(): string {
+    return `spark:fixture:settings:v1:${fixtureViewer.id}`;
+  }
+
+  private readSettings(): DashboardSettingsV1 | undefined {
+    try {
+      const raw = globalThis.localStorage?.getItem(this.settingsKey());
+      if (!raw) return undefined;
+      const parsed = JSON.parse(raw) as DashboardSettingsV1;
+      return parsed?.version === 1 && Number.isSafeInteger(parsed.revision) ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private writeSettings(settings: DashboardSettingsV1): void {
+    try {
+      globalThis.localStorage?.setItem(this.settingsKey(), JSON.stringify(settings));
     } catch {
       // Fixture persistence is best effort when browser storage is unavailable.
     }

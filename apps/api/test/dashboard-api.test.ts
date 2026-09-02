@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   ActivityQueryV1,
   ActivityResponseV1,
+  DashboardSettingsInputV1,
+  DashboardSettingsV1,
   EvaluationDetailResponseV1,
   PullRequestDetailV1,
   PullRequestHistoryResponseV1,
@@ -13,6 +15,7 @@ import type { DashboardAuthorizer } from '../src/dashboard-access';
 import type { DashboardFavoriteStore } from '../src/dashboard-favorites';
 import type { DashboardFeedbackStore } from '../src/dashboard-feedback';
 import type { DashboardReader } from '../src/dashboard-reader';
+import type { DashboardSettingsStore } from '../src/dashboard-settings';
 
 const viewer: ViewerV1 = { version: 1, id: 7, login: 'marguel', avatarUrl: 'https://avatars.githubusercontent.com/u/7' };
 
@@ -201,6 +204,21 @@ function feedbackStore() {
   } satisfies DashboardFeedbackStore;
 }
 
+const settingsInput: DashboardSettingsInputV1 = {
+  defaultWindow: '24h',
+  previewSize: 10,
+  density: 'COMPACT',
+  collapseSecondarySections: false,
+  defaultRepositoryId: 2,
+};
+
+function settingsStore(current?: DashboardSettingsV1, replacement?: DashboardSettingsV1) {
+  return {
+    get: vi.fn(async () => current),
+    replace: vi.fn(async () => replacement),
+  } satisfies DashboardSettingsStore;
+}
+
 describe('dashboard read API', () => {
   it('denies dashboard API requests without a valid session', async () => {
     const response = await handleRequest(new Request('https://spark.test/api/me'), env, context);
@@ -224,6 +242,64 @@ describe('dashboard read API', () => {
       sessionExpiresAt: '2026-08-27T22:00:00.000Z',
       githubInstallUrl: 'https://github.com/apps/spark-observability/installations/new',
     });
+  });
+
+  it('returns non-persisted settings defaults at revision zero without writing', async () => {
+    const dashboardSettingsStore = settingsStore();
+    const response = await handleRequest(
+      new Request('https://spark.test/api/settings'), env, context,
+      { dashboardAuthorizer: authorizer([2]), dashboardSettingsStore },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('etag')).toBe('"settings-0"');
+    expect(await response.json()).toEqual({
+      version: 1,
+      revision: 0,
+      defaultWindow: '7d',
+      previewSize: 15,
+      density: 'COMFORTABLE',
+      collapseSecondarySections: true,
+      defaultRepositoryId: null,
+      updatedAt: null,
+    });
+    expect(dashboardSettingsStore.get).toHaveBeenCalledWith(7);
+    expect(dashboardSettingsStore.replace).not.toHaveBeenCalled();
+  });
+
+  it('replaces settings with same-origin and revision preconditions', async () => {
+    const saved: DashboardSettingsV1 = {
+      version: 1,
+      revision: 1,
+      ...settingsInput,
+      updatedAt: '2026-08-29T12:00:00.000Z',
+    };
+    const dashboardSettingsStore = settingsStore(undefined, saved);
+    const response = await handleRequest(new Request('https://spark.test/api/settings', {
+      method: 'PUT',
+      headers: { origin: 'https://spark.test', 'content-type': 'application/json', 'if-match': '"settings-0"' },
+      body: JSON.stringify(settingsInput),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardSettingsStore });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('etag')).toBe('"settings-1"');
+    expect(await response.json()).toEqual(saved);
+    expect(dashboardSettingsStore.replace).toHaveBeenCalledWith(7, 0, settingsInput);
+  });
+
+  it('rejects stale, cross-origin, invalid, and inaccessible settings writes', async () => {
+    const dashboardSettingsStore = settingsStore();
+    const request = (body: unknown, headers: Record<string, string>) => handleRequest(new Request('https://spark.test/api/settings', {
+      method: 'PUT', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body),
+    }), env, context, { dashboardAuthorizer: authorizer([2]), dashboardSettingsStore });
+
+    expect((await request(settingsInput, { origin: 'https://evil.test', 'if-match': '"settings-0"' })).status).toBe(403);
+    expect((await request(settingsInput, { origin: 'https://spark.test' })).status).toBe(400);
+    expect((await request({ ...settingsInput, previewSize: 20 }, { origin: 'https://spark.test', 'if-match': '"settings-0"' })).status).toBe(400);
+    expect((await request({ ...settingsInput, extra: true }, { origin: 'https://spark.test', 'if-match': '"settings-0"' })).status).toBe(400);
+    expect((await request({ ...settingsInput, defaultRepositoryId: 99 }, { origin: 'https://spark.test', 'if-match': '"settings-0"' })).status).toBe(404);
+    expect((await request(settingsInput, { origin: 'https://spark.test', 'if-match': '"settings-0"' })).status).toBe(412);
+    expect(dashboardSettingsStore.replace).toHaveBeenCalledTimes(1);
   });
 
   it('lists favorites for the authenticated viewer and current repository scope', async () => {
