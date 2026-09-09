@@ -1,6 +1,6 @@
 # UI/API Efficiency Handoff
 
-Repository: `/home/marguel/Documents/projects/spark-ui-api-efficiency` (isolated; original dirty checkout remains `/home/marguel/Documents/projects/spark`). Branch: `ui-api-efficiency/cp0-cp2`, upstream `test/main`. Base/initial HEAD: `8c225b9525dd39858c52a23c9ab47b2d4894ec88`. Remotes: `test` → `Marguelgtz/spark-observability-test`; `origin` → `spark-opp/spark`. No commit, push, or PR has been created by this mission boundary yet.
+Repository: `/home/marguel/Documents/projects/spark-ui-api-efficiency` (isolated; original dirty checkout remains `/home/marguel/Documents/projects/spark`). Branch: `ui-api-efficiency/cp0-cp2`, upstream `test/main`. Base: `8c225b9525dd39858c52a23c9ab47b2d4894ec88`; committed implementation: `04738690aebb44ed43cac998c510d276a8c990a5` (`fix(web): cancel route data requests and dedupe bootstrap`). Remotes: `test` → `Marguelgtz/spark-observability-test`; `origin` → `spark-opp/spark`. It is committed locally, not pushed, not PR'd, and not merged. Run `git rev-parse HEAD && git status --short --branch` before continuation to verify the current handoff-update commit and clean state.
 
 Implemented in the working tree: route `AbortSignal` propagation through typed API, Dashboard, Overview, and Behavior browser fetch helpers; account-derived viewer bootstrap; lazy favorites bootstrap on only consuming routes. No backend/database/response-cache/chart behavior changed.
 
