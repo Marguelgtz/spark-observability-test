@@ -108,11 +108,12 @@ function dashboardFailure(): string | null {
   return new URLSearchParams(window.location.search).get('dashboardFailure');
 }
 
-export async function getOperationalDashboard(state: ActivityUrlState): Promise<OperationalDashboardResponseV1> {
+export async function getOperationalDashboard(state: ActivityUrlState, signal?: AbortSignal): Promise<OperationalDashboardResponseV1> {
   if (__SPARK_FIXTURE_API__) return fixtureDashboard(state);
   const params = new URLSearchParams({ window: state.window });
   if (state.repositoryId !== null) params.set('repositoryId', String(state.repositoryId));
   const response = await fetch(`/api/dashboard?${params.toString()}`, {
+    signal,
     credentials: 'include',
     headers: { accept: 'application/json' },
   });
@@ -121,9 +122,9 @@ export async function getOperationalDashboard(state: ActivityUrlState): Promise<
   return response.json() as Promise<OperationalDashboardResponseV1>;
 }
 
-export async function getDashboardRecentActivity(api: DashboardApi, state: ActivityUrlState): Promise<ActivityResponseV1> {
+export async function getDashboardRecentActivity(api: DashboardApi, state: ActivityUrlState, signal?: AbortSignal): Promise<ActivityResponseV1> {
   if (__SPARK_FIXTURE_API__ && dashboardFailure() === 'recent') throw new Error('Synthetic recent activity failure');
-  return api.getActivity(queryFromState(state, 5));
+  return api.getActivity(queryFromState(state, 5), signal);
 }
 
 export interface DashboardInsightsData {
@@ -148,11 +149,11 @@ async function insightRequest<T>(source: DashboardInsightSource, request: Promis
   }
 }
 
-export async function getDashboardInsights(state: ActivityUrlState): Promise<DashboardInsightsData> {
+export async function getDashboardInsights(state: ActivityUrlState, signal?: AbortSignal): Promise<DashboardInsightsData> {
   if (__SPARK_FIXTURE_API__ && dashboardFailure() === 'insights') throw new DashboardInsightsError('evaluation trends');
   const [evaluations, transitions] = await Promise.all([
-    insightRequest('evaluation trends', getOverviewDrilldown('evaluations', state)),
-    insightRequest('transition insights', getNotableTransitionInsights(state)),
+    insightRequest('evaluation trends', getOverviewDrilldown('evaluations', state, undefined, 15, signal)),
+    insightRequest('transition insights', getNotableTransitionInsights(state, signal)),
   ]);
   return { evaluations, transitions };
 }

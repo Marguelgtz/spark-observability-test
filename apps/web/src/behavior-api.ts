@@ -11,8 +11,8 @@ import type { ActivityUrlState } from './state';
 
 const ATTENTION_RANK: Record<AttentionLevelV1, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: 'include', headers: { accept: 'application/json' } });
+async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { signal, credentials: 'include', headers: { accept: 'application/json' } });
   if (!response.ok) throw new Error(`Behavior API request failed (${response.status})`);
   return response.json() as Promise<T>;
 }
@@ -106,17 +106,17 @@ function fixtureBehavior(trajectory: PullRequestTrajectoryV1): ChangeBehaviorV1 
   };
 }
 
-export async function getChangeBehavior(repositoryId: number, pullRequestNumber: number, search = window.location.search): Promise<ChangeBehaviorV1> {
-  if (!__SPARK_FIXTURE_API__) return request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/behavior`);
+export async function getChangeBehavior(repositoryId: number, pullRequestNumber: number, search = window.location.search, signal?: AbortSignal): Promise<ChangeBehaviorV1> {
+  if (!__SPARK_FIXTURE_API__) return request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/behavior`, signal);
   const trajectory = await createDashboardApi(search).getTrajectory(repositoryId, pullRequestNumber);
   return fixtureBehavior(trajectory);
 }
 
-export async function getBehaviorPatterns(state: ActivityUrlState, search = window.location.search): Promise<BehaviorPatternsResponseV1> {
+export async function getBehaviorPatterns(state: ActivityUrlState, search = window.location.search, signal?: AbortSignal): Promise<BehaviorPatternsResponseV1> {
   if (!__SPARK_FIXTURE_API__) {
     const params = new URLSearchParams({ window: state.window });
     if (state.repositoryId !== null) params.set('repositoryId', String(state.repositoryId));
-    return request(`/api/behavior/patterns?${params.toString()}`);
+    return request(`/api/behavior/patterns?${params.toString()}`, signal);
   }
 
   const query: ActivityQueryV1 = { window: state.window, attention: 'ALL', repositoryId: state.repositoryId };

@@ -52,7 +52,10 @@ let routeController: AbortController | undefined;
 
 function cachedViewer(): Promise<ViewerV1> {
   if (!viewerPromise) {
-    viewerPromise = api.getViewer()
+    // Account is the authenticated bootstrap contract and already contains the viewer.
+    // Keeping this derived promise avoids a second /api/me request on every cold route.
+    viewerPromise = cachedAccount()
+      .then((account) => account.viewer)
       .then((viewer) => {
         resolvedViewer = viewer;
         shell.setViewer(viewer);
@@ -173,6 +176,7 @@ function activityView(
   favorites: FavoriteStore,
   routeBase: '/app' | '/app/activity',
   previewSize: PreviewSize,
+  signal: AbortSignal,
 ): HTMLElement {
   return renderActivity(viewer, response, state, {
     setWindow(value) {
@@ -203,10 +207,10 @@ function activityView(
         limit: previewSize,
         q: state.query,
         favoritesOnly: state.favoritesOnly,
-      });
+      }, signal);
     },
     loadHistory(repositoryId, pullRequestNumber) {
-      return api.getPullRequestHistory(repositoryId, pullRequestNumber);
+      return api.getPullRequestHistory(repositoryId, pullRequestNumber, signal);
     },
     favorites,
     previewSize,
@@ -243,7 +247,7 @@ async function render(): Promise<void> {
 
   const viewerTask = abortable(cachedViewer(), signal);
   const accountTask = abortable(cachedAccount(), signal);
-  const favoritesTask = abortable(cachedFavorites(), signal);
+  const favoritesTask = () => abortable(cachedFavorites(), signal);
   const settingsTask = settle(abortable(cachedSettings(), signal));
 
   try {
@@ -253,8 +257,7 @@ async function render(): Promise<void> {
     const { settings: preferences, state } = resolvePreferences(window.location.search, loadedSettings.settings);
 
     if (route.kind === 'dashboard') {
-      const dashboardTask = abortable(getOperationalDashboard(state), signal);
-      void favoritesTask.catch(() => undefined);
+      const dashboardTask = abortable(getOperationalDashboard(state, signal), signal);
 
       const [viewer, account, dashboard] = await Promise.all([
         viewerTask,
@@ -295,7 +298,7 @@ async function render(): Promise<void> {
         if (insightsLoaded || insightsLoading || signal.aborted) return;
         insightsLoading = true;
         renderDashboardInsightsLoading(signalsContent);
-        void abortable(getDashboardInsights(state), signal)
+        void abortable(getDashboardInsights(state, signal), signal)
           .then((insights) => {
             if (!isCurrent(generation, signal)) return;
             insightsLoaded = true;
@@ -312,8 +315,8 @@ async function render(): Promise<void> {
       };
       loadInsights();
 
-      const recentTask = settle(abortable(getDashboardRecentActivity(api, state), signal));
-      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state), signal));
+      const recentTask = settle(abortable(getDashboardRecentActivity(api, state, signal), signal));
+      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state, undefined, 15, signal), signal));
       void recentTask.then(async (result) => {
         if (!isCurrent(generation, signal)) return;
         if (!result.ok) {
@@ -336,36 +339,36 @@ async function render(): Promise<void> {
         limit: preferences.previewSize,
         q: state.query,
         favoritesOnly: state.favoritesOnly,
-      }), signal);
+      }, signal), signal);
       const [viewer, , favorites, activity] = await Promise.all([
         viewerTask,
         accountTask,
-        favoritesTask,
+        favoritesTask(),
         activityTask,
       ]);
       if (!isCurrent(generation, signal)) return;
-      shell.show(activityView(viewer, activity, state, favorites, '/app/activity', preferences.previewSize));
+      shell.show(activityView(viewer, activity, state, favorites, '/app/activity', preferences.previewSize, signal));
       return;
     }
 
     if (route.kind === 'overview') {
-      const overviewTask = abortable(getOverviewDrilldown(route.metric, state, undefined, preferences.previewSize), signal);
-      const transitionsTask = abortable(getNotableTransitionInsights(state), signal);
+      const overviewTask = abortable(getOverviewDrilldown(route.metric, state, undefined, preferences.previewSize, signal), signal);
+      const transitionsTask = abortable(getNotableTransitionInsights(state, signal), signal);
       const companionMetric = route.metric === 'evaluations'
         ? 'pull-requests'
         : route.metric === 'pull-requests'
           ? 'evaluations'
           : undefined;
       const companionTask = companionMetric
-        ? abortable(getOverviewDrilldown(companionMetric, state, undefined, preferences.previewSize), signal)
+        ? abortable(getOverviewDrilldown(companionMetric, state, undefined, preferences.previewSize, signal), signal)
         : Promise.resolve(undefined);
       const behaviorPatternsTask = route.metric === 'merged-unresolved'
-        ? abortable(getBehaviorPatterns(state), signal).catch(() => undefined)
+        ? abortable(getBehaviorPatterns(state, window.location.search, signal), signal).catch(() => undefined)
         : Promise.resolve(undefined);
       const [viewer, , , overview, transitions, companion, behaviorPatterns] = await Promise.all([
         viewerTask,
         accountTask,
-        favoritesTask,
+        favoritesTask(),
         overviewTask,
         transitionsTask,
         companionTask,
@@ -382,7 +385,7 @@ async function render(): Promise<void> {
         },
         transitions,
         companion,
-        (cursor) => getOverviewDrilldown(route.metric, state, cursor, preferences.previewSize),
+        (cursor) => getOverviewDrilldown(route.metric, state, cursor, preferences.previewSize, signal),
         preferences.previewSize,
       );
       if (behaviorPatterns) enhanceOverviewWithBehaviorPatterns(overviewView, behaviorPatterns, state);
@@ -401,9 +404,8 @@ async function render(): Promise<void> {
         repositoryId: null,
         cursor: null,
         limit: 1,
-      }), signal));
+      }, signal), signal));
       void accountTask.catch(() => undefined);
-      void favoritesTask.catch(() => undefined);
       const [viewer, repositoryMetadata] = await Promise.all([
         viewerTask,
         repositoriesTask,
@@ -435,7 +437,7 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'account') {
-      const [viewer, account] = await Promise.all([viewerTask, accountTask, favoritesTask]);
+      const [viewer, account] = await Promise.all([viewerTask, accountTask]);
       if (!isCurrent(generation, signal)) return;
       shell.setViewer(viewer);
       shell.show(renderAccountPage(account, () => {
@@ -447,12 +449,12 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'pull-request') {
-      const trajectoryTask = abortable(api.getTrajectory(route.repositoryId, route.pullRequestNumber), signal);
-      const behaviorTask = abortable(getChangeBehavior(route.repositoryId, route.pullRequestNumber), signal).catch(() => undefined);
+      const trajectoryTask = abortable(api.getTrajectory(route.repositoryId, route.pullRequestNumber, signal), signal);
+      const behaviorTask = abortable(getChangeBehavior(route.repositoryId, route.pullRequestNumber, window.location.search, signal), signal).catch(() => undefined);
       const [viewer, , favorites, trajectory, behavior] = await Promise.all([
         viewerTask,
         accountTask,
-        favoritesTask,
+        favoritesTask(),
         trajectoryTask,
         behaviorTask,
       ]);
@@ -479,14 +481,14 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'run') {
-      const runTask = abortable(api.getRun(route.repositoryId, route.runId), signal);
-      const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, runTask]);
+      const runTask = abortable(api.getRun(route.repositoryId, route.runId, signal), signal);
+      const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask(), runTask]);
       if (!isCurrent(generation, signal)) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
-      void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number), signal)
+      void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number, signal), signal)
         .then((pullRequest) => {
           if (!isCurrent(generation, signal)) return;
           enhanceEvaluationWithPullRequestContext(
@@ -501,14 +503,14 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'evaluation') {
-      const evaluationTask = abortable(api.getEvaluation(route.repositoryId, route.headSha), signal);
-      const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask, evaluationTask]);
+      const evaluationTask = abortable(api.getEvaluation(route.repositoryId, route.headSha, signal), signal);
+      const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask(), evaluationTask]);
       if (!isCurrent(generation, signal)) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
-      void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number), signal)
+      void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number, signal), signal)
         .then((pullRequest) => {
           if (!isCurrent(generation, signal)) return;
           enhanceEvaluationWithPullRequestContext(shell.root, pullRequest, { headSha: route.headSha }, activitySearch);
@@ -517,7 +519,7 @@ async function render(): Promise<void> {
       return;
     }
 
-    const [viewer] = await Promise.all([viewerTask, accountTask, favoritesTask]);
+    const [viewer] = await Promise.all([viewerTask, accountTask]);
     if (!isCurrent(generation, signal)) return;
     shell.show(renderNotFound(viewer));
   } catch (error) {

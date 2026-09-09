@@ -238,9 +238,11 @@ export async function getOverviewDrilldown(
   state: ActivityUrlState,
   cursor?: string | null,
   limit = 15,
+  signal?: AbortSignal,
 ): Promise<OverviewDrilldownResponseV1> {
   if (__SPARK_FIXTURE_API__) return fixtureOverview(metric, state);
   const response = await fetch(`/api/overview/${metric}?${overviewParams(state, cursor, limit).toString()}`, {
+    signal,
     credentials: 'include',
     headers: { accept: 'application/json' },
   });
@@ -249,9 +251,10 @@ export async function getOverviewDrilldown(
   return response.json() as Promise<OverviewDrilldownResponseV1>;
 }
 
-export async function getNotableTransitionInsights(state: ActivityUrlState): Promise<NotableTransitionInsightsV1> {
+export async function getNotableTransitionInsights(state: ActivityUrlState, signal?: AbortSignal): Promise<NotableTransitionInsightsV1> {
   if (__SPARK_FIXTURE_API__) return fixtureTransitions(state);
   const response = await fetch(`/api/overview/transitions?${overviewParams(state).toString()}`, {
+    signal,
     credentials: 'include',
     headers: { accept: 'application/json' },
   });
