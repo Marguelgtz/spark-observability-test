@@ -4,9 +4,9 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 
 ## Checkpoints
 
-- [~] CP0 — repository recovery: isolated dashboard worktree created from verified `test/main` `8c225b9`; deployment lineage remains unverified externally.
+- [~] CP0 — repository recovery: isolated dashboard worktree created from verified `test/main` `8c225b9`; after CP2 checkpoint the branch was rebased onto the latest compatible open stack `ci-process/11-deployment-extension` (`c971f1b`, PR #86) and PR #89 retargeted to it. Deployment lineage remains unverified externally.
 - [!] CP1 — measurable baseline: a safe authenticated/representative D1 fixture is unavailable; record browser and query-plan evidence before performance claims.
-- [~] CP2 — cancellation/bootstrap: signal propagation and removal of duplicated viewer/favorites bootstrap are implemented and unit/build verified; browser-level delayed-navigation certification remains open.
+- [~] CP2 — cancellation/bootstrap: signal propagation and removal of duplicated viewer/favorites bootstrap are implemented; typecheck/web-test/full-unit/build verified on the rebased tree (21bca02); browser-level delayed-navigation certification and post-rebase Playwright re-run remain open.
 - [ ] CP3 — page-only Activity/Overview contracts and paginated inline history, after CP1 contract/query evidence.
 - [ ] CP4 — native bounded Activity sorting; remove exhaustive adapter only with global keyset-order tests.
 - [ ] CP5 — query/index/projection work only after `EXPLAIN QUERY PLAN` on representative data.
@@ -35,3 +35,4 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 | 2026-09-09 | `abortable` guarded rendering only; raw `fetch` helpers did not accept a signal | Added E1 implementation before cache/projection work. |
 | 2026-09-09 | `activity-sorting.ts#readAllActivity` loops all generic Activity pages | Retained as B1; no superficial page-local sorting. |
 | 2026-09-09 | Locked dependencies installed; typecheck, web tests (65), full tests (236), and web build pass | Reclassified CP2 as focused-test/build verified; CP1 remains blocked only on safe runtime/query evidence. |
+| 2026-09-09 | `test/main` is behind the open CI stack; PR #89 originally based on `8c225b9`. Rebased `ui-api-efficiency/cp0-cp2` onto `c971f1b` (PR #86 head): all three mission commits patch-identical (`git patch-id`), `git diff 8c225b9 c971f1b -- apps/web` empty. PR #89 base changed to `ci-process/11-deployment-extension` via REST (`gh pr edit` broken by projectCards deprecation). | Kept CP2 state as-is (web tree byte-identical); re-verified on rebased tree: typecheck pass, web:test 65 pass, test 431 pass (new base widens vitest scope to `packages apps`), web:build pass. Playwright re-run deferred to next checkpoint. |
