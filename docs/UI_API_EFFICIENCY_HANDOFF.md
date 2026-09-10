@@ -39,8 +39,9 @@ Blockers/limitations:
 
 Next exact continuation point:
 
-1. Add a delayed real-network abort test to close E1; the authenticated local baseline did not produce a canceled request in its rapid-switch sample.
-2. If approved, begin CP3: Activity page-only contract, Overview aggregate/page separation, and paginated inline history. Preserve the exact first-page aggregate while appending rows.
+1. E1 is now closed by the delayed real-network acceptance in [`UI_API_EFFICIENCY_ABORT_ACCEPTANCE_PLAN.md`](./UI_API_EFFICIENCY_ABORT_ACCEPTANCE_PLAN.md): a 1500ms local Worker delay produced `net::ERR_ABORTED`, Activity rendered, and stale Dashboard paint was false.
+2. Complete item 3: typed in-memory query caching, stale-while-revalidate, request deduplication, mutation invalidation, and focus/visibility freshness gates.
+3. Do not begin CP3/item 4 until items 1–3 are complete and re-measured. Then implement Activity page-only contracts, Overview aggregate/page separation, and paginated inline history.
 
 Useful commands:
 
