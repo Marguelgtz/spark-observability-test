@@ -1,12 +1,12 @@
 # Spark UI/API Efficiency Investigation
 
-Status: living evidence record. Last updated from isolated worktree `ui-api-efficiency/cp0-cp2` at `21bca02e322207556b75ce879a399e417346323b` (stacked on `c971f1b` of `ci-process/11-deployment-extension`, PR #86; PR #89 base retargeted to that branch).
+Status: living evidence record. Last updated from isolated worktree `ui-api-efficiency/cp1-baseline` (stacked on PR #89, whose base is `c971f1b` from `ci-process/11-deployment-extension`, PR #86).
 
 ## Repository reality (CP0)
 
 The original checkout is `/home/marguel/Documents/projects/spark`, on unrelated branch `ci-process/12-failure-annotations` at `f2475f1c5e915b469e5888ea8a5f2be1fe2a2329`, with modified `README.md` and untracked research/e2e files. It was not reset, stashed, cleaned, or edited.
 
-This work is in `/home/marguel/Documents/projects/spark-ui-api-efficiency`, created with `git worktree add -b ui-api-efficiency/cp0-cp2 ... test/main`; it is clean before this mission's changes and tracks `test/main`. `test/main` resolves to `8c225b9525dd39858c52a23c9ab47b2d4894ec88`. `origin/main` resolves to `159dc3f7b194ad9b2029d6a972d99625dab32313`; neither main is an ancestor of the other (`merge-base=94338de...`). Therefore `test/main`, not `origin/main`, is the mature dashboard/UI lineage used as the implementation base.
+This work is in `/home/marguel/Documents/projects/spark-ui-api-efficiency`, on `ui-api-efficiency/cp1-baseline`, stacked on `test/ui-api-efficiency/cp0-cp2` (PR #89). The original dirty checkout was not reset, stashed, cleaned, or edited. `test/main` resolves to `8c225b9525dd39858c52a23c9ab47b2d4894ec88`; `origin/main` resolves to `159dc3f7b194ad9b2029d6a972d99625dab32313`; neither main is an ancestor of the other (`merge-base=94338de...`). Therefore the test repository's dashboard/UI lineage, not `origin/main`, is the implementation base.
 
 After the initial checkpoint, the implementation branch was rebased onto `test/ci-process/11-deployment-extension` at `c971f1b` and its PR was retargeted to that latest compatible open stack. This excludes the unrelated merged `test/main` documentation commit from the PR diff while retaining the complete dashboard UI ancestry supplied by the CI stack. The rebase was verified patch-identical (`git patch-id` matches for all three mission commits); `git diff 8c225b9 c971f1b -- apps/web` is empty, so the web tree is byte-identical between the old and new bases and CP2 behavior is unchanged. The new base only widens the root test scope (`vitest run packages apps`), which is why the full suite count moved from 236 to 431 on the rebased tree.
 
@@ -42,15 +42,30 @@ All authenticated browser routes enter `apps/web/src/main.ts#render`, parse `rou
 
 ## Baseline and measurement status (CP1)
 
-Static source evidence establishes the request shapes above but is **not a network/D1 baseline**. No authenticated fixture or production D1 export was supplied. Dependencies were re-provisioned on the rebased tree with `npm exec --yes pnpm@10.15.1 -- install --frozen-lockfile`; on HEAD `21bca02` (base `c971f1b`): typecheck passed, `pnpm web:test` passed (65 tests), `pnpm test` passed (431 tests — the new base scopes vitest to `packages apps`), and `pnpm web:build` passed. The fixture-backed Playwright suite passed on the pre-rebase tree (118 desktop/mobile tests); it was not re-run after the rebase (web tree is byte-identical, so this is a gap to close at the next checkpoint, not a regression). Consequently request counts, response bytes, D1 statement counts, rows read, timings, cancellation network events, and query plans are still unresolved—not inferred from the external audit.
+The implementation and browser gates are now complete for the bounded local checkpoint. Dependencies were re-provisioned on the rebased tree with `npm exec --yes pnpm@10.15.1 -- install --frozen-lockfile`; typecheck, web tests (65), full tests (431), and web build pass. The current rebased Playwright suite passes 118 tests with 2 opt-in measurement cases skipped.
 
-The next measurement must use a safe authenticated/local fixture and Playwright request recorder for: cold Dashboard; Dashboard→PR→Dashboard; Activity initial/Show more/search/favorites/sorts; inline history; all Overview metrics/Show more; settings/account/detail; rapid navigation; and stale-tab focus. Capture endpoint count/bytes plus Worker/D1 query evidence. Do not commit private data.
+The opt-in recorder honors `SPARK_PERF_BASE_URL` and `SPARK_PERF_STORAGE_STATE`; with a remote base it does not start local Vite. On 2026-09-10 it ran the full representative matrix against a real local Worker at `http://127.0.0.1:8787`, with a temporary cookie-backed session and synthetic local D1. The seed contained 2 repositories, 100 pull requests, 300 evaluation runs, and 10 lifecycle rows. The run passed 26 scenarios (23 representative cases plus three short dashboard revisits), recorded 0 failed/canceled requests, and recorded 0 requests for the returning-focus probe. Selected samples:
 
-Focused certification for this boundary: `pnpm typecheck` passed; `pnpm web:test` passed (65 tests, including the new Activity signal assertion); `pnpm test` passed (236 tests); `pnpm web:build` passed; and the fixture-backed Playwright suite passed (118 desktop/mobile tests). These certify compilation and helper-level signal forwarding, not live-Worker cancellation or request-count improvements.
+| Scenario | Application requests | Response body bytes | Route-blocking ms |
+| --- | ---: | ---: | ---: |
+| Dashboard cold | 7 | 258,189 | 120 |
+| Activity Show more | 1 | 20,885 | 182 |
+| Overview evaluations first page | 10 | 27,805 | 189 |
+| Overview merged-unresolved | 6 | 21,941 | 870 |
 
-An opt-in `pnpm measure:navigation` recorder now captures cold Dashboard, Dashboard↔Activity, Dashboard↔Overview, Dashboard↔PR, and timed Dashboard revisits. It records request path/method/type/status, timings, response/header bytes, cache status, duplicates, in-flight requests at paint, and cancellations in ignored local artifacts. Its Playwright configuration honors `SPARK_PERF_BASE_URL` and `SPARK_PERF_STORAGE_STATE`; with a remote base it does not start local Vite. A shortened fixture run passed ten scenarios on 2026-09-10, but fixture requests are in-process and therefore cannot be used as an API/D1 baseline.
+The full per-scenario JSON is an ignored local artifact under `apps/web/test-results/navigation-performance/`; the temporary storage state and seeded database are not committed. This is real authenticated HTTP/D1 evidence for the local Worker, not fixture evidence. It is not production telemetry: no production deployment lineage, D1 export, or production query-plan access was available.
 
-The committed `pnpm perf:query-plan` probe applies checked-in migrations to an in-memory SQLite database, seeds only synthetic rows (2 repositories, 100 PRs, 300 runs, 10 lifecycle rows), calls the real Dashboard/Overview reader functions, records their D1 statement boundaries, and emits `EXPLAIN QUERY PLAN`. The 2026-09-10 run produced 7 statements for the Dashboard reader composition, 3 for Overview evaluations, and 6 for merged-unresolved plus Outcome. The Activity plan materializes history and uses temporary B-trees for ordering/grouping; the Overview plan recomputes trend work alongside the page. A direct raw-timestamp and `datetime(...)` comparison both used a temporary sort B-tree on this schema, so no index rewrite is justified yet. These are reproducible local shape findings, not production latency or rows-read measurements.
+The committed `pnpm perf:query-plan` probe applies checked-in migrations to an in-memory SQLite database, calls the real Activity/Dashboard/Overview readers, records D1 statement boundaries, and emits `EXPLAIN QUERY PLAN`. The reproducible 2026-09-10 output is:
+
+| Reader boundary | Statements | Result |
+| --- | ---: | --- |
+| Activity first page | 6 | 100 total, 15 rows, cursor present |
+| Dashboard active-changes summary | 1 | 90 total, 15 rows |
+| Dashboard first-load composition | 7 | Activity plus active-changes readers |
+| Overview evaluations first page | 3 | 300 total, 15 rows, cursor present |
+| Merged-unresolved + Outcome | 6 | 10 rows, no cursor, 10 outcome merges |
+
+The Activity and Overview plans materialize history/trend work and use temporary B-trees for ordering/grouping. Direct raw-timestamp and `datetime(...)` comparisons both use a temporary sort B-tree on this schema, so no index rewrite is justified yet. These are reproducible local shape findings, not production latency or rows-read measurements.
 
 ## Correctness and invariants
 

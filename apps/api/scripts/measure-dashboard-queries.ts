@@ -139,7 +139,7 @@ async function main(): Promise<void> {
     start: '2026-09-03T12:00:00.000Z',
     limit: 15,
   });
-  const dashboardStatements = [...activityStatements, ...recording.statements.splice(0)];
+  const dashboardStatements = recording.statements.splice(0);
   const overview = await readActivityDrilldown(recording, {
     metric: 'evaluations',
     window: '7d',
@@ -176,11 +176,23 @@ async function main(): Promise<void> {
     fixture: { repositories: 2, pullRequests: 100, evaluationRuns: 300, lifecycleRows: 10 },
     operations: [
       {
+        name: 'activity-first-page',
+        result: { total: activity.total, rows: activity.pullRequests.length, nextCursor: Boolean(activity.pagination.nextCursor) },
+        statementCount: activityStatements.length,
+        plans: activityStatements.map((statement) => ({ sql: statement.sql.replace(/\s+/g, ' ').trim(), plan: explain(database, statement) })),
+      },
+      {
+        name: 'dashboard-active-changes-summary',
+        result: { total: activeChanges.total, rows: activeChanges.preview.length },
+        statementCount: dashboardStatements.length,
+        plans: dashboardStatements.map((statement) => ({ sql: statement.sql.replace(/\s+/g, ' ').trim(), plan: explain(database, statement) })),
+      },
+      {
         name: 'dashboard-first-load-readers',
         result: { total: activity.total, rows: activity.pullRequests.length, nextCursor: Boolean(activity.pagination.nextCursor) },
         activeChanges: { total: activeChanges.total, rows: activeChanges.preview.length },
-        statementCount: dashboardStatements.length,
-        plans: dashboardStatements.map((statement) => ({ sql: statement.sql.replace(/\s+/g, ' ').trim(), plan: explain(database, statement) })),
+        statementCount: activityStatements.length + dashboardStatements.length,
+        plans: [...activityStatements, ...dashboardStatements].map((statement) => ({ sql: statement.sql.replace(/\s+/g, ' ').trim(), plan: explain(database, statement) })),
       },
       {
         name: 'overview-evaluations-first-page',
