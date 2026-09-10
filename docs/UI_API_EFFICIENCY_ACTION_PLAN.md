@@ -11,7 +11,7 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 - [ ] CP4 — native bounded Activity sorting; remove exhaustive adapter only with global keyset-order tests.
 - [ ] CP5 — query/index/projection work only after `EXPLAIN QUERY PLAN` on representative data.
 - [ ] CP6 — chart input audit and aggregate-vs-sample correction.
-- [ ] CP7 — focus/visibility stale-while-revalidate after cache/read costs are established.
+- [x] CP7 — focus/visibility stale-while-revalidate is verified as part of item 3; the cache remains private and stale-only on focus/visibility return.
 
 ## Active tasks
 
@@ -25,7 +25,15 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 - [ ] B1: replace `activity-sorting.ts` read-all adapter with SQL-backed deterministic keyset cursors.
 - [ ] B2: profile dashboard reader duplication and PR trajectory/behavior double reconstruction.
 - [ ] C1: audit each Dashboard/Overview visualization input and correct sampled-distribution labels/data.
-- [-] Cache/focus revalidation: deferred until M1/M2 bound freshness cost and mutation invalidation requirements.
+- [x] Item 3 cache/focus revalidation: typed cache, SWR/dedupe, scoped invalidation, session privacy, and focus/visibility acceptance are verified on `ui-api-efficiency/item3-cache`; the living execution record is `UI_API_EFFICIENCY_ITEM3_PLAN.md`.
+
+### Item 3 execution queue
+
+- [x] Q1: add a typed, tab-local in-memory query cache with explicit fresh/stale/missing states and per-domain freshness windows.
+- [x] Q2: route Dashboard, Activity, Overview, settings, favorites, and detail reads through keyed cache entries; keys include changing filters, sort, cursor, metric, and route parameters.
+- [x] Q3: deduplicate concurrent reads and implement stale-while-revalidate without stale data painting after route supersession.
+- [x] Q4: invalidate or patch affected entries on favorites/settings mutations; clear the cache on account/session boundary changes; keep authenticated responses out of persistent/public caches.
+- [x] Q5: revalidate the active route on focus/visibility return, add unit and browser acceptance coverage, and re-run the full verification stack.
 
 ## Change/evidence log
 
@@ -40,10 +48,12 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 | 2026-09-10 | Synthetic SQLite/D1 probe: Dashboard reader boundary 7 statements; Overview evaluations 3; merged-unresolved + Outcome 6; 100 PRs/300 runs; timestamp probes use temp B-tree ordering | Closed M2 for bounded local evidence; opened CP3 inputs P1/P2 with explicit production-validation caveat. |
 | 2026-09-10 | Authenticated local Worker baseline: 26 scenarios passed against real HTTP + local D1 with temporary cookie session; 0 failed/canceled requests; cold Dashboard 7 application requests/258,189 response bytes/120 ms; Activity show-more 1/20,885/182 ms; Overview evaluations 10/27,805/189 ms; merged-unresolved 6/21,941/870 ms | Closed CP1/M1 for the bounded local gate; retained E1 because rapid switching did not produce a canceled request and retained the production telemetry caveat. |
 | 2026-09-10 | Delayed real-network acceptance: local Worker `/api/dashboard` held 1500 ms, SPA navigation produced `net::ERR_ABORTED`, Activity rendered, and stale Dashboard paint was false | Closed E1. Item 3 cache/SWR remains the next gate; CP3/item 4 stays held. |
+| 2026-09-10 | Item 3 implementation requested after CP1/CP2/E1 closure | Opened Q1–Q5 execution queue; CP3/item 4 remains held until every item 3 gate is green. |
+| 2026-09-10 | Item 3 acceptance: cache unit suite 70 web tests, browser suite 120 passed/4 skipped, typecheck, full 435-test suite, and web build all pass | Closed Q1–Q5 and CP7; CP3/item 4 remains held. |
+| 2026-09-10 | Cloudflare deployment from item-3 SHA `d43649d`: remote D1 reported no migrations, Worker version `8ed2ecae-f0e1-4c48-bad1-e11e70e8ba64` published, `/health` returned `{"status":"ok"}`, and `/app` served bundle `index-Dj2vDWRq.js` | Deployment gate passed for the verified item-3 stack. |
 
-## Next checkpoint (CP3 proposal; do not start until the user approves continuation)
+## Next checkpoint (CP3 proposal; item 3 complete, CP3 remains held)
 
-1. Split Activity page retrieval from first-page metadata/home summaries. Acceptance: page 2 performs one bounded page query, preserves first-page metadata, and tests cursor/filter reset semantics.
-2. Split Overview drilldown pages from trend/Outcome aggregates. Acceptance: page 2 does not rerun trend or Outcome work; first-page charts retain exact aggregates and contracts remain backward compatible.
-3. Add paginated inline history. Acceptance: first expansion fetches preview only, Show more uses a cursor, run IDs remain stable, and exact retained total remains visible.
+1. Keep PR #92 (`ui-api-efficiency/item3-cache`) stackable on PR #91 and mergeable only after its remote checks are green.
+2. Do not begin CP3/item 4 in this branch. The next branch may split Activity page retrieval from metadata, split Overview pages from aggregates, and add paginated inline history only after explicit advancement.
 | 2026-09-09 | `test/main` is behind the open CI stack; PR #89 originally based on `8c225b9`. Rebased `ui-api-efficiency/cp0-cp2` onto `c971f1b` (PR #86 head): all three mission commits patch-identical (`git patch-id`), `git diff 8c225b9 c971f1b -- apps/web` empty. PR #89 base changed to `ci-process/11-deployment-extension` via REST (`gh pr edit` broken by projectCards deprecation). | Kept CP2 state as-is (web tree byte-identical); re-verified on rebased tree: typecheck pass, web:test 65 pass, test 431 pass (new base widens vitest scope to `packages apps`), web:build pass. Playwright re-run deferred to next checkpoint. |
