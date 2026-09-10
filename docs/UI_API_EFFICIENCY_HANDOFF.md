@@ -1,16 +1,16 @@
 # UI/API Efficiency Handoff
 
-Repository: `/home/marguel/Documents/projects/spark-ui-api-efficiency` (isolated worktree; the original dirty checkout `/home/marguel/Documents/projects/spark` on `ci-process/12-failure-annotations` was left untouched). Branch: `ui-api-efficiency/cp1-baseline`, stacked on `test/ui-api-efficiency/cp0-cp2`.
+Repository: `/home/marguel/Documents/projects/spark-ui-api-efficiency` (isolated worktree; the original dirty checkout `/home/marguel/Documents/projects/spark` on `ci-process/12-failure-annotations` was left untouched). Branch: `ui-api-efficiency/e1-real-network`, stacked on `test/ui-api-efficiency/cp1-baseline`.
 
 Exact state (verified 2026-09-10; final commit is recorded after the baseline run):
 
 - Initial investigation base: `8c225b9525dd39858c52a23c9ab47b2d4894ec88` (`test/main` at the time).
 - Current stacked base: `c971f1b1dd8cfaf6d3c94356be3a6dcb34146df` (`test/ci-process/11-deployment-extension`, PR #86 — the latest compatible open stack; its `apps/web` tree is byte-identical to `8c225b9`, so CP2 behavior is unchanged by the rebase).
-- Parent implementation HEAD: `6598905` (`docs: close local efficiency evidence checkpoint`); this branch adds the complete authenticated local baseline, query-plan boundary split, and living-document updates.
-- Final implementation HEAD: `430d81bd28dbef3534d46b11781024955bfbcf3d` (`perf: close authenticated local efficiency baseline`); final branch HEAD is `ff11250af6c338fa89d875081b4e5455d71def22` (stack metadata documentation only).
+- Parent implementation HEAD: `dc72cd4` (`docs: distinguish implementation and stack heads`, PR #90); this branch adds the delayed real-network abort acceptance and its living plan.
+- Final implementation HEAD: `55ee56a39ca323c895977af1d811e99a71216c77` (`test: prove real network request cancellation`).
 - Remotes: `test` → `git@github.com:Marguelgtz/spark-observability-test.git` (where this work lands); `origin` → `https://github.com/spark-opp/spark.git` (older production-Spark lineage, not used for this work).
-- Pushed: yes. The branch is intentionally stackable on PR #89.
-- PR: [#90](https://github.com/Marguelgtz/spark-observability-test/pull/90) `ui-api-efficiency/cp1-baseline` → `ui-api-efficiency/cp0-cp2` (PR #89), which itself targets `ci-process/11-deployment-extension` (PR #86). PR #90 and PR #89 are OPEN and not merged.
+- Pushed: yes. The branch is intentionally stackable on PR #90.
+- PR: [#91](https://github.com/Marguelgtz/spark-observability-test/pull/91) `ui-api-efficiency/e1-real-network` → `ui-api-efficiency/cp1-baseline` (PR #90), which itself targets `ui-api-efficiency/cp0-cp2` (PR #89) and then `ci-process/11-deployment-extension` (PR #86). PRs #91, #90, and #89 are OPEN and not merged.
 - Retarget note: `gh pr edit --base` is broken by the GitHub `projectCards` GraphQL deprecation; the base change was made via REST `gh api -X PATCH repos/Marguelgtz/spark-observability-test/pulls/89 -f base=ci-process/11-deployment-extension`.
 
 What is implemented (committed, on the branch):
@@ -21,11 +21,13 @@ What is implemented (committed, on the branch):
 - No backend, D1, response-cache, or chart behavior changed.
 - An opt-in navigation measurement recorder plus the `measure:navigation` command. It supports a remote base URL and temporary Playwright storage state without starting local Vite; the complete matrix was run against the local Worker and real local D1 with a temporary synthetic session.
 - A `perf:query-plan` synthetic D1/SQLite probe that applies checked-in migrations, calls real Activity/Dashboard/Overview readers, records statement boundaries, and emits query plans without private data.
+- An opt-in delayed real-network acceptance test plus local proxy. It holds the first `/api/dashboard` response for 1500ms, supersedes the route through SPA navigation, and verifies `net::ERR_ABORTED`, successful Activity render, and no stale Dashboard paint.
 
 Verification state (layered, exact):
 
 - Committed + pushed: yes (branch above).
 - Focused tests: `pnpm web:test` 65/65 pass; the Activity signal assertion reaches the underlying `fetch` init.
+- Delayed real-network acceptance: pass; local Worker request failed as `net::ERR_ABORTED`, final route was `/app/activity`, and `staleDashboardPainted` was `false`.
 - Broader suite: `pnpm typecheck` pass; `pnpm test` 431/431 pass; `pnpm web:build` pass.
 - Playwright: current rebased tree passed 118 tests with 2 opt-in measurement cases skipped; the opt-in authenticated baseline passed all 26 captured scenarios (23 representative cases plus 3 short revisits).
 - Authenticated local Worker baseline: `SPARK_PERF_BASE_URL=http://127.0.0.1:8787` with a temporary cookie-backed storage state and synthetic local D1 (2 repositories, 100 PRs, 300 runs, 10 lifecycle rows). The recorder observed 26 scenarios, 0 failed/canceled requests, and 0 requests on the focus-return probe. Dashboard cold was 7 application requests / 258,189 response bytes / 120 ms route-blocking; Activity show-more was 1 / 20,885 / 182 ms; Overview evaluations first page was 10 / 27,805 / 189 ms; merged-unresolved was 6 / 21,941 / 870 ms. Full per-scenario output remains an ignored `test-results/navigation-performance/navigation-*.json` artifact and contains no credential.
@@ -39,8 +41,9 @@ Blockers/limitations:
 
 Next exact continuation point:
 
-1. Add a delayed real-network abort test to close E1; the authenticated local baseline did not produce a canceled request in its rapid-switch sample.
-2. If approved, begin CP3: Activity page-only contract, Overview aggregate/page separation, and paginated inline history. Preserve the exact first-page aggregate while appending rows.
+1. E1 is now closed by the delayed real-network acceptance in [`UI_API_EFFICIENCY_ABORT_ACCEPTANCE_PLAN.md`](./UI_API_EFFICIENCY_ABORT_ACCEPTANCE_PLAN.md): a 1500ms local Worker delay produced `net::ERR_ABORTED`, Activity rendered, and stale Dashboard paint was false.
+2. Complete item 3: typed in-memory query caching, stale-while-revalidate, request deduplication, mutation invalidation, and focus/visibility freshness gates.
+3. Do not begin CP3/item 4 until items 1–3 are complete and re-measured. Then implement Activity page-only contracts, Overview aggregate/page separation, and paginated inline history.
 
 Useful commands:
 
