@@ -25,24 +25,24 @@ import type { ActivitySort } from './state';
 export type SortableActivityQuery = ActivityQueryV1 & { sort?: ActivitySort };
 
 export interface DashboardApi {
-  getViewer(): Promise<ViewerV1>;
-  getAccount(): Promise<AccountV1>;
-  getActivity(query: SortableActivityQuery): Promise<ActivityResponseV1>;
-  getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1>;
-  getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1>;
+  getViewer(signal?: AbortSignal): Promise<ViewerV1>;
+  getAccount(signal?: AbortSignal): Promise<AccountV1>;
+  getActivity(query: SortableActivityQuery, signal?: AbortSignal): Promise<ActivityResponseV1>;
+  getPullRequest(repositoryId: number, pullRequestNumber: number, signal?: AbortSignal): Promise<PullRequestDetailV1>;
+  getTrajectory(repositoryId: number, pullRequestNumber: number, signal?: AbortSignal): Promise<PullRequestTrajectoryV1>;
   saveTrajectoryFeedback(
     repositoryId: number,
     pullRequestNumber: number,
     transitionId: string,
     input: SaveTrajectoryFeedbackV1,
   ): Promise<TrajectoryFeedbackV1>;
-  getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1>;
-  getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1>;
-  getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1>;
-  getFavorites(): Promise<FavoritesResponseV1>;
+  getPullRequestHistory(repositoryId: number, pullRequestNumber: number, signal?: AbortSignal): Promise<PullRequestHistoryResponseV1>;
+  getEvaluation(repositoryId: number, headSha: string, signal?: AbortSignal): Promise<EvaluationDetailResponseV1>;
+  getRun(repositoryId: number, runId: string, signal?: AbortSignal): Promise<EvaluationDetailResponseV1>;
+  getFavorites(signal?: AbortSignal): Promise<FavoritesResponseV1>;
   addFavorite(favorite: DashboardFavoriteV1): Promise<void>;
   removeFavorite(favorite: DashboardFavoriteV1): Promise<void>;
-  getSettings(): Promise<LoadedDashboardSettings>;
+  getSettings(signal?: AbortSignal): Promise<LoadedDashboardSettings>;
   replaceSettings(settings: DashboardSettingsInputV1, etag: string): Promise<LoadedDashboardSettings>;
   logout(): Promise<void>;
 }
@@ -103,15 +103,15 @@ export class HttpDashboardApi implements DashboardApi {
     return response.json() as Promise<T>;
   }
 
-  getViewer(): Promise<ViewerV1> {
-    return this.request('/api/me');
+  getViewer(signal?: AbortSignal): Promise<ViewerV1> {
+    return this.request('/api/me', { signal });
   }
 
-  getAccount(): Promise<AccountV1> {
-    return this.request('/api/account');
+  getAccount(signal?: AbortSignal): Promise<AccountV1> {
+    return this.request('/api/account', { signal });
   }
 
-  getActivity(query: SortableActivityQuery): Promise<ActivityResponseV1> {
+  getActivity(query: SortableActivityQuery, signal?: AbortSignal): Promise<ActivityResponseV1> {
     const params = new URLSearchParams({ window: query.window, attention: query.attention });
     if (query.repositoryId !== null) params.set('repositoryId', String(query.repositoryId));
     if (query.cursor) params.set('cursor', query.cursor);
@@ -119,15 +119,15 @@ export class HttpDashboardApi implements DashboardApi {
     if (query.q) params.set('q', query.q);
     if (query.favoritesOnly) params.set('favorites', '1');
     if (query.sort && query.sort !== 'recent') params.set('sort', query.sort);
-    return this.request(`/api/activity?${params.toString()}`);
+    return this.request(`/api/activity?${params.toString()}`, { signal });
   }
 
-  getPullRequest(repositoryId: number, pullRequestNumber: number): Promise<PullRequestDetailV1> {
-    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}`);
+  getPullRequest(repositoryId: number, pullRequestNumber: number, signal?: AbortSignal): Promise<PullRequestDetailV1> {
+    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}`, { signal });
   }
 
-  getTrajectory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestTrajectoryV1> {
-    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/trajectory`);
+  getTrajectory(repositoryId: number, pullRequestNumber: number, signal?: AbortSignal): Promise<PullRequestTrajectoryV1> {
+    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/trajectory`, { signal });
   }
 
   saveTrajectoryFeedback(
@@ -146,20 +146,20 @@ export class HttpDashboardApi implements DashboardApi {
     );
   }
 
-  getPullRequestHistory(repositoryId: number, pullRequestNumber: number): Promise<PullRequestHistoryResponseV1> {
-    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/evaluations`);
+  getPullRequestHistory(repositoryId: number, pullRequestNumber: number, signal?: AbortSignal): Promise<PullRequestHistoryResponseV1> {
+    return this.request(`/api/repositories/${repositoryId}/pulls/${pullRequestNumber}/evaluations`, { signal });
   }
 
-  getEvaluation(repositoryId: number, headSha: string): Promise<EvaluationDetailResponseV1> {
-    return this.request(`/api/evaluations/${repositoryId}/${encodeURIComponent(headSha)}`);
+  getEvaluation(repositoryId: number, headSha: string, signal?: AbortSignal): Promise<EvaluationDetailResponseV1> {
+    return this.request(`/api/evaluations/${repositoryId}/${encodeURIComponent(headSha)}`, { signal });
   }
 
-  getRun(repositoryId: number, runId: string): Promise<EvaluationDetailResponseV1> {
-    return this.request(`/api/repositories/${repositoryId}/runs/${encodeURIComponent(runId)}`);
+  getRun(repositoryId: number, runId: string, signal?: AbortSignal): Promise<EvaluationDetailResponseV1> {
+    return this.request(`/api/repositories/${repositoryId}/runs/${encodeURIComponent(runId)}`, { signal });
   }
 
-  getFavorites(): Promise<FavoritesResponseV1> {
-    return this.request('/api/favorites');
+  getFavorites(signal?: AbortSignal): Promise<FavoritesResponseV1> {
+    return this.request('/api/favorites', { signal });
   }
 
   addFavorite(favorite: DashboardFavoriteV1): Promise<void> {
@@ -178,8 +178,9 @@ export class HttpDashboardApi implements DashboardApi {
     });
   }
 
-  async getSettings(): Promise<LoadedDashboardSettings> {
+  async getSettings(signal?: AbortSignal): Promise<LoadedDashboardSettings> {
     const response = await fetch(`${this.baseUrl}/api/settings`, {
+      signal,
       credentials: 'include',
       headers: { accept: 'application/json' },
     });

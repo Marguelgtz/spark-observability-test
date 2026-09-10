@@ -8,7 +8,8 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run test",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "measure:navigation": "SPARK_PERF=1 playwright test e2e/navigation-performance.e2e.ts --project=desktop"
   },
   "dependencies": {
     "@spark/dashboard-contracts": "workspace:*"

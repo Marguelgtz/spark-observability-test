@@ -28,6 +28,29 @@ describe('HttpDashboardApi', () => {
     );
   });
 
+  it('passes a route AbortSignal to the underlying Activity fetch', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      version: 1,
+      selectedWindow: '24h',
+      selectedAttention: 'ALL',
+      selectedRepositoryId: null,
+      counts: { LOW: 0, MEDIUM: 0, HIGH: 0 },
+      repositories: [],
+      pullRequests: [],
+      pagination: { nextCursor: null },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetcher);
+    const api = new HttpDashboardApi('https://spark.test');
+    const controller = new AbortController();
+
+    await api.getActivity({ window: '24h', attention: 'ALL', repositoryId: null }, controller.signal);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://spark.test/api/activity?window=24h&attention=ALL',
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it('loads pull request observability from the scoped PR endpoint', async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
       version: 1,
