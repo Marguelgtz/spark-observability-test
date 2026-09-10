@@ -7,7 +7,7 @@ Exact state (verified 2026-09-10; final commit is recorded after the baseline ru
 - Initial investigation base: `8c225b9525dd39858c52a23c9ab47b2d4894ec88` (`test/main` at the time).
 - Current stacked base: `c971f1b1dd8cfaf6d3c94356be3a6dcb34146df` (`test/ci-process/11-deployment-extension`, PR #86 — the latest compatible open stack; its `apps/web` tree is byte-identical to `8c225b9`, so CP2 behavior is unchanged by the rebase).
 - Parent implementation HEAD: `6598905` (`docs: close local efficiency evidence checkpoint`); this branch adds the complete authenticated local baseline, query-plan boundary split, and living-document updates.
-- Final baseline HEAD: `430d81bd28dbef3534d46b11781024955bfbcf3d` (`perf: close authenticated local efficiency baseline`).
+- Final implementation HEAD: `430d81bd28dbef3534d46b11781024955bfbcf3d` (`perf: close authenticated local efficiency baseline`); final branch HEAD is `ff11250af6c338fa89d875081b4e5455d71def22` (stack metadata documentation only).
 - Remotes: `test` → `git@github.com:Marguelgtz/spark-observability-test.git` (where this work lands); `origin` → `https://github.com/spark-opp/spark.git` (older production-Spark lineage, not used for this work).
 - Pushed: yes. The branch is intentionally stackable on PR #89.
 - PR: [#90](https://github.com/Marguelgtz/spark-observability-test/pull/90) `ui-api-efficiency/cp1-baseline` → `ui-api-efficiency/cp0-cp2` (PR #89), which itself targets `ci-process/11-deployment-extension` (PR #86). PR #90 and PR #89 are OPEN and not merged.
