@@ -2,13 +2,13 @@
 
 Repository: `/home/marguel/Documents/projects/spark-ui-api-efficiency` (isolated worktree; the original dirty checkout `/home/marguel/Documents/projects/spark` on `ci-process/12-failure-annotations` was left untouched). Branch: `ui-api-efficiency/cp0-cp2`, upstream `test/ui-api-efficiency/cp0-cp2`.
 
-Exact state (verified 2026-09-10; update HEAD after the next documentation commit):
+Exact state (verified 2026-09-10; implementation checkpoint before this documentation-only update):
 
 - Initial investigation base: `8c225b9525dd39858c52a23c9ab47b2d4894ec88` (`test/main` at the time).
 - Current stacked base: `c971f1b1dd8cfaf6d3c94356be3a6dcb34146df` (`test/ci-process/11-deployment-extension`, PR #86 — the latest compatible open stack; its `apps/web` tree is byte-identical to `8c225b9`, so CP2 behavior is unchanged by the rebase).
-- HEAD before this checkpoint commit: `e22ac3d` (`test(web): add opt-in navigation measurement recorder`). Mission commits on the branch: `08118b8` fix(web): cancel route data requests and dedupe bootstrap → `0dde528` docs: record UI API efficiency checkpoint → `21bca02` docs: record UI API efficiency pull request → `e22ac3d` test(web): add opt-in navigation measurement recorder. All four are patch-identical to their pre-rebase counterparts where applicable (`git patch-id` verified).
+- Implementation checkpoint HEAD: `265020d4b3b73c4372b1f4c7b6ef3075dd6b2b52` (`perf(api): capture synthetic dashboard query plans`). Mission commits on the branch continue through `e22ac3d` and this checkpoint; the exact final HEAD after this documentation-only update is always verified with the command below.
 - Remotes: `test` → `git@github.com:Marguelgtz/spark-observability-test.git` (where this work lands); `origin` → `https://github.com/spark-opp/spark.git` (older production-Spark lineage, not used for this work).
-- Pushed before this checkpoint commit: yes. The measurement/query-plan continuation is pending push with this checkpoint.
+- Pushed: yes. Remote branch contains implementation checkpoint `265020d` and the preceding measurement/configuration work.
 - PR: [#89](https://github.com/Marguelgtz/spark-observability-test/pull/89) `ui-api-efficiency/cp0-cp2` → base `ci-process/11-deployment-extension` (PR #86). OPEN; latest observed checks were all successful and merge state `CLEAN`. Not merged.
 - Retarget note: `gh pr edit --base` is broken by the GitHub `projectCards` GraphQL deprecation; the base change was made via REST `gh api -X PATCH repos/Marguelgtz/spark-observability-test/pulls/89 -f base=ci-process/11-deployment-extension`.
 
