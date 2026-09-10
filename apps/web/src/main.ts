@@ -68,12 +68,12 @@ function stableKey(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function queueBackgroundRefresh(): void {
+function queueBackgroundRefresh(generation: number, signal: AbortSignal): void {
   if (backgroundRefreshQueued) return;
   backgroundRefreshQueued = true;
   queueMicrotask(() => {
     backgroundRefreshQueued = false;
-    if (routeController?.signal.aborted) return;
+    if (!isCurrent(generation, signal)) return;
     void render({ showLoading: false });
   });
 }
@@ -96,7 +96,7 @@ function cachedRead<T>(
     if (refresh) {
       void refresh.then(
         () => {
-          if (isCurrent(generation, signal)) queueBackgroundRefresh();
+          if (isCurrent(generation, signal)) queueBackgroundRefresh(generation, signal);
         },
         (error: unknown) => {
           // A route may be superseded while a stale refresh is in flight. If a
@@ -106,7 +106,7 @@ function cachedRead<T>(
           queryCache.invalidate(key);
           void abortable(queryCache.load(key, policy, loader), signal).then(
             () => {
-              if (isCurrent(generation, signal)) queueBackgroundRefresh();
+              if (isCurrent(generation, signal)) queueBackgroundRefresh(generation, signal);
             },
             () => undefined,
           );
