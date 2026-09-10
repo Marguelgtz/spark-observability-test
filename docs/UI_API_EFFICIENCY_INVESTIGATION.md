@@ -1,6 +1,6 @@
 # Spark UI/API Efficiency Investigation
 
-Status: living evidence record. Last updated from isolated worktree `ui-api-efficiency/cp1-baseline` (stacked on PR #89, whose base is `c971f1b` from `ci-process/11-deployment-extension`, PR #86).
+Status: living evidence record. Last updated from isolated worktree `ui-api-efficiency/item3-cache` (item 3 complete in PR #92, stacked on PR #91; the CP0–CP2 base remains `c971f1b` from `ci-process/11-deployment-extension`, PR #86).
 
 ## Repository reality (CP0)
 

@@ -51,9 +51,8 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 | 2026-09-10 | Item 3 implementation requested after CP1/CP2/E1 closure | Opened Q1–Q5 execution queue; CP3/item 4 remains held until every item 3 gate is green. |
 | 2026-09-10 | Item 3 acceptance: cache unit suite 70 web tests, browser suite 120 passed/4 skipped, typecheck, full 435-test suite, and web build all pass | Closed Q1–Q5 and CP7; CP3/item 4 remains held. |
 
-## Next checkpoint (item 3 completion; CP3 remains held)
+## Next checkpoint (CP3 proposal; item 3 complete, CP3 remains held)
 
-1. Finish Q1–Q5 in order, keeping this queue and the handoff synchronized after each verified gate.
-2. Prove fresh revisits, stale immediate paint plus background refresh, concurrent-request deduplication, mutation invalidation, focus/visibility revalidation, route supersession safety, and private-cache boundaries.
-3. Commit and push the item 3 stack as a new PR on PR #91. Do not begin CP3/item 4 in this branch.
+1. Keep PR #92 (`ui-api-efficiency/item3-cache`) stackable on PR #91 and mergeable only after its remote checks are green.
+2. Do not begin CP3/item 4 in this branch. The next branch may split Activity page retrieval from metadata, split Overview pages from aggregates, and add paginated inline history only after explicit advancement.
 | 2026-09-09 | `test/main` is behind the open CI stack; PR #89 originally based on `8c225b9`. Rebased `ui-api-efficiency/cp0-cp2` onto `c971f1b` (PR #86 head): all three mission commits patch-identical (`git patch-id`), `git diff 8c225b9 c971f1b -- apps/web` empty. PR #89 base changed to `ci-process/11-deployment-extension` via REST (`gh pr edit` broken by projectCards deprecation). | Kept CP2 state as-is (web tree byte-identical); re-verified on rebased tree: typecheck pass, web:test 65 pass, test 431 pass (new base widens vitest scope to `packages apps`), web:build pass. Playwright re-run deferred to next checkpoint. |
