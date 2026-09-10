@@ -7,7 +7,7 @@ Exact state (verified 2026-09-10; final commit is recorded after the baseline ru
 - Initial investigation base: `8c225b9525dd39858c52a23c9ab47b2d4894ec88` (`test/main` at the time).
 - Current stacked base: `c971f1b1dd8cfaf6d3c94356be3a6dcb34146df` (`test/ci-process/11-deployment-extension`, PR #86 — the latest compatible open stack; its `apps/web` tree is byte-identical to `8c225b9`, so CP2 behavior is unchanged by the rebase).
 - Parent implementation HEAD: PR #91's `bce548258c9817af1290410be2dbd45a8d3b82d0`; this branch adds item 3 cache/SWR and its acceptance record.
-- Final implementation HEAD: `c964bc18dc47fd5aa04b9c2c5f6b791ca0df85d2` (`feat: add private query cache with stale refresh`).
+- Final implementation HEAD: `2e823a4` (`fix: guard stale refresh by route generation`). The preceding implementation commit is `c964bc1` (`feat: add private query cache with stale refresh`).
 - Remotes: `test` → `git@github.com:Marguelgtz/spark-observability-test.git` (where this work lands); `origin` → `https://github.com/spark-opp/spark.git` (older production-Spark lineage, not used for this work).
 - Pushed: yes. The branch is intentionally stackable on PR #91.
 - PR: [#92](https://github.com/Marguelgtz/spark-observability-test/pull/92) `ui-api-efficiency/item3-cache` → `ui-api-efficiency/e1-real-network` (PR #91). PRs #92, #91, #90, and #89 are OPEN and not merged.
