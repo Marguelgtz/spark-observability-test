@@ -227,6 +227,24 @@ async function showDashboard(page: Page): Promise<void> {
   await expect(page.getByTestId('change-overview')).toBeVisible();
 }
 
+async function showActivity(page: Page): Promise<void> {
+  await expect(page.getByTestId('activity-view')).toBeVisible();
+}
+
+async function showOverview(page: Page, metric: string): Promise<void> {
+  await expect(page.getByTestId(`overview-${metric}`)).toBeVisible();
+}
+
+async function clickShowMore(page: Page, testId: string): Promise<void> {
+  const list = page.getByTestId(testId);
+  const rows = list.locator('[data-progressive-identity]');
+  const before = await rows.count();
+  const button = list.getByRole('button', { name: /Show \d+ more/ });
+  await expect(button).toBeVisible();
+  await button.click();
+  await expect.poll(() => rows.count(), { timeout: 15_000 }).toBeGreaterThan(before);
+}
+
 async function startFromDashboard(page: Page): Promise<void> {
   await page.goto(dashboardPath(), { waitUntil: 'domcontentloaded' });
   await showDashboard(page);
@@ -253,8 +271,57 @@ test('records the navigation performance baseline', async ({ page, baseURL }, te
   await recorder.measure(
     'dashboard-to-activity',
     () => page.getByRole('link', { name: 'Activity', exact: true }).click(),
-    () => expect(page.getByTestId('activity-view')).toBeVisible(),
+    () => showActivity(page),
   );
+
+  await recorder.measure(
+    'activity-show-more',
+    () => clickShowMore(page, 'activity-progressive-list'),
+    () => showActivity(page),
+  );
+
+  await startFromDashboard(page);
+  await page.goto('/app/activity?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+  await recorder.measure(
+    'activity-search',
+    () => page.getByTestId('activity-search').fill('Synthetic PR #1'),
+    () => showActivity(page),
+  );
+
+  await page.goto('/app/activity?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+  await recorder.measure(
+    'activity-favorites-only',
+    () => page.getByTestId('favorites-only').click(),
+    () => showActivity(page),
+  );
+
+  for (const sort of ['attention', 'evaluations', 'repository'] as const) {
+    await page.goto('/app/activity?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+    await recorder.measure(
+      `activity-sort-${sort}`,
+      () => page.getByTestId('activity-sort').selectOption(sort),
+      () => showActivity(page),
+    );
+  }
+
+  await page.goto('/app/activity?window=7d&attention=ALL&sort=attention', { waitUntil: 'domcontentloaded' });
+  await recorder.measure(
+    'activity-sort-show-more',
+    () => clickShowMore(page, 'activity-progressive-list'),
+    () => showActivity(page),
+  );
+
+  await page.goto('/app/activity?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+  const historyToggle = page.locator('[data-testid^="history-toggle-"]').first();
+  await expect(historyToggle).toBeVisible();
+  const historyTestId = (await historyToggle.getAttribute('data-testid'))?.replace('history-toggle-', 'history-');
+  if (!historyTestId) throw new Error('Activity history toggle did not expose a test id');
+  await recorder.measure(
+    'activity-inline-history',
+    () => historyToggle.click(),
+    () => expect(page.getByTestId(historyTestId)).toBeVisible(),
+  );
+
   await recorder.measure(
     'activity-to-dashboard',
     () => page.getByRole('link', { name: 'Dashboard', exact: true }).click(),
@@ -264,8 +331,28 @@ test('records the navigation performance baseline', async ({ page, baseURL }, te
   await recorder.measure(
     'dashboard-to-needs-attention',
     () => page.getByTestId('dashboard-card-attention').click(),
-    () => expect(page.getByTestId('overview-attention')).toBeVisible(),
+    () => showOverview(page, 'attention'),
   );
+
+  await page.goto('/app/overview/evaluations?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+  await recorder.measure(
+    'overview-evaluations-initial',
+    () => page.goto('/app/overview/evaluations?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' }),
+    () => showOverview(page, 'evaluations'),
+  );
+
+  await recorder.measure(
+    'overview-evaluations-show-more',
+    () => clickShowMore(page, 'overview-progressive-list'),
+    () => showOverview(page, 'evaluations'),
+  );
+
+  await recorder.measure(
+    'overview-merged-unresolved',
+    () => page.goto('/app/overview/merged-unresolved?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' }),
+    () => showOverview(page, 'merged-unresolved'),
+  );
+
   await recorder.measure(
     'needs-attention-to-dashboard',
     () => page.getByRole('link', { name: '← Change overview', exact: true }).click(),
@@ -274,13 +361,54 @@ test('records the navigation performance baseline', async ({ page, baseURL }, te
 
   await recorder.measure(
     'dashboard-to-pull-request',
-    () => page.getByTestId('needs-attention').locator('a.dashboard-change-row').first().click(),
+    () => page.locator('#active-changes').locator('a.dashboard-change-row').first().click(),
     () => expect(page.getByTestId('pull-request-detail')).toBeVisible(),
   );
+
   await recorder.measure(
     'pull-request-to-dashboard',
-    () => page.goBack(),
+    () => page.goto(dashboardPath(), { waitUntil: 'domcontentloaded' }),
     () => showDashboard(page),
+  );
+
+  await page.goto('/app/repositories/101/pulls/1?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByTestId('pull-request-detail')).toBeVisible();
+  await recorder.measure(
+    'pull-request-to-run',
+    () => page.getByRole('link', { name: 'View latest evaluation' }).click(),
+    () => expect(page.getByTestId('evaluation-detail')).toBeVisible(),
+  );
+
+  await recorder.measure(
+    'run-to-settings',
+    () => page.goto('/app/settings?window=7d', { waitUntil: 'domcontentloaded' }),
+    () => expect(page.getByTestId('settings-view')).toBeVisible(),
+  );
+
+  await recorder.measure(
+    'settings-to-dashboard',
+    () => page.goto(dashboardPath(), { waitUntil: 'domcontentloaded' }),
+    () => showDashboard(page),
+  );
+
+  await recorder.measure(
+    'rapid-route-switching',
+    async () => {
+      await page.goto(dashboardPath(), { waitUntil: 'commit' }).catch(() => undefined);
+      await page.goto('/app/activity?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+    },
+    () => showActivity(page),
+  );
+
+  await page.goto('/app/activity?window=7d&attention=ALL', { waitUntil: 'domcontentloaded' });
+  await showActivity(page);
+  await recorder.measure(
+    'returning-focus-stale-tab',
+    () => page.evaluate(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    }),
+    () => showActivity(page),
   );
 
   for (const delay of revisitDelays) {
@@ -305,5 +433,5 @@ test('records the navigation performance baseline', async ({ page, baseURL }, te
     contentType: 'application/json',
   });
 
-  expect((report as { scenarios: ScenarioSample[] }).scenarios).toHaveLength(7 + revisitDelays.length);
+  expect((report as { scenarios: ScenarioSample[] }).scenarios).toHaveLength(23 + revisitDelays.length);
 });

@@ -5,7 +5,7 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 ## Checkpoints
 
 - [~] CP0 — repository recovery: isolated dashboard worktree created from verified `test/main` `8c225b9`; after CP2 checkpoint the branch was rebased onto the latest compatible open stack `ci-process/11-deployment-extension` (`c971f1b`, PR #86) and PR #89 retargeted to it. Deployment lineage remains unverified externally.
-- [~] CP1 — bounded local baseline: synthetic SQLite/D1 reader evidence and fixture browser capture are complete; authenticated deployed request counts and production D1 telemetry remain unavailable and must not be inferred from them.
+- [x] CP1 — bounded authenticated local baseline: real HTTP navigation against the local Worker with a temporary cookie session and synthetic local D1 is complete; production D1 telemetry remains a separate limitation.
 - [~] CP2 — cancellation/bootstrap: signal propagation and removal of duplicated viewer/favorites bootstrap are implemented; typecheck/web-test/full-unit/build and current Playwright are verified. A deliberately delayed real-network abort test remains open.
 - [ ] CP3 — page-only Activity/Overview contracts and paginated inline history, after CP1 contract/query evidence.
 - [ ] CP4 — native bounded Activity sorting; remove exhaustive adapter only with global keyset-order tests.
@@ -15,10 +15,10 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 
 ## Active tasks
 
-- [~] E1: certify CP2 signal propagation. Acceptance: every route-owned GET receives the current route signal; a delayed fetch aborted by navigation rejects at the fetch layer; no stale paint. Unit forwarding is verified; delayed real-network proof remains.
+- [~] E1: certify CP2 signal propagation. Acceptance: every route-owned GET receives the current route signal; a delayed fetch aborted by navigation rejects at the fetch layer; no stale paint. Unit forwarding is verified; the completed local rapid-switch sample had no canceled request, so the delayed real-network proof remains.
 - [x] E2: certify bootstrap reduction by source review, typecheck, and current fixture browser gate. Viewer derives from `/api/account`; favorites are lazy on non-consuming routes.
-- [~] M1: opt-in Playwright recorder is implemented and fixture-validated; current run covered 10 local scenarios. Acquire a temporary authenticated storage state to measure the full 17-scenario matrix against a safe Worker environment.
-- [x] M2: synthetic D1 probe exercises the real Dashboard/Activity/Overview readers and emits query plans; production telemetry remains a separate limitation.
+- [x] M1: opt-in Playwright recorder is implemented and the complete 26-sample authenticated local matrix passed (23 representative scenarios plus 3 short revisit delays). It used a temporary cookie-backed storage state against the local Worker and never committed the state or JSON artifact.
+- [x] M2: synthetic D1 probe exercises the real Activity/Dashboard/Overview readers and emits query plans: Activity 6 statements, Dashboard summary 1 (7 combined first-load), Overview evaluations 3, and merged-unresolved plus Outcome 6. Production telemetry remains a separate limitation.
 - [ ] P1: determine whether Activity cursor pages recompute static metadata; design V2/page-only response if confirmed.
 - [ ] P2: determine whether Overview cursor pages recompute trends/outcome intelligence; split summary/page response only if confirmed.
 - [ ] P3: design inline-history cursor contract retaining exact count and immutable run identity.
@@ -38,6 +38,7 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 | 2026-09-10 | Reviewed later-agent recorder: documented script/config did not exist or honor remote base/storage state | Added the command and corrected configuration; fixture recorder validation passed, while CP1 remains unmeasured. |
 | 2026-09-10 | Current rebased Playwright: 118 passed, 2 opt-in measurement cases skipped | Closed the post-rebase browser-suite gap; retained E1/M1 as open for real authenticated transport evidence. |
 | 2026-09-10 | Synthetic SQLite/D1 probe: Dashboard reader boundary 7 statements; Overview evaluations 3; merged-unresolved + Outcome 6; 100 PRs/300 runs; timestamp probes use temp B-tree ordering | Closed M2 for bounded local evidence; opened CP3 inputs P1/P2 with explicit production-validation caveat. |
+| 2026-09-10 | Authenticated local Worker baseline: 26 scenarios passed against real HTTP + local D1 with temporary cookie session; 0 failed/canceled requests; cold Dashboard 7 application requests/258,189 response bytes/120 ms; Activity show-more 1/20,885/182 ms; Overview evaluations 10/27,805/189 ms; merged-unresolved 6/21,941/870 ms | Closed CP1/M1 for the bounded local gate; retained E1 because rapid switching did not produce a canceled request and retained the production telemetry caveat. |
 
 ## Next checkpoint (CP3 proposal; do not start until the user approves continuation)
 
