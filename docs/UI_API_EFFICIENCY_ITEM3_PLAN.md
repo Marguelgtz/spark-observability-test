@@ -1,6 +1,6 @@
 # Item 3 — typed client query cache and stale-while-revalidate
 
-Status: `[~]` implementation active on `ui-api-efficiency/item3-cache`, stacked on PR #91.
+Status: `[x]` verified on `ui-api-efficiency/item3-cache`, stacked on PR #91.
 
 This is the living execution plan for the remaining item 3 work. CP3/item 4 (Activity page-only contracts, Overview aggregate/page separation, and paginated inline history) stays held until every gate below is verified.
 
@@ -21,11 +21,11 @@ Item 3 is complete only when all of the following are true:
 
 | ID | Work | Acceptance evidence | Status |
 | --- | --- | --- | --- |
-| Q1 | Implement typed tab-local cache primitives and policy table. | Unit tests prove missing/fresh/stale transitions, TTLs, bounded retention, and no persistent storage. | `[ ]` |
-| Q2 | Key and route all bootstrap, list, aggregate, settings, favorites, and detail reads. | Source review plus tests prove key changes for filters/sort/cursor/metric/route IDs and fresh revisits make zero data requests. | `[ ]` |
-| Q3 | Add SWR, promise dedupe, and supersession-safe background refresh. | Unit/browser evidence proves stale data paints immediately, one refresh runs, and late data from an old route is ignored. | `[ ]` |
-| Q4 | Add mutation invalidation/patching and session privacy boundaries. | Favorites/settings mutation tests show scoped invalidation/coherent state; logout/session reset clears entries; no public/persistent cache path exists. | `[ ]` |
-| Q5 | Add active-route focus/visibility revalidation and finish verification. | Focus/visibility tests show stale-only refresh and no duplicate/skeleton; full typecheck, tests, build, and Playwright are green. | `[ ]` |
+| Q1 | Implement typed tab-local cache primitives and policy table. | `apps/web/test/query-cache.test.ts`: missing/fresh/stale/expired transitions, bounded retention, dedupe, and late-result protection; no persistence path exists. | `[x]` |
+| Q2 | Key and route all bootstrap, list, aggregate, settings, favorites, and detail reads. | `main.ts` keys include state filters, sort, cursor, metric, route IDs, and preview limits; the browser cache acceptance covers fresh SPA revisits. | `[x]` |
+| Q3 | Add SWR, promise dedupe, and supersession-safe background refresh. | Cache unit tests prove one stale refresh and concurrent dedupe; route generation/signal guards and the full Playwright suite prove no stale route paint. | `[x]` |
+| Q4 | Add mutation invalidation/patching and session privacy boundaries. | Favorites invalidate Activity-derived reads; settings writes replace the settings entry and invalidate dependent reads; logout/401 clear the private tab cache; no localStorage/CDN/service-worker response cache was added. | `[x]` |
+| Q5 | Add active-route focus/visibility revalidation and finish verification. | `query-cache.e2e.ts` passes on desktop and mobile; stale focus refresh keeps the route visible without a loading skeleton; full checks are green. | `[x]` |
 
 ## Freshness policy
 
@@ -34,3 +34,4 @@ The policy is intentionally conservative for authenticated data and is kept in c
 ## Change log
 
 - 2026-09-10: plan opened after CP1/CP2/E1 completion. No CP3/item 4 implementation is authorized by this plan until Q1–Q5 are green.
+- 2026-09-10: Q1–Q5 verified. The typed cache, route keys, SWR/dedupe, scoped mutation invalidation, session privacy boundary, and focus/visibility gate are implemented; CP3/item 4 remains held.

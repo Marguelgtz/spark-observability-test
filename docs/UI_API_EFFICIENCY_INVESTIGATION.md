@@ -67,9 +67,13 @@ The committed `pnpm perf:query-plan` probe applies checked-in migrations to an i
 
 The Activity and Overview plans materialize history/trend work and use temporary B-trees for ordering/grouping. Direct raw-timestamp and `datetime(...)` comparisons both use a temporary sort B-tree on this schema, so no index rewrite is justified yet. These are reproducible local shape findings, not production latency or rows-read measurements.
 
+## Item 3 cache completion
+
+Item 3 is now implemented on the stackable `ui-api-efficiency/item3-cache` branch. The route boundary uses a typed private in-memory cache with explicit missing/fresh/stale states, per-domain freshness windows, complete query keys, in-flight dedupe, stale-while-revalidate, scoped mutation invalidation, session clearing, and focus/visibility revalidation. See [`UI_API_EFFICIENCY_ITEM3_PLAN.md`](./UI_API_EFFICIENCY_ITEM3_PLAN.md) and [`UI_API_EFFICIENCY_ITEM3_ACCEPTANCE.md`](./UI_API_EFFICIENCY_ITEM3_ACCEPTANCE.md) for the living gates and evidence. CP3/item 4 remains held.
+
 ## Correctness and invariants
 
-Authenticated scope remains server-owned and unchanged. No response cache headers were changed (`no-store` remains in Worker JSON responses); the new cache work is explicitly unstarted. Favorites remain viewer-private, settings concurrency/ETags are untouched, immutable runs and trajectory retention are untouched, and no visualization semantics changed. Existing chart inputs must be audited before any Overview contract split: paginated `items` must never masquerade as full-window distributions.
+Authenticated scope remains server-owned and unchanged. No response cache headers were changed (`no-store` remains in Worker JSON responses); the new cache is tab-local only and never persisted or publicly shared. Favorites remain viewer-private, settings concurrency/ETags are untouched, immutable runs and trajectory retention are untouched, and no visualization semantics changed. Existing chart inputs must be audited before any Overview contract split: paginated `items` must never masquerade as full-window distributions.
 
 ## Rejected or deferred approaches
 
@@ -77,7 +81,7 @@ Authenticated scope remains server-owned and unchanged. No response cache header
 - No “one giant bootstrap/dashboard endpoint”: independent failure boundaries are intentional until measurements establish a better read model.
 - No SQL index or timestamp rewrite: absent query plans and representative data.
 - No Activity-sort rewrite: it needs a new bounded, globally ordered server contract and cursor tests rather than a local patch.
-- No route query cache yet: cache key/invalidation/freshness must follow measured payload and mutation behavior.
+- No blanket HTTP/public cache: authenticated data stays out of shared caches; item 3 is intentionally scoped to a private in-memory route cache with explicit invalidation.
 
 ## Open questions
 

@@ -11,7 +11,7 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 - [ ] CP4 — native bounded Activity sorting; remove exhaustive adapter only with global keyset-order tests.
 - [ ] CP5 — query/index/projection work only after `EXPLAIN QUERY PLAN` on representative data.
 - [ ] CP6 — chart input audit and aggregate-vs-sample correction.
-- [ ] CP7 — focus/visibility stale-while-revalidate after cache/read costs are established.
+- [x] CP7 — focus/visibility stale-while-revalidate is verified as part of item 3; the cache remains private and stale-only on focus/visibility return.
 
 ## Active tasks
 
@@ -25,15 +25,15 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 - [ ] B1: replace `activity-sorting.ts` read-all adapter with SQL-backed deterministic keyset cursors.
 - [ ] B2: profile dashboard reader duplication and PR trajectory/behavior double reconstruction.
 - [ ] C1: audit each Dashboard/Overview visualization input and correct sampled-distribution labels/data.
-- [~] Item 3 cache/focus revalidation: implementation is now active on `ui-api-efficiency/item3-cache`; the living execution plan and acceptance gates are in `UI_API_EFFICIENCY_ITEM3_PLAN.md`.
+- [x] Item 3 cache/focus revalidation: typed cache, SWR/dedupe, scoped invalidation, session privacy, and focus/visibility acceptance are verified on `ui-api-efficiency/item3-cache`; the living execution record is `UI_API_EFFICIENCY_ITEM3_PLAN.md`.
 
 ### Item 3 execution queue
 
-- [ ] Q1: add a typed, tab-local in-memory query cache with explicit fresh/stale/missing states and per-domain freshness windows.
-- [ ] Q2: route Dashboard, Activity, Overview, settings, favorites, and detail reads through keyed cache entries; keys must include all changing filters, sort, cursor, metric, and route parameters.
-- [ ] Q3: deduplicate concurrent reads and implement stale-while-revalidate without stale data painting after route supersession.
-- [ ] Q4: invalidate or patch affected entries on favorites/settings mutations; clear the cache on account/session boundary changes; keep authenticated responses out of persistent/public caches.
-- [ ] Q5: revalidate the active route on focus/visibility return, add unit and browser acceptance coverage, and re-run the full verification stack.
+- [x] Q1: add a typed, tab-local in-memory query cache with explicit fresh/stale/missing states and per-domain freshness windows.
+- [x] Q2: route Dashboard, Activity, Overview, settings, favorites, and detail reads through keyed cache entries; keys include changing filters, sort, cursor, metric, and route parameters.
+- [x] Q3: deduplicate concurrent reads and implement stale-while-revalidate without stale data painting after route supersession.
+- [x] Q4: invalidate or patch affected entries on favorites/settings mutations; clear the cache on account/session boundary changes; keep authenticated responses out of persistent/public caches.
+- [x] Q5: revalidate the active route on focus/visibility return, add unit and browser acceptance coverage, and re-run the full verification stack.
 
 ## Change/evidence log
 
@@ -49,6 +49,7 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 | 2026-09-10 | Authenticated local Worker baseline: 26 scenarios passed against real HTTP + local D1 with temporary cookie session; 0 failed/canceled requests; cold Dashboard 7 application requests/258,189 response bytes/120 ms; Activity show-more 1/20,885/182 ms; Overview evaluations 10/27,805/189 ms; merged-unresolved 6/21,941/870 ms | Closed CP1/M1 for the bounded local gate; retained E1 because rapid switching did not produce a canceled request and retained the production telemetry caveat. |
 | 2026-09-10 | Delayed real-network acceptance: local Worker `/api/dashboard` held 1500 ms, SPA navigation produced `net::ERR_ABORTED`, Activity rendered, and stale Dashboard paint was false | Closed E1. Item 3 cache/SWR remains the next gate; CP3/item 4 stays held. |
 | 2026-09-10 | Item 3 implementation requested after CP1/CP2/E1 closure | Opened Q1–Q5 execution queue; CP3/item 4 remains held until every item 3 gate is green. |
+| 2026-09-10 | Item 3 acceptance: cache unit suite 70 web tests, browser suite 120 passed/4 skipped, typecheck, full 435-test suite, and web build all pass | Closed Q1–Q5 and CP7; CP3/item 4 remains held. |
 
 ## Next checkpoint (item 3 completion; CP3 remains held)
 

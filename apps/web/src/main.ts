@@ -34,81 +34,138 @@ import { legacyActivityRedirect, navigate, parseRoute } from './router';
 import { renderSettings } from './settings-ui';
 import { serializeActivityState, withActivityState, type ActivityUrlState } from './state';
 import { renderActivity, renderError, renderEvaluation, renderNotFound, renderSignedOut } from './ui';
+import { QueryCache, type QueryPolicy } from './query-cache';
 
 const mount = document.querySelector<HTMLElement>('#app')!;
 if (!mount) throw new Error('Missing #app mount');
 
 const api = createDashboardApi(window.location.search);
+const queryCache = new QueryCache();
 const shell = createPersistentAppShell();
 mount.replaceChildren(shell.root);
 
-let viewerPromise: Promise<ViewerV1> | undefined;
-let accountPromise: Promise<AccountV1> | undefined;
-let favoritesPromise: Promise<FavoriteStore> | undefined;
-let settingsPromise: Promise<LoadedDashboardSettings> | undefined;
 let resolvedViewer: ViewerV1 | undefined;
 let routeGeneration = 0;
 let routeController: AbortController | undefined;
+let backgroundRefreshQueued = false;
 
-function cachedViewer(): Promise<ViewerV1> {
-  if (!viewerPromise) {
-    // Account is the authenticated bootstrap contract and already contains the viewer.
-    // Keeping this derived promise avoids a second /api/me request on every cold route.
-    viewerPromise = cachedAccount()
-      .then((account) => account.viewer)
-      .then((viewer) => {
-        resolvedViewer = viewer;
-        shell.setViewer(viewer);
-        return viewer;
-      })
-      .catch((error) => {
-        viewerPromise = undefined;
-        throw error;
-      });
-  }
-  return viewerPromise;
+const CACHE_POLICIES = {
+  account: { freshForMs: 5 * 60_000, maxAgeMs: 30 * 60_000 },
+  settings: { freshForMs: 5 * 60_000, maxAgeMs: 30 * 60_000 },
+  favorites: { freshForMs: 30_000, maxAgeMs: 5 * 60_000 },
+  dashboard: { freshForMs: 30_000, maxAgeMs: 5 * 60_000 },
+  activity: { freshForMs: 30_000, maxAgeMs: 5 * 60_000 },
+  overview: { freshForMs: 60_000, maxAgeMs: 10 * 60_000 },
+  transitions: { freshForMs: 60_000, maxAgeMs: 10 * 60_000 },
+  behavior: { freshForMs: 60_000, maxAgeMs: 10 * 60_000 },
+  history: { freshForMs: 30_000, maxAgeMs: 5 * 60_000 },
+  trajectory: { freshForMs: 60_000, maxAgeMs: 15 * 60_000 },
+  detail: { freshForMs: 5 * 60_000, maxAgeMs: 30 * 60_000 },
+  immutableDetail: { freshForMs: 10 * 60_000, maxAgeMs: 60 * 60_000 },
+} satisfies Record<string, QueryPolicy>;
+
+function stableKey(value: unknown): string {
+  return JSON.stringify(value);
 }
 
-function cachedAccount(): Promise<AccountV1> {
-  if (!accountPromise) {
-    accountPromise = api.getAccount()
-      .then((account) => {
-        resolvedViewer = account.viewer;
-        shell.setViewer(account.viewer);
-        return account;
-      })
-      .catch((error) => {
-        accountPromise = undefined;
-        throw error;
-      });
-  }
-  return accountPromise;
+function queueBackgroundRefresh(): void {
+  if (backgroundRefreshQueued) return;
+  backgroundRefreshQueued = true;
+  queueMicrotask(() => {
+    backgroundRefreshQueued = false;
+    if (routeController?.signal.aborted) return;
+    void render({ showLoading: false });
+  });
 }
 
-function cachedFavorites(): Promise<FavoriteStore> {
-  if (!favoritesPromise) {
-    favoritesPromise = api.getFavorites()
-      .then((savedFavorites) => new FavoriteStore(savedFavorites.favorites, {
-        add: (favorite) => api.addFavorite(favorite),
-        remove: (favorite) => api.removeFavorite(favorite),
-      }))
-      .catch((error) => {
-        favoritesPromise = undefined;
-        throw error;
-      });
+type CachedRead<T> = { value: T; stale: boolean };
+
+function cachedRead<T>(
+  key: string,
+  policy: QueryPolicy,
+  signal: AbortSignal,
+  generation: number,
+  loader: () => Promise<T>,
+): Promise<CachedRead<T>> {
+  const snapshot = queryCache.read<T>(key, policy);
+  if (snapshot.state === 'fresh' && snapshot.value !== undefined) {
+    return Promise.resolve({ value: snapshot.value, stale: false });
   }
-  return favoritesPromise;
+  if (snapshot.state === 'stale' && snapshot.value !== undefined) {
+    const refresh = queryCache.revalidate(key, policy, loader);
+    if (refresh) {
+      void refresh.then(
+        () => {
+          if (isCurrent(generation, signal)) queueBackgroundRefresh();
+        },
+        (error: unknown) => {
+          // A route may be superseded while a stale refresh is in flight. If a
+          // newer render still owns this key, retry it with the newer signal
+          // instead of leaving that render attached to an aborted promise.
+          if (!isAbort(error) || !isCurrent(generation, signal)) return;
+          queryCache.invalidate(key);
+          void abortable(queryCache.load(key, policy, loader), signal).then(
+            () => {
+              if (isCurrent(generation, signal)) queueBackgroundRefresh();
+            },
+            () => undefined,
+          );
+        },
+      );
+    }
+    return Promise.resolve({ value: snapshot.value, stale: true });
+  }
+  return abortable(queryCache.load(key, policy, loader), signal)
+    .catch((error: unknown) => {
+      if (!isAbort(error) || !isCurrent(generation, signal)) throw error;
+      // If another route owned the shared in-flight promise, its abort must not
+      // poison the current route's deduplicated read.
+      queryCache.invalidate(key);
+      return abortable(queryCache.load(key, policy, loader), signal);
+    })
+    .then((value) => ({ value, stale: false }));
 }
 
-function cachedSettings(force = false): Promise<LoadedDashboardSettings> {
-  if (force) settingsPromise = undefined;
-  if (!settingsPromise) {
-    settingsPromise = api.getSettings().catch((error) => {
-      settingsPromise = undefined;
-      throw error;
-    });
-  }
-  return settingsPromise;
+function invalidateActivityDerivedQueries(): void {
+  queryCache.invalidate((key) => key.startsWith('dashboard:')
+    || key.startsWith('activity:')
+    || key.startsWith('overview:')
+    || key.startsWith('transitions:')
+    || key.startsWith('behavior-patterns:'));
+}
+
+function cachedViewer(signal: AbortSignal, generation: number): Promise<ViewerV1> {
+  return cachedAccount(signal, generation).then((account) => {
+    resolvedViewer = account.viewer;
+    shell.setViewer(account.viewer);
+    return account.viewer;
+  });
+}
+
+function cachedAccount(signal: AbortSignal, generation: number): Promise<AccountV1> {
+  return cachedRead('account', CACHE_POLICIES.account, signal, generation, () => api.getAccount(signal)).then(({ value }) => {
+    resolvedViewer = value.viewer;
+    shell.setViewer(value.viewer);
+    return value;
+  });
+}
+
+function cachedFavorites(signal: AbortSignal, generation: number): Promise<FavoriteStore> {
+  return cachedRead('favorites', CACHE_POLICIES.favorites, signal, generation, () => api.getFavorites(signal).then((savedFavorites) => new FavoriteStore(savedFavorites.favorites, {
+    add: async (favorite) => {
+      await api.addFavorite(favorite);
+      invalidateActivityDerivedQueries();
+    },
+    remove: async (favorite) => {
+      await api.removeFavorite(favorite);
+      invalidateActivityDerivedQueries();
+    },
+  }))).then(({ value }) => value);
+}
+
+function cachedSettings(force: boolean, signal: AbortSignal, generation: number): Promise<LoadedDashboardSettings> {
+  if (force) queryCache.invalidate('settings');
+  return cachedRead('settings', CACHE_POLICIES.settings, signal, generation, () => api.getSettings(signal)).then(({ value }) => value);
 }
 
 function fallbackSettings(): LoadedDashboardSettings {
@@ -177,6 +234,7 @@ function activityView(
   routeBase: '/app' | '/app/activity',
   previewSize: PreviewSize,
   signal: AbortSignal,
+  generation: number,
 ): HTMLElement {
   return renderActivity(viewer, response, state, {
     setWindow(value) {
@@ -201,16 +259,29 @@ function activityView(
       navigate(`${routeBase}${search ? `?${search}` : ''}`);
     },
     loadMore(cursor) {
-      return api.getActivity({
+      const query = {
         ...state,
         cursor,
         limit: previewSize,
         q: state.query,
         favoritesOnly: state.favoritesOnly,
-      }, signal);
+      };
+      return cachedRead(
+        `activity:${stableKey(query)}`,
+        CACHE_POLICIES.activity,
+        signal,
+        generation,
+        () => api.getActivity(query, signal),
+      ).then(({ value }) => value);
     },
     loadHistory(repositoryId, pullRequestNumber) {
-      return api.getPullRequestHistory(repositoryId, pullRequestNumber, signal);
+      return cachedRead(
+        `history:${repositoryId}:${pullRequestNumber}`,
+        CACHE_POLICIES.history,
+        signal,
+        generation,
+        () => api.getPullRequestHistory(repositoryId, pullRequestNumber, signal),
+      ).then(({ value }) => value);
     },
     favorites,
     previewSize,
@@ -218,6 +289,7 @@ function activityView(
 }
 
 function showSignedOut(): void {
+  queryCache.clear();
   shell.setViewer(undefined);
   shell.setPreferenceWarning(undefined);
   shell.setDensity('COMFORTABLE');
@@ -231,7 +303,8 @@ function showSignedOut(): void {
   });
 }
 
-async function render(): Promise<void> {
+async function render(options: { showLoading?: boolean } = {}): Promise<void> {
+  const showLoading = options.showLoading ?? true;
   const generation = ++routeGeneration;
   routeController?.abort();
   const controller = new AbortController();
@@ -243,12 +316,12 @@ async function render(): Promise<void> {
 
   const route = parseRoute(window.location.pathname);
   shell.setRoute(route.kind);
-  shell.showLoading(route.kind);
+  if (showLoading) shell.showLoading(route.kind);
 
-  const viewerTask = abortable(cachedViewer(), signal);
-  const accountTask = abortable(cachedAccount(), signal);
-  const favoritesTask = () => abortable(cachedFavorites(), signal);
-  const settingsTask = settle(abortable(cachedSettings(), signal));
+  const viewerTask = cachedViewer(signal, generation);
+  const accountTask = cachedAccount(signal, generation);
+  const favoritesTask = () => cachedFavorites(signal, generation);
+  const settingsTask = settle(cachedSettings(false, signal, generation));
 
   try {
     const settingsResult = await settingsTask;
@@ -257,7 +330,13 @@ async function render(): Promise<void> {
     const { settings: preferences, state } = resolvePreferences(window.location.search, loadedSettings.settings);
 
     if (route.kind === 'dashboard') {
-      const dashboardTask = abortable(getOperationalDashboard(state, signal), signal);
+      const dashboardTask = cachedRead(
+        `dashboard:${stableKey({ state })}`,
+        CACHE_POLICIES.dashboard,
+        signal,
+        generation,
+        () => getOperationalDashboard(state, signal),
+      ).then(({ value }) => value);
 
       const [viewer, account, dashboard] = await Promise.all([
         viewerTask,
@@ -298,11 +377,17 @@ async function render(): Promise<void> {
         if (insightsLoaded || insightsLoading || signal.aborted) return;
         insightsLoading = true;
         renderDashboardInsightsLoading(signalsContent);
-        void abortable(getDashboardInsights(state, signal), signal)
+        void cachedRead(
+          `dashboard-insights:${stableKey({ state })}`,
+          CACHE_POLICIES.overview,
+          signal,
+          generation,
+          () => getDashboardInsights(state, signal),
+        )
           .then((insights) => {
             if (!isCurrent(generation, signal)) return;
             insightsLoaded = true;
-            renderDashboardInsights(signalsContent, dashboard, insights, state);
+            renderDashboardInsights(signalsContent, dashboard, insights.value, state);
           })
           .catch((error: unknown) => {
             if (!isCurrent(generation, signal) || isAbort(error)) return;
@@ -315,8 +400,20 @@ async function render(): Promise<void> {
       };
       loadInsights();
 
-      const recentTask = settle(abortable(getDashboardRecentActivity(api, state, signal), signal));
-      const mergeOverviewTask = settle(abortable(getOverviewDrilldown('merged-unresolved', state, undefined, 15, signal), signal));
+      const recentTask = settle(cachedRead(
+        `activity:dashboard-recent:${stableKey({ state, limit: 5 })}`,
+        CACHE_POLICIES.activity,
+        signal,
+        generation,
+        () => getDashboardRecentActivity(api, state, signal),
+      ).then(({ value }) => value));
+      const mergeOverviewTask = settle(cachedRead(
+        `overview:merged-unresolved:${stableKey({ state, cursor: null, limit: 15 })}`,
+        CACHE_POLICIES.overview,
+        signal,
+        generation,
+        () => getOverviewDrilldown('merged-unresolved', state, undefined, 15, signal),
+      ).then(({ value }) => value));
       void recentTask.then(async (result) => {
         if (!isCurrent(generation, signal)) return;
         if (!result.ok) {
@@ -333,13 +430,20 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'activity') {
-      const activityTask = abortable(api.getActivity({
+      const activityQuery = {
         ...state,
         cursor: null,
         limit: preferences.previewSize,
         q: state.query,
         favoritesOnly: state.favoritesOnly,
-      }, signal), signal);
+      };
+      const activityTask = cachedRead(
+        `activity:${stableKey(activityQuery)}`,
+        CACHE_POLICIES.activity,
+        signal,
+        generation,
+        () => api.getActivity(activityQuery, signal),
+      ).then(({ value }) => value);
       const [viewer, , favorites, activity] = await Promise.all([
         viewerTask,
         accountTask,
@@ -347,23 +451,47 @@ async function render(): Promise<void> {
         activityTask,
       ]);
       if (!isCurrent(generation, signal)) return;
-      shell.show(activityView(viewer, activity, state, favorites, '/app/activity', preferences.previewSize, signal));
+      shell.show(activityView(viewer, activity, state, favorites, '/app/activity', preferences.previewSize, signal, generation));
       return;
     }
 
     if (route.kind === 'overview') {
-      const overviewTask = abortable(getOverviewDrilldown(route.metric, state, undefined, preferences.previewSize, signal), signal);
-      const transitionsTask = abortable(getNotableTransitionInsights(state, signal), signal);
+      const overviewTask = cachedRead(
+        `overview:${route.metric}:${stableKey({ state, cursor: null, limit: preferences.previewSize })}`,
+        CACHE_POLICIES.overview,
+        signal,
+        generation,
+        () => getOverviewDrilldown(route.metric, state, undefined, preferences.previewSize, signal),
+      ).then(({ value }) => value);
+      const transitionsTask = cachedRead(
+        `transitions:${stableKey({ state })}`,
+        CACHE_POLICIES.transitions,
+        signal,
+        generation,
+        () => getNotableTransitionInsights(state, signal),
+      ).then(({ value }) => value);
       const companionMetric = route.metric === 'evaluations'
         ? 'pull-requests'
         : route.metric === 'pull-requests'
           ? 'evaluations'
           : undefined;
       const companionTask = companionMetric
-        ? abortable(getOverviewDrilldown(companionMetric, state, undefined, preferences.previewSize, signal), signal)
+        ? cachedRead(
+          `overview:${companionMetric}:${stableKey({ state, cursor: null, limit: preferences.previewSize })}`,
+          CACHE_POLICIES.overview,
+          signal,
+          generation,
+          () => getOverviewDrilldown(companionMetric, state, undefined, preferences.previewSize, signal),
+        ).then(({ value }) => value)
         : Promise.resolve(undefined);
       const behaviorPatternsTask = route.metric === 'merged-unresolved'
-        ? abortable(getBehaviorPatterns(state, window.location.search, signal), signal).catch(() => undefined)
+        ? cachedRead(
+          `behavior-patterns:${stableKey({ state })}`,
+          CACHE_POLICIES.behavior,
+          signal,
+          generation,
+          () => getBehaviorPatterns(state, window.location.search, signal),
+        ).then(({ value }) => value).catch(() => undefined)
         : Promise.resolve(undefined);
       const [viewer, , , overview, transitions, companion, behaviorPatterns] = await Promise.all([
         viewerTask,
@@ -385,7 +513,13 @@ async function render(): Promise<void> {
         },
         transitions,
         companion,
-        (cursor) => getOverviewDrilldown(route.metric, state, cursor, preferences.previewSize, signal),
+        (cursor) => cachedRead(
+          `overview:${route.metric}:${stableKey({ state, cursor, limit: preferences.previewSize })}`,
+          CACHE_POLICIES.overview,
+          signal,
+          generation,
+          () => getOverviewDrilldown(route.metric, state, cursor, preferences.previewSize, signal),
+        ).then(({ value }) => value),
         preferences.previewSize,
       );
       if (behaviorPatterns) enhanceOverviewWithBehaviorPatterns(overviewView, behaviorPatterns, state);
@@ -398,13 +532,13 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'settings') {
-      const repositoriesTask = settle(abortable(api.getActivity({
+      const repositoriesTask = settle(cachedRead(`activity:settings-repositories:${stableKey({ window: '30d', attention: 'ALL', repositoryId: null, cursor: null, limit: 1 })}`, CACHE_POLICIES.activity, signal, generation, () => api.getActivity({
         window: '30d',
         attention: 'ALL',
         repositoryId: null,
         cursor: null,
         limit: 1,
-      }, signal), signal));
+      }, signal)).then(({ value }) => value));
       void accountTask.catch(() => undefined);
       const [viewer, repositoryMetadata] = await Promise.all([
         viewerTask,
@@ -421,14 +555,15 @@ async function render(): Promise<void> {
         {
           save(input, etag) {
             return api.replaceSettings(input, etag).then((saved) => {
-              settingsPromise = Promise.resolve(saved);
+              queryCache.set('settings', saved, CACHE_POLICIES.settings);
+              invalidateActivityDerivedQueries();
               shell.setDensity(saved.settings.density);
               shell.setPreferenceWarning(undefined);
               return saved;
             });
           },
           reload() {
-            return cachedSettings(true);
+            return cachedSettings(true, signal, generation);
           },
         },
         warnings.length ? { warning: warnings.join(' ') } : {},
@@ -442,6 +577,7 @@ async function render(): Promise<void> {
       shell.setViewer(viewer);
       shell.show(renderAccountPage(account, () => {
         void api.logout().then(() => {
+          queryCache.clear();
           window.location.assign('/app');
         });
       }));
@@ -449,8 +585,20 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'pull-request') {
-      const trajectoryTask = abortable(api.getTrajectory(route.repositoryId, route.pullRequestNumber, signal), signal);
-      const behaviorTask = abortable(getChangeBehavior(route.repositoryId, route.pullRequestNumber, window.location.search, signal), signal).catch(() => undefined);
+      const trajectoryTask = cachedRead(
+        `trajectory:${route.repositoryId}:${route.pullRequestNumber}`,
+        CACHE_POLICIES.trajectory,
+        signal,
+        generation,
+        () => api.getTrajectory(route.repositoryId, route.pullRequestNumber, signal),
+      ).then(({ value }) => value);
+      const behaviorTask = cachedRead(
+        `behavior:${route.repositoryId}:${route.pullRequestNumber}`,
+        CACHE_POLICIES.behavior,
+        signal,
+        generation,
+        () => getChangeBehavior(route.repositoryId, route.pullRequestNumber, window.location.search, signal),
+      ).then(({ value }) => value).catch(() => undefined);
       const [viewer, , favorites, trajectory, behavior] = await Promise.all([
         viewerTask,
         accountTask,
@@ -465,7 +613,11 @@ async function render(): Promise<void> {
         route.pullRequestNumber,
         transitionId,
         input,
-      );
+      ).then((feedback) => {
+        queryCache.invalidate(`trajectory:${route.repositoryId}:${route.pullRequestNumber}`);
+        queryCache.invalidate(`behavior:${route.repositoryId}:${route.pullRequestNumber}`);
+        return feedback;
+      });
       const pullRequestView = renderPullRequest(
         viewer,
         trajectory,
@@ -481,15 +633,26 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'run') {
-      const runTask = abortable(api.getRun(route.repositoryId, route.runId, signal), signal);
+      const runTask = cachedRead(
+        `run:${route.repositoryId}:${route.runId}`,
+        CACHE_POLICIES.immutableDetail,
+        signal,
+        generation,
+        () => api.getRun(route.repositoryId, route.runId, signal),
+      ).then(({ value }) => value);
       const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask(), runTask]);
       if (!isCurrent(generation, signal)) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
-      void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number, signal), signal)
-        .then((pullRequest) => {
+      void cachedRead(
+        `pull-request:${route.repositoryId}:${summary.pullRequest.number}`,
+        CACHE_POLICIES.detail,
+        signal,
+        generation,
+        () => api.getPullRequest(route.repositoryId, summary.pullRequest.number, signal),
+      ).then(({ value: pullRequest }) => {
           if (!isCurrent(generation, signal)) return;
           enhanceEvaluationWithPullRequestContext(
             shell.root,
@@ -503,15 +666,26 @@ async function render(): Promise<void> {
     }
 
     if (route.kind === 'evaluation') {
-      const evaluationTask = abortable(api.getEvaluation(route.repositoryId, route.headSha, signal), signal);
+      const evaluationTask = cachedRead(
+        `evaluation:${route.repositoryId}:${route.headSha}`,
+        CACHE_POLICIES.immutableDetail,
+        signal,
+        generation,
+        () => api.getEvaluation(route.repositoryId, route.headSha, signal),
+      ).then(({ value }) => value);
       const [viewer, , favorites, response] = await Promise.all([viewerTask, accountTask, favoritesTask(), evaluationTask]);
       if (!isCurrent(generation, signal)) return;
       const activitySearch = serializeActivityState(state);
       const evaluationView = renderEvaluation(viewer, response, activitySearch, favorites);
       shell.show(evaluationView);
       const summary = response.status === 'available' ? response.detail : response.summary;
-      void abortable(api.getPullRequest(route.repositoryId, summary.pullRequest.number, signal), signal)
-        .then((pullRequest) => {
+      void cachedRead(
+        `pull-request:${route.repositoryId}:${summary.pullRequest.number}`,
+        CACHE_POLICIES.detail,
+        signal,
+        generation,
+        () => api.getPullRequest(route.repositoryId, summary.pullRequest.number, signal),
+      ).then(({ value: pullRequest }) => {
           if (!isCurrent(generation, signal)) return;
           enhanceEvaluationWithPullRequestContext(shell.root, pullRequest, { headSha: route.headSha }, activitySearch);
         })
@@ -542,4 +716,17 @@ document.addEventListener('click', (event) => {
 });
 
 window.addEventListener('popstate', () => void render());
+let lastFocusRefresh = 0;
+function refreshOnFocusOrVisibility(): void {
+  if (document.visibilityState === 'hidden') return;
+  const now = Date.now();
+  if (now - lastFocusRefresh < 1_000) return;
+  lastFocusRefresh = now;
+  // Re-rendering from the private cache is intentionally skeleton-free.  Fresh
+  // entries resolve synchronously; stale entries paint first and schedule one
+  // background refresh through cachedRead().
+  void render({ showLoading: false });
+}
+window.addEventListener('focus', refreshOnFocusOrVisibility);
+document.addEventListener('visibilitychange', refreshOnFocusOrVisibility);
 void render();
