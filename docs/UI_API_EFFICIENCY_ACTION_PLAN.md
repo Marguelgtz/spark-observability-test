@@ -17,7 +17,7 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 
 - [~] E1: certify CP2 signal propagation. Acceptance: every route-owned GET receives the current route signal; a delayed fetch aborted by navigation rejects at the fetch layer; no stale paint. Files: web API helpers and route test harness.
 - [~] E2: certify bootstrap reduction. Acceptance: cold route uses `/api/account` as viewer source and does not call `/api/me`; favorites fetch only on consuming routes.
-- [ ] M1: create a Playwright network matrix plus a safe data fixture identity; measure the 17 mission scenarios and record counts/bytes/latency.
+- [~] M1: opt-in Playwright recorder is implemented and fixture-validated; acquire a temporary authenticated storage state and measure the full 17-scenario matrix against a safe Worker environment.
 - [ ] M2: instrument/read Worker query evidence without permanent noisy production logging; run `EXPLAIN QUERY PLAN` for hot Activity/Dashboard/Overview paths.
 - [ ] P1: determine whether Activity cursor pages recompute static metadata; design V2/page-only response if confirmed.
 - [ ] P2: determine whether Overview cursor pages recompute trends/outcome intelligence; split summary/page response only if confirmed.
@@ -35,4 +35,5 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 | 2026-09-09 | `abortable` guarded rendering only; raw `fetch` helpers did not accept a signal | Added E1 implementation before cache/projection work. |
 | 2026-09-09 | `activity-sorting.ts#readAllActivity` loops all generic Activity pages | Retained as B1; no superficial page-local sorting. |
 | 2026-09-09 | Locked dependencies installed; typecheck, web tests (65), full tests (236), and web build pass | Reclassified CP2 as focused-test/build verified; CP1 remains blocked only on safe runtime/query evidence. |
+| 2026-09-10 | Reviewed later-agent recorder: documented script/config did not exist or honor remote base/storage state | Added the command and corrected configuration; fixture recorder validation passed, while CP1 remains unmeasured. |
 | 2026-09-09 | `test/main` is behind the open CI stack; PR #89 originally based on `8c225b9`. Rebased `ui-api-efficiency/cp0-cp2` onto `c971f1b` (PR #86 head): all three mission commits patch-identical (`git patch-id`), `git diff 8c225b9 c971f1b -- apps/web` empty. PR #89 base changed to `ci-process/11-deployment-extension` via REST (`gh pr edit` broken by projectCards deprecation). | Kept CP2 state as-is (web tree byte-identical); re-verified on rebased tree: typecheck pass, web:test 65 pass, test 431 pass (new base widens vitest scope to `packages apps`), web:build pass. Playwright re-run deferred to next checkpoint. |

@@ -48,6 +48,8 @@ The next measurement must use a safe authenticated/local fixture and Playwright 
 
 Focused certification for this boundary: `pnpm typecheck` passed; `pnpm web:test` passed (65 tests, including the new Activity signal assertion); `pnpm test` passed (236 tests); `pnpm web:build` passed; and the fixture-backed Playwright suite passed (118 desktop/mobile tests). These certify compilation and helper-level signal forwarding, not live-Worker cancellation or request-count improvements.
 
+An opt-in `pnpm measure:navigation` recorder now captures cold Dashboard, Dashboard↔Activity, Dashboard↔Overview, Dashboard↔PR, and timed Dashboard revisits. It records request path/method/type/status, timings, response/header bytes, cache status, duplicates, in-flight requests at paint, and cancellations in ignored local artifacts. Its Playwright configuration honors `SPARK_PERF_BASE_URL` and `SPARK_PERF_STORAGE_STATE`; with a remote base it does not start local Vite. A shortened fixture run passed ten scenarios on 2026-09-10, but fixture requests are in-process and therefore cannot be used as an API/D1 baseline.
+
 ## Correctness and invariants
 
 Authenticated scope remains server-owned and unchanged. No response cache headers were changed (`no-store` remains in Worker JSON responses); the new cache work is explicitly unstarted. Favorites remain viewer-private, settings concurrency/ETags are untouched, immutable runs and trajectory retention are untouched, and no visualization semantics changed. Existing chart inputs must be audited before any Overview contract split: paginated `items` must never masquerade as full-window distributions.

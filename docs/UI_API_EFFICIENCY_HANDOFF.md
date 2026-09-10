@@ -19,6 +19,7 @@ What is implemented (committed, on the branch):
 - Viewer derived from `/api/account` (`principal.viewer`); redundant `/api/me` bootstrap request removed.
 - Favorites bootstrap started only by routes that consume a `FavoriteStore` (Activity, Overview, PR, run, evaluation); no longer eager on Dashboard/Settings/Account/Not Found.
 - No backend, D1, response-cache, or chart behavior changed.
+- An opt-in navigation measurement recorder plus the `measure:navigation` command. It supports a remote base URL and temporary Playwright storage state without starting local Vite; a shortened local-fixture run passed but does not constitute a production baseline.
 
 Verification state (layered, exact):
 
@@ -36,7 +37,7 @@ Blockers/limitations:
 Next exact continuation point:
 
 1. Re-run the Playwright suite on the rebased tree to close the post-rebase gap: `npm exec --yes pnpm@10.15.1 -- web:e2e` (or the script the repo defines for the fixture-backed suite).
-2. CP1: provision a safe local authenticated fixture (Worker + D1 or SQLite mirror of the schema with synthetic data only), then add a Playwright request-recorder matrix for the 17 mission scenarios; record endpoint counts/bytes; capture Worker D1 statement counts and `EXPLAIN QUERY PLAN` for hot Activity/Dashboard/Overview paths. No private data in Git.
+2. CP1: provision a safe local authenticated fixture (Worker + D1 or SQLite mirror of the schema with synthetic data only), then run and extend `pnpm measure:navigation` for the 17 mission scenarios; record endpoint counts/bytes; capture Worker D1 statement counts and `EXPLAIN QUERY PLAN` for hot Activity/Dashboard/Overview paths. No private data in Git.
 3. Then proceed to the next living-plan checkpoint (CP3 page-only contracts) only after P1/P2 reader evidence is recorded.
 
 Useful commands:
