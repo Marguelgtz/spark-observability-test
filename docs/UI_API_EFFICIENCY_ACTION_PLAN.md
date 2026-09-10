@@ -50,6 +50,7 @@ Status legend: `[ ]` planned, `[~]` in progress, `[x]` verified, `[!]` blocked, 
 | 2026-09-10 | Delayed real-network acceptance: local Worker `/api/dashboard` held 1500 ms, SPA navigation produced `net::ERR_ABORTED`, Activity rendered, and stale Dashboard paint was false | Closed E1. Item 3 cache/SWR remains the next gate; CP3/item 4 stays held. |
 | 2026-09-10 | Item 3 implementation requested after CP1/CP2/E1 closure | Opened Q1–Q5 execution queue; CP3/item 4 remains held until every item 3 gate is green. |
 | 2026-09-10 | Item 3 acceptance: cache unit suite 70 web tests, browser suite 120 passed/4 skipped, typecheck, full 435-test suite, and web build all pass | Closed Q1–Q5 and CP7; CP3/item 4 remains held. |
+| 2026-09-10 | Cloudflare deployment from item-3 SHA `d43649d`: remote D1 reported no migrations, Worker version `8ed2ecae-f0e1-4c48-bad1-e11e70e8ba64` published, `/health` returned `{"status":"ok"}`, and `/app` served bundle `index-Dj2vDWRq.js` | Deployment gate passed for the verified item-3 stack. |
 
 ## Next checkpoint (CP3 proposal; item 3 complete, CP3 remains held)
 

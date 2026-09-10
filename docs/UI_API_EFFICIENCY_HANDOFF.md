@@ -39,6 +39,7 @@ Blockers/limitations:
 
 - CP1 is complete for the bounded local gate: the safe temporary authenticated transport and query-plan evidence are captured and reproducible. Production telemetry remains a separate follow-up.
 - Deployment lineage (which commit/Worker origin is live) is not verifiable from local Git without credentials.
+- Deployment verification (2026-09-10): `spark-api` published the item-3 bundle from SHA `d43649d`; Wrangler reported version `8ed2ecae-f0e1-4c48-bad1-e11e70e8ba64`, no remote migrations were pending, `/health` returned `{"status":"ok"}`, and `/app` served `assets/index-Dj2vDWRq.js`.
 
 Next exact continuation point:
 
